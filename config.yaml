@@ -6,14 +6,14 @@ clickhouse:
   table: "flows"
 
 geoip:
-  asn_db: "/etc/pmacct/GeoLite2-ASN.mmdb"
-  city_db: "/etc/pmacct/GeoLite2-City.mmdb"
+  asn_db: "/home/chris/examples/GeoLite2-ASN.mmdb"
+  city_db: "/home/chris/examples/GeoLite2-City.mmdb"
 
 bgp:
-  table_file: "/var/log/nfacctd_bgp_table.json"
+  table_file: "/home/chris/examples/nfacctd_bgp_table.json"
 
 input:
-  log_file: "/var/log/nfacctd.bgp.json"
+  log_file: "/home/chris/examples/nfacctd.bgp.json"
 
 dns:
   nameserver: "1.1.1.1"

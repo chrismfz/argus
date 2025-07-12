@@ -1,114 +1,160 @@
+// main.go
 package main
 
 import (
-	"context"
-	"fmt"
-	"log"
-	"os"
+        "context"
+        "fmt"
+        "log"
+        "os"
+        "os/signal"
+        "syscall"
+        "time"
 )
 
 var debug bool
+var showFlows bool
 
-// Counters for debug summary
 var Stats struct {
-	Parsed     int
-	PTRLookups int
-	Inserted   int
+        Parsed         int
+        PTRLookups     int
+        Inserted       int
+        EnrichDuration time.Duration
+        InsertDuration time.Duration
+
+        StartTime      time.Time
+        EnrichDone     time.Time
+        InsertDone     time.Time
 }
 
 func dlog(msg string, args ...interface{}) {
-	if debug {
-		log.Printf("[DEBUG] "+msg, args...)
-	}
+        if debug {
+                log.Printf("[DEBUG] "+msg, args...)
+        }
 }
 
 func main() {
-	var (
-		configPath = "config.yaml"
-		testMode   = false
-	)
+        var (
+                configPath = "config.yaml"
+                testMode   = false
+        )
 
-	// Handle CLI arguments
-	for _, arg := range os.Args[1:] {
-		switch arg {
-		case "--test":
-			testMode = true
-		case "--debug":
-			debug = true
-		default:
-			configPath = arg // assume it's config path
-		}
-	}
+        for _, arg := range os.Args[1:] {
+                switch arg {
+                case "--test":
+                        testMode = true
+                case "--debug":
+                        debug = true
+                case "--show-flows":
+                        showFlows = true
+                default:
+                        configPath = arg
+                }
+        }
 
-	// Load config
-	cfg, err := LoadConfig(configPath)
-	if err != nil {
-		log.Fatalf("Error loading config: %v", err)
-	}
-	debug = debug || cfg.Debug
+        cfg, err := LoadConfig(configPath)
+        if err != nil {
+                log.Fatalf("Error loading config: %v", err)
+        }
+        debug = debug || cfg.Debug
 
-	dlog("ClickHouse Host: %s", cfg.ClickHouse.Host)
-	dlog("GeoIP ASN DB: %s", cfg.GeoIP.ASNDB)
-	fmt.Println("Config loaded successfully.")
+        Stats.StartTime = time.Now()
 
-	// Init components
-	bgp := NewBGPTable(cfg.BGP.TableFile)
-	geo, err := NewGeoIP(cfg.GeoIP.ASNDB, cfg.GeoIP.CityDB)
-	if err != nil {
-		log.Fatalf("GeoIP init error: %v", err)
-	}
-	resolver := NewDNSResolver(cfg.DNS.Nameserver)
+        dlog("ClickHouse Host: %s", cfg.ClickHouse.Host)
+        dlog("GeoIP ASN DB: %s", cfg.GeoIP.ASNDB)
+        if cfg.GeoIP.CityDB != "" {
+                dlog("GeoIP City DB: %s", cfg.GeoIP.CityDB)
+        }
+        if cfg.DNS.Nameserver != "" {
+                dlog("Using DNS resolver: %s", cfg.DNS.Nameserver)
+        }
 
-	if testMode {
-		dlog("Running in test mode...")
-		sample := `{"timestamp_start": "2025-07-12 14:05:00.123456", "event_type": "purge", "ip_proto": "tcp", "ip_src": "8.8.8.8", "ip_dst": "1.1.1.1", "port_src": 12345, "port_dst": 443, "packets": 5, "bytes": 1500, "tcp_flags": 16, "tos": 0}`
+        bgp := NewBGPTable(cfg.BGP.TableFile)
+        geo, err := NewGeoIP(cfg.GeoIP.ASNDB, cfg.GeoIP.CityDB)
+        if err != nil {
+                log.Fatalf("GeoIP init error: %v", err)
+        }
+        resolver := NewDNSResolver(cfg.DNS.Nameserver)
 
-		rec, err := ParseAndEnrich(sample, geo, bgp, resolver, cfg.Timezone)
-		if err != nil {
-			log.Fatalf("Parse error: %v", err)
-		}
-		Stats.Parsed++
-		if rec.SrcHostPTR != "" {
-			Stats.PTRLookups++
-		}
-		if rec.DstHostPTR != "" {
-			Stats.PTRLookups++
-		}
+        inserter, err := NewClickHouseInserter(cfg)
+        if err != nil {
+                log.Fatalf("ClickHouse connection error: %v", err)
+        }
+        dlog("ClickHouse connection established.")
 
-		fmt.Printf("Parsed: %+v\n", rec)
+        if testMode {
+                runTestMode(cfg, geo, bgp, resolver)
+                return
+        }
 
-		inserter, err := NewClickHouseInserter(cfg)
-		if err != nil {
-			log.Fatalf("ClickHouse error: %v", err)
-		}
+        ctx, cancel := context.WithCancel(context.Background())
+        go handleSignals(cancel)
 
-		ctx := context.Background()
-		if err := inserter.InsertFlow(ctx, rec); err != nil {
-			log.Fatalf("Insert error: %v", err)
-		}
-		Stats.Inserted++
-		fmt.Println("Test insert completed.")
+        err = TailFileAndProcess(ctx, cfg.Input.LogFile, geo, bgp, resolver, cfg, inserter)
+        if err != nil {
+                log.Fatalf("Tail error: %v", err)
+        }
 
-		if debug {
-			fmt.Printf("[SUMMARY] Parsed %d flows, resolved %d PTRs, inserted %d records\n",
-				Stats.Parsed, Stats.PTRLookups, Stats.Inserted)
-		}
+        Stats.InsertDone = time.Now()
+        printSummary()
+}
 
-		os.Exit(0)
-	}
+func handleSignals(cancel context.CancelFunc) {
+        sigChan := make(chan os.Signal, 1)
+        signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+        <-sigChan
+        fmt.Println("\nInterrupt received, exiting gracefully...")
+        cancel()
+}
 
-	// PRODUCTION MODE: tail flows and insert
-	inserter, err := NewClickHouseInserter(cfg)
-	if err != nil {
-		log.Fatalf("ClickHouse error: %v", err)
-	}
+func printSummary() {
+        if debug {
+                total := time.Since(Stats.StartTime)
+                enrichDur := Stats.EnrichDone.Sub(Stats.StartTime)
+                insertDur := Stats.InsertDone.Sub(Stats.EnrichDone)
+                fmt.Println("--- FLOW ENRICHMENT SUMMARY ---")
+                fmt.Printf("Parsed: %d\n", Stats.Parsed)
+                fmt.Printf("PTR lookups: %d\n", Stats.PTRLookups)
+                fmt.Printf("Inserted: %d\n", Stats.Inserted)
+                fmt.Printf("Enrichment time: %s\n", enrichDur)
+                fmt.Printf("Insert time: %s\n", insertDur)
+                fmt.Printf("Total duration: %s\n", total)
+                fmt.Println("--------------------------------")
+        }
+}
 
-	if err := TailFileAndProcess(cfg.Input.LogFile, geo, bgp, resolver, cfg, inserter); err != nil {
-		log.Fatalf("Tail error: %v", err)
-	}
+func runTestMode(cfg *Config, geo *GeoIP, bgp *BGPTable, resolver *DNSResolver) {
+        dlog("Running in test mode...")
+        sample := `{"timestamp_start": "2025-07-12 14:05:00.123456", "event_type": "purge", "ip_proto": "tcp", "ip_src": "8.8.8.8", "ip_dst": "1.1.1.1", "port_src": 12345, "port_dst": 443, "packets": 5, "bytes": 1500, "tcp_flags": 16, "tos": 0}`
 
-	if debug {
-		fmt.Printf("[SUMMARY] Parsed %d flows, resolved %d PTRs, inserted %d records\n",
-			Stats.Parsed, Stats.PTRLookups, Stats.Inserted)
-	}
+        Stats.StartTime = time.Now()
+        rec, err := ParseAndEnrich(sample, geo, bgp, resolver, cfg.Timezone)
+        if err != nil {
+                log.Fatalf("Parse error: %v", err)
+        }
+        Stats.Parsed++
+        if rec.SrcHostPTR != "" {
+                Stats.PTRLookups++
+        }
+        if rec.DstHostPTR != "" {
+                Stats.PTRLookups++
+        }
+        Stats.EnrichDone = time.Now()
+
+        fmt.Printf("Parsed: %+v\n", rec)
+
+        inserter, err := NewClickHouseInserter(cfg)
+        if err != nil {
+                log.Fatalf("ClickHouse error: %v", err)
+        }
+
+        ctx := context.Background()
+        if err := inserter.InsertFlow(ctx, rec); err != nil {
+                log.Fatalf("Insert error: %v", err)
+        }
+        Stats.Inserted++
+        Stats.InsertDone = time.Now()
+
+        fmt.Println("Test insert completed.")
+        printSummary()
+        os.Exit(0)
 }

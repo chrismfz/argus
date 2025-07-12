@@ -1,0 +1,23 @@
+clickhouse:
+  host: "localhost"
+  user: "default"
+  password: ""
+  database: "pmacct"
+  table: "flows"
+
+geoip:
+  asn_db: "/etc/pmacct/GeoLite2-ASN.mmdb"
+  city_db: "/etc/pmacct/GeoLite2-City.mmdb"
+
+bgp:
+  table_file: "/var/log/nfacctd_bgp_table.json"
+
+input:
+  log_file: "/var/log/nfacctd.bgp.json"
+
+dns:
+  nameserver: "1.1.1.1"
+
+timezone: "Europe/Athens"
+
+debug: true

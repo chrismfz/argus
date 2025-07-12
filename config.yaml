@@ -12,12 +12,14 @@ geoip:
 bgp:
   table_file: "/var/log/nfacctd/bgp_table.json"
 
-input:
-  log_file: "/var/log/nfacctd/flows.json"
+kafka:
+  brokers:
+    - "localhost:9092"
+  topic: "netflow"
+  group_id: "flowenricher"
 
 dns:
   nameserver: "1.1.1.1"
 
 timezone: "Europe/Athens"
-
 debug: true

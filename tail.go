@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -26,26 +27,32 @@ func TailFileAndProcess(path string, geo *GeoIP, bgp *BGPTable, dns *DNSResolver
 			continue
 		}
 
-		line = trimLine(line)
+		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
 
 		dlog("Read: %s", line)
+
 		rec, err := ParseAndEnrich(line, geo, bgp, dns, cfg.Timezone)
 		if err != nil {
 			dlog("Skip line: %v", err)
 			continue
 		}
 
+		Stats.Parsed++
+		if rec.SrcHostPTR != "" {
+			Stats.PTRLookups++
+		}
+		if rec.DstHostPTR != "" {
+			Stats.PTRLookups++
+		}
+
 		if err := inserter.InsertFlow(context.Background(), rec); err != nil {
 			dlog("Insert error: %v", err)
 		} else {
+			Stats.Inserted++
 			dlog("Inserted flow at %s", rec.TimestampStart)
 		}
 	}
-}
-
-func trimLine(s string) string {
-	return string([]byte(s)[0:len(s)-1])
 }

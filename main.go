@@ -5,11 +5,15 @@ import (
     "log"
     "os"
     "os/signal"
+    "strings"
     "syscall"
 )
 
 var debug bool
 var showFlows bool
+var geo *GeoIP
+var bgp *BGPTable
+var resolver *DNSResolver
 
 func dlog(msg string, args ...interface{}) {
     if debug {
@@ -35,6 +39,7 @@ func main() {
     if err != nil {
         log.Fatalf("Error loading config: %v", err)
     }
+
     debug = debug || cfg.Debug
 
     dlog("ClickHouse Host: %s", cfg.ClickHouse.Host)
@@ -46,13 +51,21 @@ func main() {
         dlog("Using DNS resolver: %s", cfg.DNS.Nameserver)
     }
 
-    geo, err := NewGeoIP(cfg.GeoIP.ASNDB, cfg.GeoIP.CityDB)
-    if err != nil {
-        log.Fatalf("GeoIP init error: %v", err)
+    // Enrichment modules (conditionally initialized)
+    if enrichEnabled(cfg, "geoip") {
+        geo, err = NewGeoIP(cfg.GeoIP.ASNDB, cfg.GeoIP.CityDB)
+        if err != nil {
+            log.Fatalf("GeoIP init error: %v", err)
+        }
     }
 
-    bgp := NewBGPTable(cfg.BGP.TableFile)
-    resolver := NewDNSResolver(cfg.DNS.Nameserver)
+    if enrichEnabled(cfg, "bgp") {
+        bgp = NewBGPTable(cfg.BGP.TableFile)
+    }
+
+    if enrichEnabled(cfg, "ptr") {
+        resolver = NewDNSResolver(cfg.DNS.Nameserver)
+    }
 
     inserter, err := NewClickHouseInserter(cfg)
     if err != nil {
@@ -75,4 +88,17 @@ func handleSignals(cancel context.CancelFunc) {
     <-sigChan
     log.Println("Interrupt received, exiting gracefully...")
     cancel()
+}
+
+func enrichEnabled(cfg *Config, name string) bool {
+    if strings.ToLower(cfg.Enrich) == "none" {
+        return false
+    }
+    parts := strings.Split(strings.ToLower(cfg.Enrich), ",")
+    for _, p := range parts {
+        if strings.TrimSpace(p) == name {
+            return true
+        }
+    }
+    return false
 }

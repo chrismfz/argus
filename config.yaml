@@ -23,3 +23,7 @@ dns:
 
 timezone: "Europe/Athens"
 debug: true
+
+enrich: "none"
+# could be geoip, bgp, ptr or none
+

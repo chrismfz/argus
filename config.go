@@ -6,6 +6,8 @@ import (
 )
 
 type Config struct {
+	Enrich string `yaml:"enrich"`
+
     ClickHouse struct {
         Host     string `yaml:"host"`
         User     string `yaml:"user"`

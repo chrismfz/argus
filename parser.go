@@ -8,89 +8,107 @@ import (
 )
 
 func ParseAndEnrich(line string, geo *GeoIP, bgp *BGPTable, dns *DNSResolver, timezone string) (*FlowRecord, error) {
-	var j map[string]interface{}
-	err := json.Unmarshal([]byte(line), &j)
-	if err != nil {
-		return nil, fmt.Errorf("bad json: %w", err)
-	}
+    var j map[string]interface{}
+    err := json.Unmarshal([]byte(line), &j)
+    if err != nil {
+        return nil, fmt.Errorf("bad json: %w", err)
+    }
 
-	if j["event_type"] != "purge" {
-		return nil, fmt.Errorf("not a purge event")
-	}
+    if j["event_type"] != "purge" {
+        return nil, fmt.Errorf("not a purge event")
+    }
 
-	// Parse timestamp_start
-	tsStr, ok := j["timestamp_start"].(string)
-	if !ok {
-		return nil, fmt.Errorf("missing timestamp_start")
-	}
-	localTZ, _ := time.LoadLocation(timezone)
-	t0, err := time.ParseInLocation("2006-01-02 15:04:05.000000", tsStr, localTZ)
-	if err != nil {
-		return nil, fmt.Errorf("timestamp parse error: %w", err)
-	}
-	tUTC := t0.UTC()
+    // Parse timestamp_start
+    tsStr, ok := j["timestamp_start"].(string)
+    if !ok {
+        return nil, fmt.Errorf("missing timestamp_start")
+    }
 
-	// Protocol mapping
-	proto := uint8(0)
-	if ipProto, ok := j["ip_proto"].(string); ok {
-		switch ipProto {
-		case "icmp":
-			proto = 1
-		case "tcp":
-			proto = 6
-		case "udp":
-			proto = 17
-		}
-	}
+    localTZ, _ := time.LoadLocation(timezone)
+    t0, err := time.ParseInLocation("2006-01-02 15:04:05.000000", tsStr, localTZ)
+    if err != nil {
+        return nil, fmt.Errorf("timestamp parse error: %w", err)
+    }
+    tUTC := t0.UTC()
 
-	// IPs
-	src := j["ip_src"].(string)
-	dst := j["ip_dst"].(string)
+    // Protocol mapping
+    proto := uint8(0)
+    if ipProto, ok := j["ip_proto"].(string); ok {
+        switch ipProto {
+        case "icmp":
+            proto = 1
+        case "tcp":
+            proto = 6
+        case "udp":
+            proto = 17
+        }
+    }
 
-	// BGP AS Path
-	var asPath []string
-	if raw, ok := j["as_path"]; ok {
-		if rawList, ok := raw.([]interface{}); ok {
-			for _, el := range rawList {
-				asPath = append(asPath, fmt.Sprintf("%v", el))
-			}
-		}
-	}
-	if len(asPath) == 0 {
-		asPath = bgp.FindASPath(src)
-		if len(asPath) == 0 {
-			asPath = bgp.FindASPath(dst)
-		}
-	}
+    // IPs
+    src := j["ip_src"].(string)
+    dst := j["ip_dst"].(string)
 
-	// Ports
-	srcPort := toUint16(j["port_src"])
-	dstPort := toUint16(j["port_dst"])
+    // BGP AS Path
+    var asPath []string
+    if raw, ok := j["as_path"]; ok {
+        if rawList, ok := raw.([]interface{}); ok {
+            for _, el := range rawList {
+                asPath = append(asPath, fmt.Sprintf("%v", el))
+            }
+        }
+    }
+    if bgp != nil && len(asPath) == 0 {
+        asPath = bgp.FindASPath(src)
+        if len(asPath) == 0 {
+            asPath = bgp.FindASPath(dst)
+        }
+    }
 
-	// Final struct
-	return &FlowRecord{
-		TimestampStart:   tUTC,
-		Proto:            proto,
-		TCPFlags:         toUint8(j["tcp_flags"]),
-		TOS:              toUint8(j["tos"]),
-		SrcHost:          src,
-		SrcPort:          srcPort,
-		SrcHostCountry:   geo.GetCountry(src),
-		DstHost:          dst,
-		DstPort:          dstPort,
-		DstHostCountry:   geo.GetCountry(dst),
-		PeerSrcAS:        toUint32(j["peer_as_src"], geo.GetASNNumber(src)),
-		PeerDstAS:        toUint32(j["peer_as_dst"], geo.GetASNNumber(dst)),
-		ASPath:           asPath,
-		Packets:          toUint64(j["packets"]),
-		Bytes:            toUint64(j["bytes"]),
-		PeerDstASName:    geo.GetASNName(dst),
-		PeerSrcASName:    geo.GetASNName(src),
-		DstAS:            geo.GetASNNumber(dst),
-		SrcHostPTR:       dns.LookupPTR(src),
-		DstHostPTR:       dns.LookupPTR(dst),
-	}, nil
+    // GeoIP / ASN
+    var srcCountry, dstCountry, srcASNName, dstASNName string
+    var srcASN, dstASN, dstAS uint32
+    if geo != nil {
+        srcCountry = geo.GetCountry(src)
+        dstCountry = geo.GetCountry(dst)
+        srcASN = geo.GetASNNumber(src)
+        dstASN = geo.GetASNNumber(dst)
+        dstAS = geo.GetASNNumber(dst)
+        srcASNName = geo.GetASNName(src)
+        dstASNName = geo.GetASNName(dst)
+    }
+
+    // PTR lookups
+    var srcPTR, dstPTR string
+    if dns != nil {
+        srcPTR = dns.LookupPTR(src)
+        dstPTR = dns.LookupPTR(dst)
+    }
+
+    return &FlowRecord{
+        TimestampStart:   tUTC,
+        Proto:            proto,
+        TCPFlags:         toUint8(j["tcp_flags"]),
+        TOS:              toUint8(j["tos"]),
+        SrcHost:          src,
+        SrcPort:          toUint16(j["port_src"]),
+        SrcHostCountry:   srcCountry,
+        DstHost:          dst,
+        DstPort:          toUint16(j["port_dst"]),
+        DstHostCountry:   dstCountry,
+        PeerSrcAS:        toUint32(j["peer_as_src"], srcASN),
+        PeerDstAS:        toUint32(j["peer_as_dst"], dstASN),
+        ASPath:           asPath,
+        Packets:          toUint64(j["packets"]),
+        Bytes:            toUint64(j["bytes"]),
+        PeerDstASName:    dstASNName,
+        PeerSrcASName:    srcASNName,
+        DstAS:            dstAS,
+        SrcHostPTR:       srcPTR,
+        DstHostPTR:       dstPTR,
+    }, nil
 }
+
+
 
 func toUint8(v interface{}) uint8 {
 	if v == nil {

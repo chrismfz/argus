@@ -128,8 +128,8 @@ ORDER BY (timestamp_start, src_host, dst_host);
 
 ---> nfacctd.conf Example:
 
-
- <details> <summary>🔧 Example <code>nfacctd.conf</code> (BGP + Kafka + JSON)</summary> 
+```yaml
+ 
 ! nfacctd configuration
 daemonize: false
 pidfile: /var/run/nfacctd.pid
@@ -170,3 +170,5 @@ bgp_table_dump_refresh_time: 120
  </details> 
  
 
+```
+:-)

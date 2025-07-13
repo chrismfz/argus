@@ -7,6 +7,7 @@ import (
     "os/signal"
     "strings"
     "syscall"
+    "time"
 )
 
 var debug bool
@@ -76,7 +77,17 @@ func main() {
     ctx, cancel := context.WithCancel(context.Background())
     go handleSignals(cancel)
 
-    err = StartKafkaConsumer(ctx, cfg, geo, bgp, resolver, inserter)
+
+batcher := NewInsertFlowBatcher(
+    inserter,
+    cfg.Insert.BatchSize,
+    time.Duration(cfg.Insert.FlushIntervalMs)*time.Millisecond,
+)
+defer batcher.Close()
+
+
+
+    err = StartKafkaConsumer(ctx, cfg, geo, bgp, resolver, batcher)
     if err != nil {
         log.Fatalf("Kafka consumer error: %v", err)
     }

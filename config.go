@@ -16,6 +16,11 @@ type Config struct {
         Table    string `yaml:"table"`
     } `yaml:"clickhouse"`
 
+Insert struct {
+    BatchSize       int `yaml:"batch_size"`
+    FlushIntervalMs int `yaml:"flush_interval_ms"`
+} `yaml:"insert"`
+
     GeoIP struct {
         ASNDB  string `yaml:"asn_db"`
         CityDB string `yaml:"city_db"`

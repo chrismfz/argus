@@ -75,3 +75,20 @@ func join(arr []string, sep string) string {
 	}
 	return out
 }
+
+
+
+func (c *ClickHouseInserter) InsertBatch(ctx context.Context, flows []*FlowRecord) error {
+    batch, err := c.conn.PrepareBatch(ctx, "INSERT INTO "+c.table+" ("+joinFields(c.fields)+")")
+    if err != nil {
+        return err
+    }
+
+    for _, flow := range flows {
+        if err := batch.AppendStruct(flow); err != nil {
+            return err
+        }
+    }
+
+    return batch.Send()
+}

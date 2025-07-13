@@ -27,3 +27,7 @@ debug: true
 enrich: "none"
 # could be geoip, bgp, ptr or none
 
+
+insert:
+  batch_size: 200
+  flush_interval_ms: 1000

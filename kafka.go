@@ -9,7 +9,7 @@ import (
     "time"
 )
 
-func StartKafkaConsumer(ctx context.Context, cfg *Config, geo *GeoIP, bgp *BGPTable, dns *DNSResolver, inserter *ClickHouseInserter) error {
+func StartKafkaConsumer(ctx context.Context, cfg *Config, geo *GeoIP, bgp *BGPTable, dns *DNSResolver, batcher *InsertFlowBatcher) error {
     r := kafka.NewReader(kafka.ReaderConfig{
         Brokers:     cfg.Kafka.Brokers,
         Topic:       cfg.Kafka.Topic,
@@ -49,8 +49,7 @@ func StartKafkaConsumer(ctx context.Context, cfg *Config, geo *GeoIP, bgp *BGPTa
             log.Printf("[FLOW] %s", string(b))
         }
 
-        if err := inserter.InsertFlow(ctx, rec); err != nil {
-            log.Printf("ClickHouse insert failed: %v", err)
-        }
+	batcher.Add(rec)
+
     }
 }

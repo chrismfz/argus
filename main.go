@@ -82,6 +82,7 @@ batcher := NewInsertFlowBatcher(
     inserter,
     cfg.Insert.BatchSize,
     time.Duration(cfg.Insert.FlushIntervalMs)*time.Millisecond,
+    bgp,
 )
 defer batcher.Close()
 

@@ -5,6 +5,7 @@ import (
 	"log"
 	"sync"
 	"time"
+	"fmt"
 )
 
 type InsertFlowBatcher struct {
@@ -16,9 +17,11 @@ type InsertFlowBatcher struct {
 	ticker         *time.Ticker
 	flushCtx       context.Context
 	flushCancel    context.CancelFunc
+	bgp *BGPTable
+
 }
 
-func NewInsertFlowBatcher(inserter *ClickHouseInserter, batchSize int, flushInterval time.Duration) *InsertFlowBatcher {
+func NewInsertFlowBatcher(inserter *ClickHouseInserter, batchSize int, flushInterval time.Duration, bgp *BGPTable) *InsertFlowBatcher {
 	ctx, cancel := context.WithCancel(context.Background())
 	b := &InsertFlowBatcher{
 		inserter:      inserter,
@@ -28,6 +31,7 @@ func NewInsertFlowBatcher(inserter *ClickHouseInserter, batchSize int, flushInte
 		ticker:        time.NewTicker(flushInterval),
 		flushCtx:      ctx,
 		flushCancel:   cancel,
+	        bgp:           bgp,
 	}
 	go b.autoFlushLoop()
 	return b
@@ -55,23 +59,83 @@ func (b *InsertFlowBatcher) autoFlushLoop() {
 	}
 }
 
+
 func (b *InsertFlowBatcher) flush() {
-	b.lock.Lock()
-	batch := b.buffer
-	b.buffer = make([]*FlowRecord, 0, b.batchSize)
-	b.lock.Unlock()
+    b.lock.Lock()
+    batch := b.buffer
+    b.buffer = make([]*FlowRecord, 0, b.batchSize)
+    b.lock.Unlock()
 
-	if len(batch) == 0 {
-		return
-	}
+    if len(batch) == 0 {
+        return
+    }
 
-	dlog("Flushing %d flows to ClickHouse", len(batch))
+    // BGP Enrichment
+    if b.bgp != nil {
+        ipSet := make(map[string]struct{})
+        for _, rec := range batch {
+            ipSet[rec.SrcHost] = struct{}{}
+            ipSet[rec.DstHost] = struct{}{}
+        }
 
-	err := b.inserter.InsertBatch(context.Background(), batch)
-	if err != nil {
-		log.Printf("[ERROR] Failed to insert batch: %v", err)
-	}
+        var ipList []string
+        for ip := range ipSet {
+            ipList = append(ipList, ip)
+        }
+
+        bgpMap := b.bgp.FindASPathBatch(ipList)
+
+        for _, rec := range batch {
+            if len(rec.ASPath) == 0 {
+                if path := bgpMap[rec.SrcHost]; len(path) > 0 {
+                    rec.ASPath = path
+                } else if path := bgpMap[rec.DstHost]; len(path) > 0 {
+                    rec.ASPath = path
+                }
+            }
+
+            if path := bgpMap[rec.SrcHost]; len(path) > 0 {
+                if asn, _ := toASN(path[0]); asn > 0 {
+                    rec.PeerSrcAS = asn
+                    rec.PeerSrcASName = geoASNName(asn) // 👉 δες παρακάτω
+                }
+            }
+
+            if path := bgpMap[rec.DstHost]; len(path) > 0 {
+                if asn, _ := toASN(path[0]); asn > 0 {
+                    rec.PeerDstAS = asn
+                    rec.PeerDstASName = geoASNName(asn)
+                }
+                if asn, _ := toASN(path[len(path)-1]); asn > 0 {
+                    rec.DstAS = asn
+                }
+            }
+        }
+    }
+
+    dlog("Flushing %d flows to ClickHouse", len(batch))
+
+    if err := b.inserter.InsertBatch(context.Background(), batch); err != nil {
+        log.Printf("[ERROR] Failed to insert batch: %v", err)
+    }
 }
+
+
+
+func toASN(s string) (uint32, error) {
+    var asn uint32
+    _, err := fmt.Sscanf(s, "%d", &asn)
+    return asn, err
+}
+
+func geoASNName(asn uint32) string {
+    if geo != nil {
+        return geo.ASNName(asn)
+    }
+    return ""
+}
+
+
 
 func (b *InsertFlowBatcher) Close() {
 	b.flushCancel()

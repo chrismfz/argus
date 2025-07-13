@@ -48,21 +48,8 @@ func ParseAndEnrich(line string, geo *GeoIP, bgp *BGPTable, dns *DNSResolver, ti
     src := j["ip_src"].(string)
     dst := j["ip_dst"].(string)
 
-    // BGP AS Path
-    var asPath []string
-    if raw, ok := j["as_path"]; ok {
-        if rawList, ok := raw.([]interface{}); ok {
-            for _, el := range rawList {
-                asPath = append(asPath, fmt.Sprintf("%v", el))
-            }
-        }
-    }
-    if bgp != nil && len(asPath) == 0 {
-        asPath = bgp.FindASPath(src)
-        if len(asPath) == 0 {
-            asPath = bgp.FindASPath(dst)
-        }
-    }
+
+
 
     // GeoIP / ASN
     var srcCountry, dstCountry, srcASNName, dstASNName string
@@ -97,7 +84,7 @@ func ParseAndEnrich(line string, geo *GeoIP, bgp *BGPTable, dns *DNSResolver, ti
         DstHostCountry:   dstCountry,
         PeerSrcAS:        toUint32(j["peer_as_src"], srcASN),
         PeerDstAS:        toUint32(j["peer_as_dst"], dstASN),
-        ASPath:           asPath,
+//        ASPath:           asPath,
         Packets:          toUint64(j["packets"]),
         Bytes:            toUint64(j["bytes"]),
         PeerDstASName:    dstASNName,

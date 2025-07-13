@@ -2,7 +2,7 @@ package main
 
 import (
 	"net"
-
+	"fmt"
 	"github.com/oschwald/geoip2-golang"
 )
 
@@ -72,4 +72,8 @@ func (g *GeoIP) GetCity(ip string) string {
 		return ""
 	}
 	return record.City.Names["en"]
+}
+
+func (g *GeoIP) ASNName(asn uint32) string {
+    return fmt.Sprintf("AS%d", asn)
 }

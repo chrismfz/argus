@@ -23,13 +23,15 @@ type BGPTable struct {
 	Entries    []BGPEntry
 	Cache      map[string][]string
 	Ranger     cidranger.Ranger
+	PrefixMap  map[string][]string // NEW: prefix string → AS path
 }
 
 func NewBGPTable(path string) *BGPTable {
 	t := &BGPTable{
-		Path:  path,
-		Cache: make(map[string][]string),
-		Ranger: cidranger.NewPCTrieRanger(),
+		Path:      path,
+		Cache:     make(map[string][]string),
+		Ranger:    cidranger.NewPCTrieRanger(),
+		PrefixMap: make(map[string][]string),
 	}
 	t.Reload()
 	go t.WatchForChanges()
@@ -64,6 +66,8 @@ func (b *BGPTable) Reload() {
 
 	var entries []BGPEntry
 	tempRanger := cidranger.NewPCTrieRanger()
+	tempMap := make(map[string][]string)
+
 	decoder := json.NewDecoder(f)
 	for {
 		var line map[string]interface{}
@@ -102,6 +106,7 @@ func (b *BGPTable) Reload() {
 		}
 		tempRanger.Insert(cidranger.NewBasicRangerEntry(*ipNet))
 		entries = append(entries, entry)
+		tempMap[ipNet.String()] = path // save to PrefixMap
 	}
 
 	b.Lock()
@@ -109,6 +114,7 @@ func (b *BGPTable) Reload() {
 	b.LastMtime = info.ModTime()
 	b.Cache = make(map[string][]string)
 	b.Ranger = tempRanger
+	b.PrefixMap = tempMap
 	b.Unlock()
 
 	dlog("Loaded %d BGP entries", len(entries))
@@ -121,7 +127,7 @@ func (b *BGPTable) FindASPath(ipStr string) []string {
 		return nil
 	}
 
-	// Check cache
+	// Cache check
 	b.RLock()
 	if cached, ok := b.Cache[ipStr]; ok {
 		b.RUnlock()
@@ -131,7 +137,7 @@ func (b *BGPTable) FindASPath(ipStr string) []string {
 
 	var asPath []string
 
-	// Lookup prefix matches
+	// Find best match via cidranger
 	b.RLock()
 	entries, err := b.Ranger.ContainingNetworks(ip)
 	b.RUnlock()
@@ -141,8 +147,7 @@ func (b *BGPTable) FindASPath(ipStr string) []string {
 		var bestPrefix string
 
 		for _, entry := range entries {
-			ipnet := entry.Network() // returns only *net.IPNet
-
+			ipnet := entry.Network()
 			mask, _ := ipnet.Mask.Size()
 			if mask > bestMask {
 				bestMask = mask
@@ -150,23 +155,17 @@ func (b *BGPTable) FindASPath(ipStr string) []string {
 			}
 		}
 
-		// find BGPEntry by prefix string
-		if bestMask > -1 {
-			b.RLock()
-			for _, bgpEntry := range b.Entries {
-				if bgpEntry.Prefix.String() == bestPrefix {
-					asPath = bgpEntry.ASPath
-					break
-				}
-			}
-			b.RUnlock()
-			dlog("Matched %s with best prefix %s => %v", ipStr, bestPrefix, asPath)
-		}
+		// Direct map lookup
+		b.RLock()
+		asPath = b.PrefixMap[bestPrefix]
+		b.RUnlock()
+
+		dlog("Matched %s with best prefix %s => %v", ipStr, bestPrefix, asPath)
 	} else {
 		dlog("No BGP match for %s", ipStr)
 	}
 
-	// Cache result
+	// Save to cache
 	b.Lock()
 	b.Cache[ipStr] = asPath
 	b.Unlock()
@@ -174,22 +173,15 @@ func (b *BGPTable) FindASPath(ipStr string) []string {
 	return asPath
 }
 
-
-
-
-
-
 func splitASPath(path string) []string {
-    var result []string
-    for _, s := range splitSpace(path) {
-        if s != "" {
-            result = append(result, s)
-        }
-    }
-    return result
+	var result []string
+	for _, s := range splitSpace(path) {
+		if s != "" {
+			result = append(result, s)
+		}
+	}
+	return result
 }
-
-
 
 func splitSpace(s string) []string {
 	var out []string
@@ -208,4 +200,75 @@ func splitSpace(s string) []string {
 		out = append(out, curr)
 	}
 	return out
+}
+
+
+
+
+func (b *BGPTable) FindASPathBatch(ips []string) map[string][]string {
+    results := make(map[string][]string, len(ips))
+    var wg sync.WaitGroup
+    var lock sync.Mutex
+
+    for _, ipStr := range ips {
+        ipStr := ipStr // capture loop var
+        wg.Add(1)
+        go func() {
+            defer wg.Done()
+            ip := net.ParseIP(ipStr)
+            if ip == nil {
+                return
+            }
+
+            b.RLock()
+            if cached, ok := b.Cache[ipStr]; ok {
+                b.RUnlock()
+                lock.Lock()
+                results[ipStr] = cached
+                lock.Unlock()
+                return
+            }
+            b.RUnlock()
+
+            var bestPrefix string
+            var bestPath []string
+            var bestMask int = -1
+
+            b.RLock()
+            entries, err := b.Ranger.ContainingNetworks(ip)
+            b.RUnlock()
+            if err == nil {
+                for _, entry := range entries {
+                    ipnet := entry.Network()
+                    mask, _ := ipnet.Mask.Size()
+                    if mask > bestMask {
+                        bestMask = mask
+                        bestPrefix = ipnet.String()
+                    }
+                }
+            }
+
+            if bestPrefix != "" {
+                b.RLock()
+                for _, bgpEntry := range b.Entries {
+                    if bgpEntry.Prefix.String() == bestPrefix {
+                        bestPath = bgpEntry.ASPath
+                        break
+                    }
+                }
+                b.RUnlock()
+            }
+
+            b.Lock()
+            b.Cache[ipStr] = bestPath
+            b.Unlock()
+
+            lock.Lock()
+            results[ipStr] = bestPath
+            lock.Unlock()
+        }()
+    }
+
+    wg.Wait()
+    return results
 }

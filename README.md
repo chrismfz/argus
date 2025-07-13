@@ -167,8 +167,7 @@ kafka_debug: false
 
 bgp_table_dump_file: /var/log/nfacctd/bgp_table.json
 bgp_table_dump_refresh_time: 120
- </details> 
- 
+  
 
 ```
 :-)

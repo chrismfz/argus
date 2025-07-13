@@ -108,14 +108,14 @@ func (b *InsertFlowBatcher) flush() {
             if path := bgpMap[rec.SrcHost]; len(path) > 0 {
                 if asn, _ := toASN(path[0]); asn > 0 {
                     rec.PeerSrcAS = asn
-                    rec.PeerSrcASName = geoASNName(asn)
+                    //rec.PeerSrcASName = geoASNName(asn)
                 }
             }
 
             if path := bgpMap[rec.DstHost]; len(path) > 0 {
                 if asn, _ := toASN(path[0]); asn > 0 {
                     rec.PeerDstAS = asn
-                    rec.PeerDstASName = geoASNName(asn)
+                    //rec.PeerDstASName = geoASNName(asn)
                 }
                 if asn, _ := toASN(path[len(path)-1]); asn > 0 {
                     rec.DstAS = asn

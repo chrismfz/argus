@@ -1,38 +1,47 @@
 package main
 
 import (
-	"net"
-	"fmt"
-	"sync"
-	"github.com/oschwald/geoip2-golang"
+    "fmt"
+    "net"
+    "sync"
+
+    "github.com/oschwald/geoip2-golang"
 )
+
 type GeoIP struct {
-	asnDB  *geoip2.Reader
-	cityDB *geoip2.Reader
-        asnNameCache sync.Map // IP string → ASN Name
-	countryCache sync.Map // IP string → country code (e.g. "US")
-	cityCache    sync.Map // IP string → city name
-	asnNumCache  sync.Map // IP string → ASN number (uint32)
+    asnDB         *geoip2.Reader
+    cityDB        *geoip2.Reader
+    asnNameCache  sync.Map // IP string → ASN Name
+    countryCache  sync.Map // IP string → country code (e.g. "US")
+    cityCache     sync.Map // IP string → city name
+    asnNumCache   sync.Map // IP string → ASN number (uint32)
 }
 
 func NewGeoIP(asnPath, cityPath string) (*GeoIP, error) {
-	asnDB, err := geoip2.Open(asnPath)
-	if err != nil {
-		return nil, err
-	}
-	cityDB, err := geoip2.Open(cityPath)
-	if err != nil {
-		return nil, err
-	}
-	return &GeoIP{
-		asnDB:  asnDB,
-		cityDB: cityDB,
-	}, nil
+    asnDB, err := geoip2.Open(asnPath)
+    if err != nil {
+        return nil, err
+    }
+    cityDB, err := geoip2.Open(cityPath)
+    if err != nil {
+        return nil, err
+    }
+    return &GeoIP{
+        asnDB:  asnDB,
+        cityDB: cityDB,
+    }, nil
 }
 
 func (g *GeoIP) GetASNNumber(ip string) uint32 {
     if val, ok := g.asnNumCache.Load(ip); ok {
-        return val.(uint32)
+        switch v := val.(type) {
+        case uint32:
+            return v
+        case uint:
+            return uint32(v)
+        case int:
+            return uint32(v)
+        }
     }
 
     parsed := net.ParseIP(ip)
@@ -45,13 +54,16 @@ func (g *GeoIP) GetASNNumber(ip string) uint32 {
         return 0
     }
 
-    g.asnNumCache.Store(ip, record.AutonomousSystemNumber)
-    return uint32(record.AutonomousSystemNumber)
+    asn := uint32(record.AutonomousSystemNumber)
+    g.asnNumCache.Store(ip, asn)
+    return asn
 }
 
 func (g *GeoIP) GetASNName(ip string) string {
     if val, ok := g.asnNameCache.Load(ip); ok {
-        return val.(string)
+        if name, ok := val.(string); ok {
+            return name
+        }
     }
 
     parsed := net.ParseIP(ip)
@@ -71,7 +83,9 @@ func (g *GeoIP) GetASNName(ip string) string {
 
 func (g *GeoIP) GetCountry(ip string) string {
     if val, ok := g.countryCache.Load(ip); ok {
-        return val.(string)
+        if cc, ok := val.(string); ok {
+            return cc
+        }
     }
 
     parsed := net.ParseIP(ip)
@@ -90,7 +104,9 @@ func (g *GeoIP) GetCountry(ip string) string {
 
 func (g *GeoIP) GetCity(ip string) string {
     if val, ok := g.cityCache.Load(ip); ok {
-        return val.(string)
+        if city, ok := val.(string); ok {
+            return city
+        }
     }
 
     parsed := net.ParseIP(ip)

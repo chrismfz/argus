@@ -108,14 +108,19 @@ func (b *InsertFlowBatcher) flush() {
             if path := bgpMap[rec.SrcHost]; len(path) > 0 {
                 if asn, _ := toASN(path[0]); asn > 0 {
                     rec.PeerSrcAS = asn
-                    rec.PeerSrcASName = geoASNName(asn)
+			if geo != nil {
+    			rec.PeerSrcASName = geo.GetASNName(rec.SrcHost)
+			}
                 }
             }
 
             if path := bgpMap[rec.DstHost]; len(path) > 0 {
                 if asn, _ := toASN(path[0]); asn > 0 {
                     rec.PeerDstAS = asn
-                    rec.PeerDstASName = geoASNName(asn)
+		if geo != nil {
+		    rec.PeerDstASName = geo.GetASNName(rec.DstHost)
+		}
+
                 }
                 if asn, _ := toASN(path[len(path)-1]); asn > 0 {
                     rec.DstAS = asn
@@ -135,22 +140,6 @@ func toASN(s string) (uint32, error) {
     var asn uint32
     _, err := fmt.Sscanf(s, "%d", &asn)
     return asn, err
-}
-
-var asnNameCache sync.Map
-
-func geoASNName(asn uint32) string {
-    if geo == nil || asn == 0 {
-        return ""
-    }
-
-    if name, ok := asnNameCache.Load(asn); ok {
-        return name.(string)
-    }
-
-    name := geo.GetASNName(fmt.Sprintf("%d", asn))
-    asnNameCache.Store(asn, name)
-    return name
 }
 
 

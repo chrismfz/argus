@@ -10,12 +10,11 @@ import (
 
 func StartKafkaConsumer(ctx context.Context, cfg *Config, geo *GeoIP, bgp *BGPTable, dns *DNSResolver, inserter *ClickHouseInserter) error {
     r := kafka.NewReader(kafka.ReaderConfig{
-        Brokers:   cfg.Kafka.Brokers,
-        Topic:     cfg.Kafka.Topic,
-        GroupID:   cfg.Kafka.GroupID,
-        Partition: 0,
-        MinBytes:  1e3,  // 1KB
-        MaxBytes:  10e6, // 10MB
+        Brokers:     cfg.Kafka.Brokers,
+        Topic:       cfg.Kafka.Topic,
+        StartOffset: kafka.LastOffset, // πάντα από real-time
+        MinBytes:    1e3,
+        MaxBytes:    10e6,
     })
     defer r.Close()
 

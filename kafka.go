@@ -6,6 +6,7 @@ import (
     "log"
     "strings"
     "github.com/segmentio/kafka-go"
+    "time"
 )
 
 func StartKafkaConsumer(ctx context.Context, cfg *Config, geo *GeoIP, bgp *BGPTable, dns *DNSResolver, inserter *ClickHouseInserter) error {
@@ -35,7 +36,9 @@ func StartKafkaConsumer(ctx context.Context, cfg *Config, geo *GeoIP, bgp *BGPTa
             continue
         }
 
+	start := time.Now()
         rec, err := ParseAndEnrich(line, geo, bgp, dns, cfg.Timezone)
+	dlog("Enrichment time: %v", time.Since(start))
         if err != nil {
             dlog("Parse failed: %v", err)
             continue

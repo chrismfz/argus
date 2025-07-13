@@ -13,6 +13,7 @@ func StartKafkaConsumer(ctx context.Context, cfg *Config, geo *GeoIP, bgp *BGPTa
     r := kafka.NewReader(kafka.ReaderConfig{
         Brokers:     cfg.Kafka.Brokers,
         Topic:       cfg.Kafka.Topic,
+	GroupID:     cfg.Kafka.GroupID,
         StartOffset: kafka.LastOffset, // πάντα από real-time
         MinBytes:    1e3,
         MaxBytes:    10e6,

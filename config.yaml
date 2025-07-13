@@ -5,6 +5,7 @@ clickhouse:
   database: "pmacct"
   table: "flows"
 
+
 geoip:
   asn_db: "/etc/pmacct/GeoLite2-ASN.mmdb"
   city_db: "/etc/pmacct/GeoLite2-City.mmdb"
@@ -16,7 +17,7 @@ kafka:
   brokers:
     - "localhost:9092"
   topic: "netflow"
-  group_id: "flowenricher"
+  group_id: "flowenricher-group"
 
 dns:
   nameserver: "1.1.1.1"

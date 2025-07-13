@@ -129,6 +129,7 @@ ORDER BY (timestamp_start, src_host, dst_host);
 ---> nfacctd.conf Example:
 
 
+ <details> <summary>🔧 Example <code>nfacctd.conf</code> (BGP + Kafka + JSON)</summary> 
 ! nfacctd configuration
 daemonize: false
 pidfile: /var/run/nfacctd.pid
@@ -139,7 +140,6 @@ nfacctd_ip: 0.0.0.0
 nfprobe_receiver: true
 nfacctd_port: 2055
 
-
 ! Enable BGP enrichment
 bgp_daemon: true
 bgp_daemon_ip: 0.0.0.0
@@ -149,18 +149,10 @@ nfacctd_as: bgp
 bgp_agent_map: /etc/pmacct/agent_map.map
 pmacctd_as: bgp
 
-
 geoipv2_file: /etc/pmacct/GeoLite2-Country.mmdb
-
 as_path_encode_as_array: true
 
 aggregate: timestamp_start, proto, tcpflags, tos, src_host, src_port, src_host_country, dst_host, dst_port, dst_host_country, peer_src_as, peer_dst_as, as_path
-
-!plugins: print
-!print_output: json
-!print_refresh_time: 30
-!print_output_file: /var/log/nfacctd/flows.json
-
 
 plugins: kafka
 kafka_broker_host: 127.0.0.1
@@ -170,14 +162,11 @@ kafka_format: json
 kafka_refresh_time: 2
 kafka_history: 5
 kafka_partition_key: src_host
-
-# Προαιρετικά
 kafka_async: true
 kafka_debug: false
 
-
-!debug: true
-
 bgp_table_dump_file: /var/log/nfacctd/bgp_table.json
 bgp_table_dump_refresh_time: 120
+ </details> 
+ 
 

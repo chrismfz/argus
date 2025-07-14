@@ -74,15 +74,15 @@ func (b *BGPListener) Start() error {
 
 // getPrefixFromNlri now uses proto.Unmarshal for API Any with extensive debugging
 func getPrefixFromNlri(nlri *anypb.Any) (*net.IPNet, error) {
-	debugLog.Printf("Entering getPrefixFromNlri for TypeUrl: %s", nlri.TypeUrl)
+	//debugLog.Printf("Entering getPrefixFromNlri for TypeUrl: %s", nlri.TypeUrl)
 	switch nlri.TypeUrl {
 	case "type.googleapis.com/apipb.IPAddressPrefix":
 		var pfx api.IPAddressPrefix
 		if err := proto.Unmarshal(nlri.Value, &pfx); err != nil {
-			debugLog.Printf("Failed to proto.Unmarshal API IPAddressPrefix (TypeUrl: %s): %v", nlri.TypeUrl, err)
+			//debugLog.Printf("Failed to proto.Unmarshal API IPAddressPrefix (TypeUrl: %s): %v", nlri.TypeUrl, err)
 			return nil, fmt.Errorf("failed to proto.Unmarshal API IPAddressPrefix: %w", err)
 		}
-		debugLog.Printf("Successfully unmarshaled IPAddressPrefix. Raw Prefix Bytes: %x, PrefixLen: %d", pfx.Prefix, pfx.PrefixLen)
+		//debugLog.Printf("Successfully unmarshaled IPAddressPrefix. Raw Prefix Bytes: %x, PrefixLen: %d", pfx.Prefix, pfx.PrefixLen)
 
 		// --- CORRECTED LOGIC REVISION START ---
 		// pfx.Prefix is a byte slice representation of the IP address string (e.g., []byte("192.0.2.1"))
@@ -90,58 +90,58 @@ func getPrefixFromNlri(nlri *anypb.Any) (*net.IPNet, error) {
 		ip := net.ParseIP(ipStr)    // Parse the IP string into a net.IP object
 
 		if ip == nil {
-			debugLog.Printf("net.ParseIP(\"%s\") returned nil. Raw pfx.Prefix was: %x", ipStr, pfx.Prefix)
+			//debugLog.Printf("net.ParseIP(\"%s\") returned nil. Raw pfx.Prefix was: %x", ipStr, pfx.Prefix)
 			return nil, fmt.Errorf("invalid IP string for prefix: \"%s\"", ipStr)
 		}
-		debugLog.Printf("net.IP conversion successful: %s", ip.String())
+		//debugLog.Printf("net.IP conversion successful: %s", ip.String())
 
 		// Determine address family and calculate mask
 		var maxBits int
 		if ip.To4() != nil { // Check if it's an IPv4 address (or IPv6-mapped IPv4)
 			maxBits = 32
 			ip = ip.To4() // Ensure it's a 4-byte IPv4 representation
-			debugLog.Printf("Identified as IPv4. IP after To4: %s (Raw: %x)", ip.String(), ip)
+			//debugLog.Printf("Identified as IPv4. IP after To4: %s (Raw: %x)", ip.String(), ip)
 		} else if len(ip) == 16 { // If not IPv4, check if it's a 16-byte IPv6 address
 			maxBits = 128
-			debugLog.Printf("Identified as IPv6. IP: %s (Raw: %x)", ip.String(), ip)
+			//debugLog.Printf("Identified as IPv6. IP: %s (Raw: %x)", ip.String(), ip)
 		} else {
-			debugLog.Printf("Unexpected IP length after ParseIP: %d bytes. Raw IP: %x", len(ip), ip)
+			//debugLog.Printf("Unexpected IP length after ParseIP: %d bytes. Raw IP: %x", len(ip), ip)
 			return nil, fmt.Errorf("unexpected IP address length after parsing: %d", len(ip))
 		}
 
 		mask := net.CIDRMask(int(pfx.PrefixLen), maxBits)
 		// ip.Mask(mask) will create a new IP slice with the network address
 		calculatedNet := &net.IPNet{IP: ip.Mask(mask), Mask: mask}
-		debugLog.Printf("Calculated IPNet: %s/%d (%s)", calculatedNet.IP.String(), pfx.PrefixLen, calculatedNet.String())
+		//debugLog.Printf("Calculated IPNet: %s/%d (%s)", calculatedNet.IP.String(), pfx.PrefixLen, calculatedNet.String())
 		return calculatedNet, nil
 		// --- CORRECTED LOGIC REVISION END ---
 
 	default:
 		// Keep your existing fallback logic for other NLRI types
-		debugLog.Printf("Falling back to apiutil.UnmarshalNLRI for unknown TypeUrl: %s", nlri.TypeUrl)
+		//debugLog.Printf("Falling back to apiutil.UnmarshalNLRI for unknown TypeUrl: %s", nlri.TypeUrl)
 		nlriIntf, err := apiutil.UnmarshalNLRI(bgp.RF_IPv4_UC, nlri)
 		if err != nil {
-			debugLog.Printf("Attempting IPv4 unmarshal failed: %v. Trying IPv6...", err)
+			//debugLog.Printf("Attempting IPv4 unmarshal failed: %v. Trying IPv6...", err)
 			nlriIntf, err = apiutil.UnmarshalNLRI(bgp.RF_IPv6_UC, nlri)
 			if err != nil {
-				debugLog.Printf("Failed to unmarshal NLRI with fallback (IPv4 & IPv6 failed) for TypeUrl %s: %v", nlri.TypeUrl, err)
+				//debugLog.Printf("Failed to unmarshal NLRI with fallback (IPv4 & IPv6 failed) for TypeUrl %s: %v", nlri.TypeUrl, err)
 				return nil, fmt.Errorf("failed to unmarshal NLRI (TypeUrl: %s): %w", nlri.TypeUrl, err)
 			}
 		}
-		debugLog.Printf("UnmarshalNLRI successful using fallback, type: %T", nlriIntf)
+		//debugLog.Printf("UnmarshalNLRI successful using fallback, type: %T", nlriIntf)
 
 		switch v := nlriIntf.(type) {
 		case *bgp.IPAddrPrefix:
 			ip := net.IP(v.Prefix) // This `v.Prefix` from `bgp.IPAddrPrefix` *is* raw bytes, so this is correct here.
 			mask := net.CIDRMask(int(v.Length), 32)
 			calculatedNet := &net.IPNet{IP: ip.Mask(mask), Mask: mask}
-			debugLog.Printf("Fallback success: Parsed IPv4 prefix: %s/%d -> %s", ip.String(), v.Length, calculatedNet.String())
+			//debugLog.Printf("Fallback success: Parsed IPv4 prefix: %s/%d -> %s", ip.String(), v.Length, calculatedNet.String())
 			return calculatedNet, nil
 		case *bgp.IPv6AddrPrefix:
 			ip := net.IP(v.Prefix) // This `v.Prefix` from `bgp.IPv6AddrPrefix` *is* raw bytes, so this is correct here.
 			mask := net.CIDRMask(int(v.Length), 128)
 			calculatedNet := &net.IPNet{IP: ip.Mask(mask), Mask: mask}
-			debugLog.Printf("Fallback success: Parsed IPv6 prefix: %s/%d -> %s", ip.String(), v.Length, calculatedNet.String())
+			//debugLog.Printf("Fallback success: Parsed IPv6 prefix: %s/%d -> %s", ip.String(), v.Length, calculatedNet.String())
 			return calculatedNet, nil
 		default:
 			debugLog.Printf("Unsupported NLRI type in fallback handler: %T", v)

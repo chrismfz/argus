@@ -12,8 +12,8 @@ import (
     "github.com/yl2chen/cidranger"
 
     api "github.com/osrg/gobgp/v3/api"
-    "github.com/osrg/gobgp/v3/pkg/server"
     "github.com/osrg/gobgp/v3/pkg/apiutil"
+    "github.com/osrg/gobgp/v3/pkg/server"
     bgp "github.com/osrg/gobgp/v3/pkg/packet/bgp"
     "google.golang.org/protobuf/proto"
     "google.golang.org/protobuf/types/known/anypb"
@@ -21,8 +21,6 @@ import (
 
 // Optional: debug logging toggle
 var debugLog = log.New(os.Stdout, "[DEBUG] ", log.LstdFlags)
-
-
 
 // BGPListener handles the embedded BGP server
 type BGPListener struct {
@@ -81,14 +79,18 @@ func (b *BGPListener) Start() error {
 }
 
 func (b *BGPListener) watchUpdates() {
+    // Άνοιγμα JSONL dump
     f, err := os.Create("bgp_dump.jsonl")
     if err != nil {
         log.Fatalf("cannot open dump file: %v", err)
     }
-    // keep file open for continuous writes
+    // Δεν κάνουμε defer f.Close() γιατί θέλουμε το αρχείο ανοιχτό όσο τρέχει ο watcher
     log.Println("[BGP] Starting update watcher")
+
+    // Για να μετράμε πόσες εισαγωγές κάναμε
     var totalInitialPaths int
 
+    // Ξεκινάμε να παρακολουθούμε το RIB
     if err := b.Server.WatchEvent(b.Ctx, &api.WatchEventRequest{
         Table: &api.WatchEventRequest_Table{
             Filters: []*api.WatchEventRequest_Table_Filter{{
@@ -99,20 +101,21 @@ func (b *BGPListener) watchUpdates() {
     }, func(res *api.WatchEventResponse) {
         if table := res.GetTable(); table != nil {
             for _, path := range table.Paths {
+                // 1) Πάρε το NLRI Any
                 nlriAny := path.GetNlri()
                 if nlriAny == nil {
                     continue
                 }
                 prefix, err := getPrefixFromNlri(nlriAny)
                 if err != nil {
+                    debugLog.Printf("[BGP] getPrefix error: %v", err)
                     continue
                 }
 
-                // Decode path attributes
+                // 2) Decode path attributes
                 var asPath []string
                 var localPref uint32
-                attrs, err := apiutil.UnmarshalPathAttributes(path.Pattrs)
-                if err == nil {
+                if attrs, err := apiutil.UnmarshalPathAttributes(path.Pattrs); err == nil {
                     for _, attr := range attrs {
                         switch v := attr.(type) {
                         case *bgp.PathAttributeAsPath:
@@ -134,13 +137,13 @@ func (b *BGPListener) watchUpdates() {
                     }
                 }
 
-                // Convert raw attrs to hex
+                // 3) Μετέτρεψε τα raw Pattrs σε hex
                 rawPattrs := make([]string, len(path.Pattrs))
                 for i, attrAny := range path.Pattrs {
                     rawPattrs[i] = hex.EncodeToString(attrAny.Value)
                 }
 
-                // Insert into ranger
+                // 4) Enrichment: insert στον ranger
                 entry := BGPEnrichedEntry{
                     network:   *prefix,
                     ASPath:    asPath,
@@ -148,11 +151,15 @@ func (b *BGPListener) watchUpdates() {
                 }
                 if err := b.Ranger.Insert(entry); err != nil {
                     debugLog.Printf("[BGP] Ranger insert error: %v", err)
+                } else {
+                    totalInitialPaths++
+                    b.PathCount = totalInitialPaths
+                    if totalInitialPaths%100000 == 0 {
+                        log.Printf("[BGP] Initial sync progress: %d prefixes...", totalInitialPaths)
+                    }
                 }
-                totalInitialPaths++
-                b.PathCount = totalInitialPaths
 
-                // Write JSONL dump
+                // 5) Γράψε το dump
                 dump := struct {
                     NLRI      string   `json:"nlri"`
                     RawPattrs []string `json:"raw_pattrs"`

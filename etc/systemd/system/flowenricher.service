@@ -8,8 +8,8 @@ ExecStart=/opt/flowenricher/bin/flowenricher
 WorkingDirectory=/opt/flowenricher
 Restart=on-failure
 RestartSec=5
-User=flowenricher
-Group=flowenricher
+User=root
+Group=root
 StandardOutput=journal
 StandardError=journal
 

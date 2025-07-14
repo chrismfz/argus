@@ -8,7 +8,7 @@ import (
 
         api "github.com/osrg/gobgp/v3/api"
         "github.com/osrg/gobgp/v3/pkg/server"
-        "google.golang.org/protobuf/encoding/protojson"
+//        "google.golang.org/protobuf/encoding/protojson"
 )
 
 // Optional: debug logging toggle
@@ -74,37 +74,33 @@ func (b *BGPListener) Start() error {
 
 
 
-
-
-
-
-
 func (b *BGPListener) watchUpdates() {
-        log.Println("[BGP] Starting update watcher")
+    log.Println("[BGP] Starting update watcher")
 
-        err := b.Server.WatchEvent(b.Ctx, &api.WatchEventRequest{
-                Table: &api.WatchEventRequest_Table{
-                        Filters: []*api.WatchEventRequest_Table_Filter{
-                                {
-                                        Type: api.WatchEventRequest_Table_Filter_ADJIN,
-                                        Init: true,
-                                },
-                        },
+    var totalPaths int
+
+    err := b.Server.WatchEvent(b.Ctx, &api.WatchEventRequest{
+        Table: &api.WatchEventRequest_Table{
+            Filters: []*api.WatchEventRequest_Table_Filter{
+                {
+                    Type: api.WatchEventRequest_Table_Filter_ADJIN,
+                    Init: true,
                 },
-        }, func(res *api.WatchEventResponse) {
-                if table := res.GetTable(); table != nil {
-                        log.Printf("[BGP] Received %d path(s) from peer", len(table.Paths))
-                        for _, path := range table.Paths {
-                                jsonPath, _ := protojson.Marshal(path)
-                                debugLog.Printf("UPDATE PATH: %s", jsonPath)
-                        }
-                }
-        })
-
-        if err != nil {
-                log.Printf("[BGP] WatchEvent error (updates): %v", err)
+            },
+        },
+    }, func(res *api.WatchEventResponse) {
+        if table := res.GetTable(); table != nil {
+            totalPaths += len(table.Paths)
+            log.Printf("[BGP] Received %d new path(s), total so far: %d", len(table.Paths), totalPaths)
         }
+    })
+
+    if err != nil {
+        log.Printf("[BGP] WatchEvent error (updates): %v", err)
+    }
 }
+
+
 
 func (b *BGPListener) watchPeers() {
 	log.Println("[BGP] Starting peer event watcher")

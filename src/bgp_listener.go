@@ -121,15 +121,24 @@ func (b *BGPListener) watchUpdates() {
 
 				for _, attr := range attrs {
 					switch v := attr.(type) {
-					case *bgp.PathAttributeAsPath:
-						for _, seg := range v.Value {
-							if as4, ok := seg.(*bgp.As4PathParam); ok {
-								for _, asn := range as4.AS {
-									asPath = append(asPath, fmt.Sprintf("%d", asn))
-								}
-							}
-						}
-					case *bgp.PathAttributeLocalPref:
+	
+case *bgp.PathAttributeAsPath:
+    for _, seg := range v.Value {
+        switch p := seg.(type) {
+        case *bgp.AsPathParam:
+            // 2-byte ASNs
+            for _, asn := range p.AS {
+                asPath = append(asPath, fmt.Sprintf("%d", asn))
+            }
+        case *bgp.As4PathParam:
+            // 4-byte ASNs
+            for _, asn := range p.AS {
+                asPath = append(asPath, fmt.Sprintf("%d", asn))
+            }
+        }
+    }
+
+						case *bgp.PathAttributeLocalPref:
 						localPref = v.Value
 					}
 				}
@@ -156,6 +165,8 @@ func (b *BGPListener) watchUpdates() {
 	}
 
 	log.Printf("[BGP] Initial table sync complete. Total prefixes received: %d", totalInitialPaths)
+
+
 }
 
 

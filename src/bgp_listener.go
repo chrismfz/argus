@@ -179,20 +179,20 @@ func (b *BGPListener) watchUpdates() {
 					debugLog.Println("[BGP] Skipping nil NLRI from path.")
 					continue
 				}
-				debugLog.Printf("[BGP] Processing path with NLRI TypeUrl: %s", nlriAny.TypeUrl)
+				//debugLog.Printf("[BGP] Processing path with NLRI TypeUrl: %s", nlriAny.TypeUrl)
 
 				prefix, err := getPrefixFromNlri(nlriAny)
 				if err != nil {
 					//debugLog.Printf("[BGP] Error getting prefix from NLRI (TypeUrl %s): %v", nlriAny.TypeUrl, err)
 					continue
 				}
-				debugLog.Printf("[BGP] Successfully parsed prefix: %s", prefix.String())
+				//debugLog.Printf("[BGP] Successfully parsed prefix: %s", prefix.String())
 
 				// Decode attributes
 				var asPath []string
 				var localPref uint32
 				if attrs, err := apiutil.UnmarshalPathAttributes(path.Pattrs); err == nil {
-					debugLog.Printf("[BGP] Unmarshaled %d path attributes.", len(attrs))
+					//debugLog.Printf("[BGP] Unmarshaled %d path attributes.", len(attrs))
 					for _, attr := range attrs {
 						//debugLog.Printf("[BGP] Processing attribute type: %T", attr)
 						switch v := attr.(type) {
@@ -209,7 +209,7 @@ func (b *BGPListener) watchUpdates() {
 									}
 								}
 							}
-							debugLog.Printf("[BGP] Parsed ASPath: %v", asPath)
+							//debugLog.Printf("[BGP] Parsed ASPath: %v", asPath)
 						case *bgp.PathAttributeLocalPref:
 							localPref = v.Value
 							//debugLog.Printf("[BGP] Parsed LocalPref: %d", localPref)
@@ -250,7 +250,7 @@ func (b *BGPListener) watchUpdates() {
 					f.Write(line)
 					f.Write([]byte("\n"))
 				} else {
-					debugLog.Printf("[BGP] Error marshalling dump to JSON: %v", err)
+					//debugLog.Printf("[BGP] Error marshalling dump to JSON: %v", err)
 				}
 			}
 		}

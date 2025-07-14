@@ -1,0 +1,32 @@
+SHOW CREATE TABLE pmacct.flows
+
+
+ CREATE TABLE pmacct.flows                
+   (                                        
+       `timestamp_start` DateTime,          
+       `proto` UInt8,                       
+       `tcpflags` UInt8,                    
+       `tos` UInt8,                         
+       `src_host` String,                   
+       `src_port` UInt16,                   
+       `src_host_country` String,           
+       `dst_host` String,                   
+       `dst_port` UInt16,                   
+       `dst_host_country` String,           
+       `peer_src_as` UInt32,                
+       `peer_dst_as` UInt32,                
+       `as_path` Array(String),             
+       `packets` UInt64,                    
+       `bytes` UInt64,                      
+       `peer_dst_as_name` String DEFAULT '',
+       `peer_src_as_name` String DEFAULT '',
+       `dst_as` UInt32,                     
+       `src_host_ptr` String DEFAULT '',    
+       `dst_host_ptr` String DEFAULT '',    
+       `ingested_at` DateTime DEFAULT now() 
+   )                                        
+   ENGINE = MergeTree                       
+   PARTITION BY toYYYYMMDD(timestamp_start) 
+   ORDER BY timestamp_start                 
+   TTL timestamp_start + toIntervalMonth(3) 
+   SETTINGS index_granularity = 8192         

@@ -16,7 +16,7 @@ type FlowRecord struct {
         PeerSrcAS        uint32     `ch:"peer_src_as"`
         PeerDstAS        uint32     `ch:"peer_dst_as"`
         ASPath           []string   `ch:"as_path"`
-	LocalPref 	 uint32     `json:"local_pref"`
+	LocalPref 	 uint32     `ch:"local_pref"`
         Packets          uint64     `ch:"packets"`
         Bytes            uint64     `ch:"bytes"`
         PeerDstASName    string     `ch:"peer_dst_as_name"`

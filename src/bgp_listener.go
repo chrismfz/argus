@@ -13,6 +13,8 @@ import (
 	"github.com/osrg/gobgp/v3/pkg/server"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
+        bgp "github.com/osrg/gobgp/v3/pkg/packet/bgp"
+	"github.com/osrg/gobgp/v3/pkg/apiutil"
 )
 
 // Optional: debug logging toggle
@@ -77,6 +79,8 @@ func (b *BGPListener) Start() error {
 	return nil
 }
 
+
+
 func (b *BGPListener) watchUpdates() {
 	log.Println("[BGP] Starting update watcher")
 
@@ -104,7 +108,38 @@ func (b *BGPListener) watchUpdates() {
 					continue
 				}
 
-				_ = b.Ranger.Insert(cidranger.NewBasicRangerEntry(*prefix))
+				// Decode BGP path attributes
+				var asPath []string
+				var localPref uint32
+
+				attrs, err := apiutil.UnmarshalPathAttributes(path.Pattrs)
+				if err != nil {
+					log.Printf("[BGP] Failed to decode path attributes: %v", err)
+					continue
+				}
+
+				for _, attr := range attrs {
+					switch v := attr.(type) {
+					case *bgp.PathAttributeAsPath:
+						for _, seg := range v.Value {
+							if as4, ok := seg.(*bgp.As4PathParam); ok {
+								for _, asn := range as4.AS {
+									asPath = append(asPath, fmt.Sprintf("%d", asn))
+								}
+							}
+						}
+					case *bgp.PathAttributeLocalPref:
+						localPref = v.Value
+					}
+				}
+
+				entry := BGPEnrichedEntry{
+					network:   *prefix,
+					ASPath:    asPath,
+					LocalPref: localPref,
+				}
+				_ = b.Ranger.Insert(entry)
+
 				totalInitialPaths++
 				if totalInitialPaths%100000 == 0 {
 					log.Printf("[BGP] Initial sync progress: %d prefixes...", totalInitialPaths)
@@ -120,6 +155,8 @@ func (b *BGPListener) watchUpdates() {
 
 	log.Printf("[BGP] Initial table sync complete. Total prefixes received: %d", totalInitialPaths)
 }
+
+
 
 func getPrefixFromNlri(nlri *anypb.Any) (*net.IPNet, error) {
 	var prefix api.IPAddressPrefix
@@ -159,3 +196,4 @@ func (b *BGPListener) watchPeers() {
 		log.Printf("[BGP] WatchEvent error (peers): %v", err)
 	}
 }
+

@@ -1,5 +1,4 @@
 package main
-
 import (
 	"context"
 	"time"
@@ -37,7 +36,7 @@ func NewClickHouseInserter(cfg *Config) (*ClickHouseInserter, error) {
 			"timestamp_start", "proto", "tcpflags", "tos",
 			"src_host", "src_port", "src_host_country",
 			"dst_host", "dst_port", "dst_host_country",
-			"peer_src_as", "peer_dst_as", "as_path",
+			"peer_src_as", "peer_dst_as", "as_path", "local_pref",
 			"packets", "bytes",
 			"peer_dst_as_name", "peer_src_as_name", "dst_as",
 			"src_host_ptr", "dst_host_ptr",
@@ -58,9 +57,6 @@ func (c *ClickHouseInserter) InsertFlow(ctx context.Context, flow *FlowRecord) e
 	return batch.Send()
 }
 
-
-
-
 func joinFields(fields []string) string {
 	return "`" + join(fields, "`, `") + "`"
 }
@@ -75,8 +71,6 @@ func join(arr []string, sep string) string {
 	}
 	return out
 }
-
-
 
 func (c *ClickHouseInserter) InsertBatch(ctx context.Context, flows []*FlowRecord) error {
     batch, err := c.conn.PrepareBatch(ctx, "INSERT INTO "+c.table+" ("+joinFields(c.fields)+")")

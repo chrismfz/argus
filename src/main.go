@@ -14,7 +14,7 @@ import (
 var debug bool
 var showFlows bool
 var geo *GeoIP
-var bgp *BGPTable
+var listener *BGPListener
 var resolver *DNSResolver
 
 func dlog(msg string, args ...interface{}) {
@@ -39,7 +39,6 @@ You can also pass config.yaml as a positional argument.
 
 func main() {
 	configPath := ""
-	var ipToCheck string
 
 	for i := 1; i < len(os.Args); i++ {
 		arg := os.Args[i]
@@ -51,11 +50,7 @@ func main() {
 			debug = true
 		case "--show-flows":
 			showFlows = true
-		case "--find-path":
-			if i+1 < len(os.Args) && os.Args[i+1] == "-ip" && i+2 < len(os.Args) {
-				ipToCheck = os.Args[i+2]
-				i += 2
-			}
+
 		case "--config", "-c":
 			if i+1 < len(os.Args) {
 				configPath = os.Args[i+1]
@@ -101,20 +96,13 @@ func main() {
 		}
 	}
 
-	if enrichEnabled(cfg, "bgp") {
-		bgp = NewBGPTable(cfg.BGP.TableFile)
-	}
 
-	if ipToCheck != "" && bgp != nil {
-		path := bgp.FindASPath(ipToCheck)
-		if len(path) == 0 {
-			fmt.Println("No AS Path found for IP:", ipToCheck)
-		} else {
-			fmt.Println("AS Path for", ipToCheck, "=>", strings.Join(path, " "))
-		}
-		return
-	}
-
+if enrichEnabled(cfg, "bgp") && cfg.BGP.Listener.Enabled {
+    listener = NewBGPListener(cfg.BGP.Listener)
+    if err := listener.Start(); err != nil {
+        log.Fatalf("Failed to start BGP listener: %v", err)
+    }
+}
 
 
 
@@ -144,11 +132,11 @@ func main() {
 		inserter,
 		cfg.Insert.BatchSize,
 		time.Duration(cfg.Insert.FlushIntervalMs)*time.Millisecond,
-		bgp,
+		listener.Ranger,
 	)
 	defer batcher.Close()
 
-	err = StartKafkaConsumer(ctx, cfg, geo, bgp, resolver, batcher)
+	err = StartKafkaConsumer(ctx, cfg, geo, listener.Ranger, resolver, batcher)
 	if err != nil {
 		log.Fatalf("Kafka consumer error: %v", err)
 	}

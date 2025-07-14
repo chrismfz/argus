@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func ParseAndEnrich(line string, geo *GeoIP, bgp *BGPTable, dns *DNSResolver, timezone string) (*FlowRecord, error) {
+func ParseAndEnrich(line string, geo *GeoIP, dns *DNSResolver, timezone string) (*FlowRecord, error) {
     var j map[string]interface{}
     err := json.Unmarshal([]byte(line), &j)
     if err != nil {

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"net"
 )
 
 var debug bool
@@ -50,6 +51,15 @@ func main() {
 			debug = true
 		case "--show-flows":
 			showFlows = true
+
+case "--find-path":
+    if i+1 < len(os.Args) {
+        ip := os.Args[i+1]
+        findASPath(ip)
+        return
+    } else {
+        log.Fatal("Missing IP for --find-path")
+    }
 
 		case "--config", "-c":
 			if i+1 < len(os.Args) {
@@ -155,4 +165,24 @@ func enrichEnabled(cfg *Config, name string) bool {
 		}
 	}
 	return false
+}
+func findASPath(ipStr string) {
+    ip := net.ParseIP(ipStr)
+    if ip == nil {
+        log.Fatalf("Invalid IP: %s", ipStr)
+    }
+
+    entries, err := listener.Ranger.ContainingNetworks(ip)
+    if err != nil || len(entries) == 0 {
+        fmt.Printf("No BGP entry found for %s\n", ip)
+        return
+    }
+
+    for _, e := range entries {
+        if entry, ok := e.(BGPEnrichedEntry); ok {
+            fmt.Printf("Matched Prefix: %s\n", entry.network.String())
+            fmt.Printf("AS Path: %v\n", entry.ASPath)
+            fmt.Printf("Local Pref: %d\n", entry.LocalPref)
+        }
+    }
 }

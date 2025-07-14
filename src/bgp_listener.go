@@ -160,13 +160,22 @@ func (b *BGPListener) watchUpdates() {
                 if attrs, err := apiutil.UnmarshalPathAttributes(path.Pattrs); err == nil {
                     for _, attr := range attrs {
                         switch v := attr.(type) {
-                        case *bgp.PathAttributeAsPath:
-                            for _, seg := range v.Value {
-                                for _, asn := range seg.(*bgp.AsPathParam).AS {
-                                    asPath = append(asPath, fmt.Sprintf("%d", asn))
-                                }
+			case *bgp.PathAttributeAsPath:
+                       for _, seg := range v.Value {
+                        switch p := seg.(type) {
+                        case *bgp.AsPathParam:
+                            for _, asn := range p.AS {
+                                asPath = append(asPath, fmt.Sprintf("%d", asn))
                             }
-                        case *bgp.PathAttributeLocalPref:
+                        case *bgp.As4PathParam:
+                            for _, asn := range p.AS {
+                                asPath = append(asPath, fmt.Sprintf("%d", asn))
+                            }
+                        }
+                    }
+
+
+			case *bgp.PathAttributeLocalPref:
                             localPref = v.Value
                         }
                     }

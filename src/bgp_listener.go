@@ -1,14 +1,18 @@
 package main
 
 import (
-        "context"
-        "fmt"
-        "log"
-        "os"
+	"context"
+	"fmt"
+	"log"
+	"net"
+	"os"
 
-        api "github.com/osrg/gobgp/v3/api"
-        "github.com/osrg/gobgp/v3/pkg/server"
-//        "google.golang.org/protobuf/encoding/protojson"
+	"github.com/yl2chen/cidranger"
+
+	api "github.com/osrg/gobgp/v3/api"
+	"github.com/osrg/gobgp/v3/pkg/server"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/anypb"
 )
 
 // Optional: debug logging toggle
@@ -16,63 +20,62 @@ var debugLog = log.New(os.Stdout, "[DEBUG] ", log.LstdFlags)
 
 // BGPListener handles the embedded BGP server
 type BGPListener struct {
-        Server *server.BgpServer
-        Ctx    context.Context
-        Cfg    BGPListenerConfig
+	Server *server.BgpServer
+	Ctx    context.Context
+	Cfg    BGPListenerConfig
+	Ranger cidranger.Ranger
 }
 
 func NewBGPListener(cfg BGPListenerConfig) *BGPListener {
-        ctx := context.Background()
-        s := server.NewBgpServer()
-        go s.Serve()
+	ctx := context.Background()
+	s := server.NewBgpServer()
+	go s.Serve()
 
-        return &BGPListener{
-                Server: s,
-                Ctx:    ctx,
-                Cfg:    cfg,
-        }
+	return &BGPListener{
+		Server: s,
+		Ctx:    ctx,
+		Cfg:    cfg,
+		Ranger: cidranger.NewPCTrieRanger(),
+	}
 }
 
 func (b *BGPListener) Start() error {
-    log.Println("[BGP] Starting embedded BGP listener")
+	log.Println("[BGP] Starting embedded BGP listener")
 
-    err := b.Server.StartBgp(b.Ctx, &api.StartBgpRequest{
-        Global: &api.Global{
-            Asn:        b.Cfg.ASN,
-            RouterId:   b.Cfg.RouterID,
-            ListenPort: 179, // passive mode
-        },
-    })
-    if err != nil {
-        return fmt.Errorf("failed to start BGP: %w", err)
-    }
+	err := b.Server.StartBgp(b.Ctx, &api.StartBgpRequest{
+		Global: &api.Global{
+			Asn:        b.Cfg.ASN,
+			RouterId:   b.Cfg.RouterID,
+			ListenPort: 179,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to start BGP: %w", err)
+	}
 
-    log.Printf("[BGP] Listening for peers at %s (ASN %d)", b.Cfg.ListenIP, b.Cfg.ASN)
+	log.Printf("[BGP] Listening for peers at %s (ASN %d)", b.Cfg.ListenIP, b.Cfg.ASN)
 
-    // 🧩 Προσθέτουμε τον peer εδώ
-    err = b.Server.AddPeer(b.Ctx, &api.AddPeerRequest{
-        Peer: &api.Peer{
-            Conf: &api.PeerConf{
-                NeighborAddress: b.Cfg.RouterID,
-                PeerAsn:         b.Cfg.ASN,
-            },
-            Transport: &api.Transport{
-                PassiveMode: true,
-            },
-        },
-    })
-    if err != nil {
-        return fmt.Errorf("failed to add BGP peer: %w", err)
-    }
-    log.Printf("[BGP] Peer added: %s (ASN %d)", b.Cfg.RouterID, b.Cfg.ASN)
+	err = b.Server.AddPeer(b.Ctx, &api.AddPeerRequest{
+		Peer: &api.Peer{
+			Conf: &api.PeerConf{
+				NeighborAddress: b.Cfg.RouterID,
+				PeerAsn:         b.Cfg.ASN,
+			},
+			Transport: &api.Transport{
+				PassiveMode: true,
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to add BGP peer: %w", err)
+	}
+	log.Printf("[BGP] Peer added: %s (ASN %d)", b.Cfg.RouterID, b.Cfg.ASN)
 
-    go b.watchUpdates()
-    go b.watchPeers()
+	go b.watchUpdates()
+	go b.watchPeers()
 
-    return nil
+	return nil
 }
-
-
 
 func (b *BGPListener) watchUpdates() {
 	log.Println("[BGP] Starting update watcher")
@@ -90,10 +93,22 @@ func (b *BGPListener) watchUpdates() {
 		},
 	}, func(res *api.WatchEventResponse) {
 		if table := res.GetTable(); table != nil {
-			totalInitialPaths += len(table.Paths)
+			for _, path := range table.Paths {
+				nlri := path.GetNlri()
+				if nlri == nil {
+					continue
+				}
 
-			if totalInitialPaths%100000 == 0 {
-				log.Printf("[BGP] Initial sync progress: %d prefixes...", totalInitialPaths)
+				prefix, err := getPrefixFromNlri(nlri)
+				if err != nil {
+					continue
+				}
+
+				_ = b.Ranger.Insert(cidranger.NewBasicRangerEntry(*prefix))
+				totalInitialPaths++
+				if totalInitialPaths%100000 == 0 {
+					log.Printf("[BGP] Initial sync progress: %d prefixes...", totalInitialPaths)
+				}
 			}
 		}
 	})
@@ -106,7 +121,22 @@ func (b *BGPListener) watchUpdates() {
 	log.Printf("[BGP] Initial table sync complete. Total prefixes received: %d", totalInitialPaths)
 }
 
+func getPrefixFromNlri(nlri *anypb.Any) (*net.IPNet, error) {
+	var prefix api.IPAddressPrefix
+	if err := proto.Unmarshal(nlri.Value, &prefix); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal NLRI: %w", err)
+	}
 
+	ip := net.IP(prefix.Prefix)
+	if ip == nil {
+		return nil, fmt.Errorf("invalid IP: %v", prefix.Prefix)
+	}
+
+	ones := int(prefix.PrefixLen)
+	mask := net.CIDRMask(ones, 8*len(ip))
+
+	return &net.IPNet{IP: ip.Mask(mask), Mask: mask}, nil
+}
 
 func (b *BGPListener) watchPeers() {
 	log.Println("[BGP] Starting peer event watcher")

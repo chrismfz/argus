@@ -106,12 +106,6 @@ if enrichEnabled(cfg, "bgp") && cfg.BGP.Listener.Enabled {
 
 
 
-    if cfg.BGP.Listener.Enabled {
-        listener := NewBGPListener(cfg.BGP.Listener)
-        if err := listener.Start(); err != nil {
-            log.Fatalf("Failed to start BGP listener: %v", err)
-        }
-    }
 
 
 

@@ -1,0 +1,19 @@
+[Unit]
+Description=FlowEnricher Service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/opt/flowenricher/bin/flowenricher
+WorkingDirectory=/opt/flowenricher
+Restart=on-failure
+RestartSec=5
+User=flowenricher
+Group=flowenricher
+StandardOutput=journal
+StandardError=journal
+
+# Environment=CONFIG_PATH=/opt/flowenricher/etc/config.yaml
+
+[Install]
+WantedBy=multi-user.target

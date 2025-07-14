@@ -26,6 +26,7 @@ type BGPListener struct {
 	Ctx    context.Context
 	Cfg    BGPListenerConfig
 	Ranger cidranger.Ranger
+	PathCount int
 }
 
 func NewBGPListener(cfg BGPListenerConfig) *BGPListener {
@@ -141,6 +142,7 @@ func (b *BGPListener) watchUpdates() {
 				_ = b.Ranger.Insert(entry)
 
 				totalInitialPaths++
+				b.PathCount = totalInitialPaths
 				if totalInitialPaths%100000 == 0 {
 					log.Printf("[BGP] Initial sync progress: %d prefixes...", totalInitialPaths)
 				}

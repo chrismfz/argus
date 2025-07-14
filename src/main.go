@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 	"time"
-	"net"
 )
 
 var debug bool
@@ -32,15 +32,53 @@ Options:
   -c, --config FILE    Path to config file (default: auto-detect)
   --debug              Enable debug output
   --show-flows         Print each enriched flow
-  --find-path -ip X    Lookup AS path and enrichment for given IP
+  --find-path X        Lookup AS path and enrichment for given IP
 
-You can also pass config.yaml as a positional argument.
-`)
+You can also pass config.yaml as a positional argument.`)
 }
 
 func main() {
-	configPath := ""
+	var configPath string
+	var findPathMode bool
+	var findPathIP string
 
+	// First pass: detect if --find-path mode is requested
+	for i := 1; i < len(os.Args); i++ {
+		if os.Args[i] == "--find-path" && i+1 < len(os.Args) {
+			findPathMode = true
+			findPathIP = os.Args[i+1]
+			break
+		}
+	}
+
+	// If --find-path mode, only load config and start BGP
+	if findPathMode {
+		cfg, err := LoadConfig("") // auto-detect config.yaml
+		if err != nil {
+			log.Fatalf("Error loading config: %v", err)
+		}
+
+		if enrichEnabled(cfg, "bgp") && cfg.BGP.Listener.Enabled {
+			listener = NewBGPListener(cfg.BGP.Listener)
+			if err := listener.Start(); err != nil {
+				log.Fatalf("Failed to start BGP listener: %v", err)
+			}
+		}
+
+		fmt.Println("Waiting for BGP prefixes to load (min 700k)...")
+		for i := 0; i < 30; i++ { // max 30s
+			if listener.PathCount >= 700000 {
+				break
+			}
+			fmt.Printf("Loaded: %d prefixes\r", listener.PathCount)
+			time.Sleep(1 * time.Second)
+		}
+		fmt.Printf("Prefixes loaded: %d\n", listener.PathCount)
+		findASPath(findPathIP)
+		return
+	}
+
+	// Normal mode
 	for i := 1; i < len(os.Args); i++ {
 		arg := os.Args[i]
 		switch arg {
@@ -51,8 +89,6 @@ func main() {
 			debug = true
 		case "--show-flows":
 			showFlows = true
-
-
 		case "--config", "-c":
 			if i+1 < len(os.Args) {
 				configPath = os.Args[i+1]
@@ -79,7 +115,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error loading config: %v", err)
 	}
-
 	debug = debug || cfg.Debug
 
 	dlog("ClickHouse Host: %s", cfg.ClickHouse.Host)
@@ -98,18 +133,12 @@ func main() {
 		}
 	}
 
-
-if enrichEnabled(cfg, "bgp") && cfg.BGP.Listener.Enabled {
-    listener = NewBGPListener(cfg.BGP.Listener)
-    if err := listener.Start(); err != nil {
-        log.Fatalf("Failed to start BGP listener: %v", err)
-    }
-}
-
-
-
-
-
+	if enrichEnabled(cfg, "bgp") && cfg.BGP.Listener.Enabled {
+		listener = NewBGPListener(cfg.BGP.Listener)
+		if err := listener.Start(); err != nil {
+			log.Fatalf("Failed to start BGP listener: %v", err)
+		}
+	}
 
 	if enrichEnabled(cfg, "ptr") {
 		resolver = NewDNSResolver(cfg.DNS.Nameserver)
@@ -136,15 +165,6 @@ if enrichEnabled(cfg, "bgp") && cfg.BGP.Listener.Enabled {
 	if err != nil {
 		log.Fatalf("Kafka consumer error: %v", err)
 	}
-
-
-if len(os.Args) > 1 && os.Args[1] == "--find-path" && len(os.Args) > 2 {
-    ip := os.Args[2]
-    time.Sleep(5 * time.Second) // ή μέχρι να συγχρονιστεί πλήρως
-    findASPath(ip)
-    return
-}
-
 }
 
 func handleSignals(cancel context.CancelFunc) {
@@ -167,23 +187,28 @@ func enrichEnabled(cfg *Config, name string) bool {
 	}
 	return false
 }
+
 func findASPath(ipStr string) {
-    ip := net.ParseIP(ipStr)
-    if ip == nil {
-        log.Fatalf("Invalid IP: %s", ipStr)
-    }
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		log.Fatalf("Invalid IP: %s", ipStr)
+	}
 
-    entries, err := listener.Ranger.ContainingNetworks(ip)
-    if err != nil || len(entries) == 0 {
-        fmt.Printf("No BGP entry found for %s\n", ip)
-        return
-    }
+	if listener == nil || listener.Ranger == nil {
+		log.Fatal("BGP listener or Ranger not initialized")
+	}
 
-    for _, e := range entries {
-        if entry, ok := e.(BGPEnrichedEntry); ok {
-            fmt.Printf("Matched Prefix: %s\n", entry.network.String())
-            fmt.Printf("AS Path: %v\n", entry.ASPath)
-            fmt.Printf("Local Pref: %d\n", entry.LocalPref)
-        }
-    }
+	entries, err := listener.Ranger.ContainingNetworks(ip)
+	if err != nil || len(entries) == 0 {
+		fmt.Printf("No BGP entry found for %s\n", ip)
+		return
+	}
+
+	for _, e := range entries {
+		if entry, ok := e.(BGPEnrichedEntry); ok {
+			fmt.Printf("Matched Prefix: %s\n", entry.network.String())
+			fmt.Printf("AS Path: %v\n", entry.ASPath)
+			fmt.Printf("Local Pref: %d\n", entry.LocalPref)
+		}
+	}
 }

@@ -35,7 +35,6 @@ func NewBGPListener(cfg BGPListenerConfig) *BGPListener {
     ctx := context.Background()
     s := server.NewBgpServer()
     go s.Serve()
-
     return &BGPListener{
         Server: s,
         Ctx:    ctx,
@@ -46,7 +45,6 @@ func NewBGPListener(cfg BGPListenerConfig) *BGPListener {
 
 func (b *BGPListener) Start() error {
     log.Println("[BGP] Starting embedded BGP listener")
-
     if err := b.Server.StartBgp(b.Ctx, &api.StartBgpRequest{
         Global: &api.Global{
             Asn:        b.Cfg.ASN,
@@ -56,9 +54,7 @@ func (b *BGPListener) Start() error {
     }); err != nil {
         return fmt.Errorf("failed to start BGP: %w", err)
     }
-
     log.Printf("[BGP] Listening for peers at %s (ASN %d)", b.Cfg.ListenIP, b.Cfg.ASN)
-
     if err := b.Server.AddPeer(b.Ctx, &api.AddPeerRequest{
         Peer: &api.Peer{
             Conf: &api.PeerConf{
@@ -71,25 +67,20 @@ func (b *BGPListener) Start() error {
         return fmt.Errorf("failed to add BGP peer: %w", err)
     }
     log.Printf("[BGP] Peer added: %s (ASN %d)", b.Cfg.RouterID, b.Cfg.ASN)
-
     go b.watchUpdates()
     go b.watchPeers()
-
     return nil
 }
 
 func (b *BGPListener) watchUpdates() {
-    // Άνοιγμα JSONL dump
     f, err := os.Create("bgp_dump.jsonl")
     if err != nil {
         log.Fatalf("cannot open dump file: %v", err)
     }
-    // Κρατάμε το αρχείο ανοιχτό όσο τρέχει ο watcher
     log.Println("[BGP] Starting update watcher")
-
     var totalInitialPaths int
 
-    // Παρακολούθηση του RIB με BEST filter για σωστά NLRI
+    // *Εδώ* αλλάζουμε το Filter σε BEST ώστε να έχουμε σωστά NLRI
     if err := b.Server.WatchEvent(b.Ctx, &api.WatchEventRequest{
         Table: &api.WatchEventRequest_Table{
             Filters: []*api.WatchEventRequest_Table_Filter{
@@ -97,7 +88,7 @@ func (b *BGPListener) watchUpdates() {
                     Type: api.WatchEventRequest_Table_Filter_BEST,
                     Init: true,
                 },
-                // Αν θέλεις και ADJIN updates, ξε-σχολίασε το παρακάτω:
+                // // αν θες και ADJIN updates:
                 // {
                 //     Type: api.WatchEventRequest_Table_Filter_ADJIN,
                 //     Init: true,
@@ -107,7 +98,6 @@ func (b *BGPListener) watchUpdates() {
     }, func(res *api.WatchEventResponse) {
         if table := res.GetTable(); table != nil {
             for _, path := range table.Paths {
-                // 1) Πάρε το NLRI
                 nlriAny := path.GetNlri()
                 if nlriAny == nil {
                     continue
@@ -118,7 +108,7 @@ func (b *BGPListener) watchUpdates() {
                     continue
                 }
 
-                // 2) Decode path attributes
+                // Decode attributes
                 var asPath []string
                 var localPref uint32
                 if attrs, err := apiutil.UnmarshalPathAttributes(path.Pattrs); err == nil {
@@ -143,13 +133,13 @@ func (b *BGPListener) watchUpdates() {
                     }
                 }
 
-                // 3) Raw path attrs σε hex
+                // raw attrs σε hex
                 rawPattrs := make([]string, len(path.Pattrs))
                 for i, attrAny := range path.Pattrs {
                     rawPattrs[i] = hex.EncodeToString(attrAny.Value)
                 }
 
-                // 4) Enrichment στον Ranger
+                // Enrich στον Ranger
                 entry := BGPEnrichedEntry{
                     network:   *prefix,
                     ASPath:    asPath,
@@ -165,7 +155,7 @@ func (b *BGPListener) watchUpdates() {
                     }
                 }
 
-                // 5) Γράψε το dump
+                // JSONL dump
                 dump := struct {
                     NLRI      string   `json:"nlri"`
                     RawPattrs []string `json:"raw_pattrs"`
@@ -212,10 +202,7 @@ func (b *BGPListener) watchPeers() {
         if peerEvt := res.GetPeer(); peerEvt != nil && peerEvt.Peer != nil {
             p := peerEvt.Peer
             log.Printf("[BGP] Peer event: ASN %d, Address %s, State %s",
-                p.Conf.PeerAsn,
-                p.Conf.NeighborAddress,
-                p.State.SessionState,
-            )
+                p.Conf.PeerAsn, p.Conf.NeighborAddress, p.State.SessionState)
         }
     }); err != nil {
         log.Printf("[BGP] WatchEvent error (peers): %v", err)

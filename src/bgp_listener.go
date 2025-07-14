@@ -15,6 +15,7 @@ import (
     "github.com/osrg/gobgp/v3/pkg/apiutil"
     "github.com/osrg/gobgp/v3/pkg/server"
     bgp "github.com/osrg/gobgp/v3/pkg/packet/bgp"
+    "google.golang.org/protobuf/proto"
     "google.golang.org/protobuf/types/known/anypb"
 )
 
@@ -71,20 +72,19 @@ func (b *BGPListener) Start() error {
     return nil
 }
 
-// Fixed NLRI parsing function
+// getPrefixFromNlri now uses proto.Unmarshal for API Any
 func getPrefixFromNlri(nlri *anypb.Any) (*net.IPNet, error) {
-    // Check the type URL to determine how to handle this NLRI
     switch nlri.TypeUrl {
     case "type.googleapis.com/apipb.IPAddressPrefix":
         var pfx api.IPAddressPrefix
-        if err := nlri.UnmarshalTo(&pfx); err != nil {
-            return nil, fmt.Errorf("failed to unmarshal API IPAddressPrefix: %w", err)
+        if err := proto.Unmarshal(nlri.Value, &pfx); err != nil {
+            return nil, fmt.Errorf("failed to proto.Unmarshal API IPAddressPrefix: %w", err)
         }
         ip := net.IP(pfx.Prefix)
         if ip == nil {
             return nil, fmt.Errorf("invalid IP bytes: %v", pfx.Prefix)
         }
-        // Determine if IPv4 or IPv6
+        // IPv4 vs IPv6
         var maxBits int
         if len(ip) == 4 || (len(ip) == 16 && ip.To4() != nil) {
             maxBits = 32
@@ -98,7 +98,7 @@ func getPrefixFromNlri(nlri *anypb.Any) (*net.IPNet, error) {
         return &net.IPNet{IP: ip.Mask(mask), Mask: mask}, nil
 
     default:
-        // Try to unmarshal as BGP packet NLRI
+        // fallback to packet-level NLRI decoding
         nlriIntf, err := apiutil.UnmarshalNLRI(bgp.RF_IPv4_UC, nlri)
         if err != nil {
             nlriIntf, err = apiutil.UnmarshalNLRI(bgp.RF_IPv6_UC, nlri)
@@ -109,20 +109,14 @@ func getPrefixFromNlri(nlri *anypb.Any) (*net.IPNet, error) {
         switch v := nlriIntf.(type) {
         case *bgp.IPAddrPrefix:
             ip := net.IP(v.Prefix)
-            if ip == nil {
-                return nil, fmt.Errorf("invalid IPv4 prefix: %v", v.Prefix)
-            }
             mask := net.CIDRMask(int(v.Length), 32)
             return &net.IPNet{IP: ip.Mask(mask), Mask: mask}, nil
         case *bgp.IPv6AddrPrefix:
             ip := net.IP(v.Prefix)
-            if ip == nil {
-                return nil, fmt.Errorf("invalid IPv6 prefix: %v", v.Prefix)
-            }
             mask := net.CIDRMask(int(v.Length), 128)
             return &net.IPNet{IP: ip.Mask(mask), Mask: mask}, nil
         default:
-            return nil, fmt.Errorf("unsupported NLRI type: %T (TypeUrl: %s)", v, nlri.TypeUrl)
+            return nil, fmt.Errorf("unsupported NLRI type: %T", v)
         }
     }
 }
@@ -135,23 +129,20 @@ func (b *BGPListener) watchUpdates() {
     defer f.Close()
 
     log.Println("[BGP] Starting update watcher")
-    var totalInitialPaths int
+    var totalPaths int
 
     if err := b.Server.WatchEvent(b.Ctx, &api.WatchEventRequest{
         Table: &api.WatchEventRequest_Table{
-            Filters: []*api.WatchEventRequest_Table_Filter{
-                {
-                    Type: api.WatchEventRequest_Table_Filter_BEST,
-                    Init: true,
-                },
-            },
+            Filters: []*api.WatchEventRequest_Table_Filter{{
+                Type: api.WatchEventRequest_Table_Filter_BEST, Init: true,
+            }},
         },
     }, func(res *api.WatchEventResponse) {
         if table := res.GetTable(); table != nil {
             for _, path := range table.Paths {
                 nlriAny := path.GetNlri()
                 if nlriAny == nil {
-                    debugLog.Printf("[BGP] Skipping path with nil NLRI")
+                    debugLog.Println("[BGP] Skipping nil NLRI")
                     continue
                 }
                 debugLog.Printf("[BGP] Processing NLRI TypeUrl: %s", nlriAny.TypeUrl)
@@ -171,15 +162,8 @@ func (b *BGPListener) watchUpdates() {
                         switch v := attr.(type) {
                         case *bgp.PathAttributeAsPath:
                             for _, seg := range v.Value {
-                                switch p := seg.(type) {
-                                case *bgp.AsPathParam:
-                                    for _, asn := range p.AS {
-                                        asPath = append(asPath, fmt.Sprintf("%d", asn))
-                                    }
-                                case *bgp.As4PathParam:
-                                    for _, asn := range p.AS {
-                                        asPath = append(asPath, fmt.Sprintf("%d", asn))
-                                    }
+                                for _, asn := range seg.(*bgp.AsPathParam).AS {
+                                    asPath = append(asPath, fmt.Sprintf("%d", asn))
                                 }
                             }
                         case *bgp.PathAttributeLocalPref:
@@ -188,52 +172,39 @@ func (b *BGPListener) watchUpdates() {
                     }
                 }
 
-                // raw attrs in hex
                 rawPattrs := make([]string, len(path.Pattrs))
                 for i, attrAny := range path.Pattrs {
                     rawPattrs[i] = hex.EncodeToString(attrAny.Value)
                 }
 
-                // Enrich in Ranger
-                entry := BGPEnrichedEntry{
-                    network:   *prefix,
-                    ASPath:    asPath,
-                    LocalPref: localPref,
-                }
+                entry := BGPEnrichedEntry{network: *prefix, ASPath: asPath, LocalPref: localPref}
                 if err := b.Ranger.Insert(entry); err != nil {
                     debugLog.Printf("[BGP] Ranger insert error for %s: %v", prefix.String(), err)
                 } else {
-                    totalInitialPaths++
-                    b.PathCount = totalInitialPaths
-                    if totalInitialPaths%100000 == 0 {
-                        log.Printf("[BGP] Initial sync progress: %d prefixes...", totalInitialPaths)
+                    totalPaths++
+                    b.PathCount = totalPaths
+                    if totalPaths%100000 == 0 {
+                        log.Printf("[BGP] Progress: %d prefixes...", totalPaths)
                     }
                 }
 
-                // JSONL dump
                 dump := struct {
                     NLRI      string   `json:"nlri"`
                     RawPattrs []string `json:"raw_pattrs"`
                     ASPath    []string `json:"as_path"`
                     LocalPref uint32   `json:"local_pref"`
-                }{
-                    NLRI:      prefix.String(),
-                    RawPattrs: rawPattrs,
-                    ASPath:    asPath,
-                    LocalPref: localPref,
-                }
+                }{prefix.String(), rawPattrs, asPath, localPref}
+
                 if line, err := json.Marshal(dump); err == nil {
-                    f.Write(line)
-                    f.Write([]byte("\n"))
+                    f.Write(line); f.Write([]byte("\n"))
                 }
             }
         }
     }); err != nil {
         log.Printf("[BGP] WatchEvent error (updates): %v", err)
-        return
     }
 
-    log.Printf("[BGP] Initial table sync complete. Total prefixes received: %d", totalInitialPaths)
+    log.Printf("[BGP] Initial table sync complete. Total prefixes received: %d", totalPaths)
 }
 
 func (b *BGPListener) watchPeers() {
@@ -241,9 +212,9 @@ func (b *BGPListener) watchPeers() {
     if err := b.Server.WatchEvent(b.Ctx, &api.WatchEventRequest{
         Peer: &api.WatchEventRequest_Peer{},
     }, func(res *api.WatchEventResponse) {
-        if peerEvt := res.GetPeer(); peerEvt != nil && peerEvt.Peer != nil {
-            p := peerEvt.Peer
-            log.Printf("[BGP] Peer event: ASN %d, Address %s, State %s",
+        if pe := res.GetPeer(); pe != nil && pe.Peer != nil {
+            p := pe.Peer
+            log.Printf("[BGP] Peer event: ASN %d, Addr %s, State %s",
                 p.Conf.PeerAsn, p.Conf.NeighborAddress, p.State.SessionState)
         }
     }); err != nil {

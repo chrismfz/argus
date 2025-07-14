@@ -74,7 +74,7 @@ if err != nil {
 
 		fmt.Println("Waiting for BGP prefixes to load (min 700k)...")
 		for i := 0; i < 30; i++ { // max 30s
-			if listener.PathCount >= 700000 {
+			if listener.PathCount >= 800000 {
 				break
 			}
 			fmt.Printf("Loaded: %d prefixes\r", listener.PathCount)

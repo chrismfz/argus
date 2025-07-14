@@ -23,7 +23,8 @@ dns:
   nameserver: "1.1.1.1"
 
 timezone: "Europe/Athens"
-debug: true
+
+debug: false
 
 enrich: "geoip, bgp"
 # could be geoip, bgp, ptr or none

@@ -207,67 +207,76 @@ func splitSpace(s string) []string {
 
 func (b *BGPTable) FindASPathBatch(ips []string) map[string][]string {
     results := make(map[string][]string, len(ips))
-    var wg sync.WaitGroup
-    var lock sync.Mutex
+    var resultsLock sync.Mutex
 
-    for _, ipStr := range ips {
-        ipStr := ipStr // capture loop var
+    jobs := make(chan string, len(ips))
+    wg := sync.WaitGroup{}
+
+    const MaxWorkers = 100 // adjust based on your CPU
+
+    for w := 0; w < MaxWorkers; w++ {
         wg.Add(1)
         go func() {
             defer wg.Done()
-            ip := net.ParseIP(ipStr)
-            if ip == nil {
-                return
-            }
-
-            b.RLock()
-            if cached, ok := b.Cache[ipStr]; ok {
-                b.RUnlock()
-                lock.Lock()
-                results[ipStr] = cached
-                lock.Unlock()
-                return
-            }
-            b.RUnlock()
-
-            var bestPrefix string
-            var bestPath []string
-            var bestMask int = -1
-
-            b.RLock()
-            entries, err := b.Ranger.ContainingNetworks(ip)
-            b.RUnlock()
-            if err == nil {
-                for _, entry := range entries {
-                    ipnet := entry.Network()
-                    mask, _ := ipnet.Mask.Size()
-                    if mask > bestMask {
-                        bestMask = mask
-                        bestPrefix = ipnet.String()
-                    }
+            for ipStr := range jobs {
+                ip := net.ParseIP(ipStr)
+                if ip == nil {
+                    continue
                 }
-            }
 
-            if bestPrefix != "" {
+                // Step 1: Check cache
                 b.RLock()
-                for _, bgpEntry := range b.Entries {
-                    if bgpEntry.Prefix.String() == bestPrefix {
-                        bestPath = bgpEntry.ASPath
-                        break
-                    }
+                if cached, ok := b.Cache[ipStr]; ok {
+                    b.RUnlock()
+                    resultsLock.Lock()
+                    results[ipStr] = cached
+                    resultsLock.Unlock()
+                    continue
                 }
                 b.RUnlock()
+
+                // Step 2: Ranger match
+                var bestPrefix string
+                var bestMask int = -1
+
+                b.RLock()
+                entries, err := b.Ranger.ContainingNetworks(ip)
+                b.RUnlock()
+                if err == nil {
+                    for _, entry := range entries {
+                        ipnet := entry.Network()
+                        if mask, _ := ipnet.Mask.Size(); mask > bestMask {
+                            bestMask = mask
+                            bestPrefix = ipnet.String()
+                        }
+                    }
+                }
+
+                // Step 3: Direct map lookup
+                var bestPath []string
+                if bestPrefix != "" {
+                    b.RLock()
+                    bestPath = b.PrefixMap[bestPrefix]
+                    b.RUnlock()
+                }
+
+                // Step 4: Store in cache and results
+                b.Lock()
+                b.Cache[ipStr] = bestPath
+                b.Unlock()
+
+                resultsLock.Lock()
+                results[ipStr] = bestPath
+                resultsLock.Unlock()
             }
-
-            b.Lock()
-            b.Cache[ipStr] = bestPath
-            b.Unlock()
-
-            lock.Lock()
-            results[ipStr] = bestPath
-            lock.Unlock()
         }()
     }
+
+    // Feed jobs
+    for _, ip := range ips {
+        jobs <- ip
+    }
+    close(jobs)
 
     wg.Wait()
     return results

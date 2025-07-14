@@ -53,7 +53,14 @@ func main() {
 
 	// If --find-path mode, only load config and start BGP
 	if findPathMode {
-		cfg, err := LoadConfig("") // auto-detect config.yaml
+configPath, err := getDefaultConfigPath()
+if err != nil {
+    log.Fatalf("Error locating default config: %v", err)
+}
+cfg, err := LoadConfig(configPath)
+if err != nil {
+    log.Fatalf("Error loading config: %v", err)
+}
 		if err != nil {
 			log.Fatalf("Error loading config: %v", err)
 		}

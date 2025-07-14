@@ -22,6 +22,8 @@ import (
 // Optional: debug logging toggle
 var debugLog = log.New(os.Stdout, "[DEBUG] ", log.LstdFlags)
 
+
+
 // BGPListener handles the embedded BGP server
 type BGPListener struct {
     Server    *server.BgpServer
@@ -83,12 +85,10 @@ func (b *BGPListener) watchUpdates() {
     if err != nil {
         log.Fatalf("cannot open dump file: %v", err)
     }
-
+    // keep file open for continuous writes
     log.Println("[BGP] Starting update watcher")
     var totalInitialPaths int
 
-    // Note: file remains open to continue receiving writes until process exit
-    
     if err := b.Server.WatchEvent(b.Ctx, &api.WatchEventRequest{
         Table: &api.WatchEventRequest_Table{
             Filters: []*api.WatchEventRequest_Table_Filter{{
@@ -99,50 +99,48 @@ func (b *BGPListener) watchUpdates() {
     }, func(res *api.WatchEventResponse) {
         if table := res.GetTable(); table != nil {
             for _, path := range table.Paths {
-                nlri := path.GetNlri()
-                if nlri == nil {
+                nlriAny := path.GetNlri()
+                if nlriAny == nil {
                     continue
                 }
-                prefix, err := getPrefixFromNlri(nlri)
+                prefix, err := getPrefixFromNlri(nlriAny)
                 if err != nil {
                     continue
                 }
 
-                // Decode BGP path attributes
+                // Decode path attributes
                 var asPath []string
                 var localPref uint32
                 attrs, err := apiutil.UnmarshalPathAttributes(path.Pattrs)
-                if err != nil {
-                    continue
-                }
-                for _, attr := range attrs {
-                    switch v := attr.(type) {
-                    case *bgp.PathAttributeAsPath:
-                        for _, seg := range v.Value {
-                            switch p := seg.(type) {
-                            case *bgp.AsPathParam:
-                                for _, asn := range p.AS {
-                                    asPath = append(asPath, fmt.Sprintf("%d", asn))
-                                }
-                            case *bgp.As4PathParam:
-                                for _, asn := range p.AS {
-                                    asPath = append(asPath, fmt.Sprintf("%d", asn))
+                if err == nil {
+                    for _, attr := range attrs {
+                        switch v := attr.(type) {
+                        case *bgp.PathAttributeAsPath:
+                            for _, seg := range v.Value {
+                                switch p := seg.(type) {
+                                case *bgp.AsPathParam:
+                                    for _, asn := range p.AS {
+                                        asPath = append(asPath, fmt.Sprintf("%d", asn))
+                                    }
+                                case *bgp.As4PathParam:
+                                    for _, asn := range p.AS {
+                                        asPath = append(asPath, fmt.Sprintf("%d", asn))
+                                    }
                                 }
                             }
+                        case *bgp.PathAttributeLocalPref:
+                            localPref = v.Value
                         }
-                    case *bgp.PathAttributeLocalPref:
-                        localPref = v.Value
                     }
                 }
 
-                // Convert raw path attributes to hex strings
+                // Convert raw attrs to hex
                 rawPattrs := make([]string, len(path.Pattrs))
                 for i, attrAny := range path.Pattrs {
                     rawPattrs[i] = hex.EncodeToString(attrAny.Value)
                 }
 
-                // Increment path count and enrich ranger for lookups
-                totalInitialPaths++
+                // Insert into ranger
                 entry := BGPEnrichedEntry{
                     network:   *prefix,
                     ASPath:    asPath,
@@ -151,9 +149,10 @@ func (b *BGPListener) watchUpdates() {
                 if err := b.Ranger.Insert(entry); err != nil {
                     debugLog.Printf("[BGP] Ranger insert error: %v", err)
                 }
+                totalInitialPaths++
                 b.PathCount = totalInitialPaths
 
-                // Build dump record
+                // Write JSONL dump
                 dump := struct {
                     NLRI      string   `json:"nlri"`
                     RawPattrs []string `json:"raw_pattrs"`
@@ -180,17 +179,15 @@ func (b *BGPListener) watchUpdates() {
 }
 
 func getPrefixFromNlri(nlri *anypb.Any) (*net.IPNet, error) {
-    var prefix api.IPAddressPrefix
-    if err := proto.Unmarshal(nlri.Value, &prefix); err != nil {
+    var pfx api.IPAddressPrefix
+    if err := proto.Unmarshal(nlri.Value, &pfx); err != nil {
         return nil, fmt.Errorf("failed to unmarshal NLRI: %w", err)
     }
-
-    ip := net.IP(prefix.Prefix)
+    ip := net.IP(pfx.Prefix)
     if ip == nil {
-        return nil, fmt.Errorf("invalid IP: %v", prefix.Prefix)
+        return nil, fmt.Errorf("invalid IP bytes: %v", pfx.Prefix)
     }
-
-    mask := net.CIDRMask(int(prefix.PrefixLen), 8*len(ip))
+    mask := net.CIDRMask(int(pfx.PrefixLen), 8*len(ip))
     return &net.IPNet{IP: ip.Mask(mask), Mask: mask}, nil
 }
 
@@ -199,8 +196,8 @@ func (b *BGPListener) watchPeers() {
     if err := b.Server.WatchEvent(b.Ctx, &api.WatchEventRequest{
         Peer: &api.WatchEventRequest_Peer{},
     }, func(res *api.WatchEventResponse) {
-        if peerEvent := res.GetPeer(); peerEvent != nil && peerEvent.Peer != nil {
-            p := peerEvent.Peer
+        if peerEvt := res.GetPeer(); peerEvt != nil && peerEvt.Peer != nil {
+            p := peerEvt.Peer
             log.Printf("[BGP] Peer event: ASN %d, Address %s, State %s",
                 p.Conf.PeerAsn,
                 p.Conf.NeighborAddress,

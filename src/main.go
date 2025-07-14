@@ -115,6 +115,18 @@ func main() {
 		return
 	}
 
+
+
+
+    if cfg.BGP.Listener.Enabled {
+        listener := NewBGPListener(cfg.BGP.Listener)
+        if err := listener.Start(); err != nil {
+            log.Fatalf("Failed to start BGP listener: %v", err)
+        }
+    }
+
+
+
 	if enrichEnabled(cfg, "ptr") {
 		resolver = NewDNSResolver(cfg.DNS.Nameserver)
 	}

@@ -1,53 +1,67 @@
 package main
 
 import (
-	"fmt"
-	"os"
-	"path/filepath"
-
-	"gopkg.in/yaml.v3"
+    "fmt"
+    "os"
+    "path/filepath"
+    "gopkg.in/yaml.v3"
 )
 
-type Config struct {
-	Enrich string `yaml:"enrich"`
-
-	ClickHouse struct {
-		Host     string `yaml:"host"`
-		User     string `yaml:"user"`
-		Password string `yaml:"password"`
-		Database string `yaml:"database"`
-		Table    string `yaml:"table"`
-	} `yaml:"clickhouse"`
-
-	Insert struct {
-		BatchSize       int `yaml:"batch_size"`
-		FlushIntervalMs int `yaml:"flush_interval_ms"`
-	} `yaml:"insert"`
-
-	GeoIP struct {
-		ASNDB  string `yaml:"asn_db"`
-		CityDB string `yaml:"city_db"`
-	} `yaml:"geoip"`
-
-	BGP struct {
-		TableFile string `yaml:"table_file"`
-	} `yaml:"bgp"`
-
-	Kafka struct {
-		Brokers []string `yaml:"brokers"`
-		Topic   string   `yaml:"topic"`
-		GroupID string   `yaml:"group_id"`
-	} `yaml:"kafka"`
-
-	DNS struct {
-		Nameserver string `yaml:"nameserver"`
-	} `yaml:"dns"`
-
-	Timezone string `yaml:"timezone"`
-	Debug    bool   `yaml:"debug"`
+// 🔧 Αυτά είναι έξω από το Config struct
+type BGPListenerConfig struct {
+    Enabled    bool   `yaml:"enabled"`
+    ListenIP   string `yaml:"listen_ip"`
+    ASN        uint32 `yaml:"asn"`
+    RouterID   string `yaml:"router_id"`
+    MaxPeers   int    `yaml:"max_peers"`
 }
 
-// getDefaultConfigPath tries multiple common locations relative to the executable
+type BGPConfig struct {
+    TableFile string             `yaml:"table_file"`
+    Listener  BGPListenerConfig  `yaml:"bgp_listener"`
+}
+
+// ✅ Το κύριο Config struct
+type Config struct {
+    BGP BGPConfig `yaml:"bgp"`
+
+    Enrich string `yaml:"enrich"`
+
+    ClickHouse struct {
+        Host     string `yaml:"host"`
+        User     string `yaml:"user"`
+        Password string `yaml:"password"`
+        Database string `yaml:"database"`
+        Table    string `yaml:"table"`
+    } `yaml:"clickhouse"`
+
+    Insert struct {
+        BatchSize       int `yaml:"batch_size"`
+        FlushIntervalMs int `yaml:"flush_interval_ms"`
+    } `yaml:"insert"`
+
+    GeoIP struct {
+        ASNDB  string `yaml:"asn_db"`
+        CityDB string `yaml:"city_db"`
+    } `yaml:"geoip"`
+
+    Kafka struct {
+        Brokers []string `yaml:"brokers"`
+        Topic   string   `yaml:"topic"`
+        GroupID string   `yaml:"group_id"`
+    } `yaml:"kafka"`
+
+    DNS struct {
+        Nameserver string `yaml:"nameserver"`
+    } `yaml:"dns"`
+
+    Timezone string `yaml:"timezone"`
+    Debug    bool   `yaml:"debug"`
+}
+
+
+
+
 func getDefaultConfigPath() (string, error) {
 	exePath, err := os.Executable()
 	if err != nil {
@@ -76,7 +90,6 @@ func getDefaultConfigPath() (string, error) {
 		pathsToTry[0], pathsToTry[1], pathsToTry[2])
 }
 
-// LoadConfig reads and parses the YAML config file.
 func LoadConfig(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

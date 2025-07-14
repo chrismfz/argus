@@ -1,3 +1,14 @@
+
+bgp:
+  table_file: "/var/log/nfacctd/bgp_table.json"
+  bgp_listener:
+    enabled: true
+    listen_ip: "0.0.0.0"
+    asn: 216285
+    router_id: "84.54.49.1"
+    max_peers: 2
+
+
 clickhouse:
   host: "localhost"
   user: "default"
@@ -10,8 +21,6 @@ geoip:
   asn_db: "/etc/pmacct/GeoLite2-ASN.mmdb"
   city_db: "/etc/pmacct/GeoLite2-City.mmdb"
 
-bgp:
-  table_file: "/var/log/nfacctd/bgp_table.json"
 
 kafka:
   brokers:

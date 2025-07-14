@@ -83,11 +83,12 @@ func (b *BGPListener) watchUpdates() {
     if err != nil {
         log.Fatalf("cannot open dump file: %v", err)
     }
-    defer f.Close()
 
     log.Println("[BGP] Starting update watcher")
     var totalInitialPaths int
 
+    // Note: file remains open to continue receiving writes until process exit
+    
     if err := b.Server.WatchEvent(b.Ctx, &api.WatchEventRequest{
         Table: &api.WatchEventRequest_Table{
             Filters: []*api.WatchEventRequest_Table_Filter{{

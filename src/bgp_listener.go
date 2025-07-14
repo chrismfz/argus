@@ -75,29 +75,35 @@ func (b *BGPListener) Start() error {
 
 
 func (b *BGPListener) watchUpdates() {
-    log.Println("[BGP] Starting update watcher")
+	log.Println("[BGP] Starting update watcher")
 
-    var totalPaths int
+	var totalInitialPaths int
 
-    err := b.Server.WatchEvent(b.Ctx, &api.WatchEventRequest{
-        Table: &api.WatchEventRequest_Table{
-            Filters: []*api.WatchEventRequest_Table_Filter{
-                {
-                    Type: api.WatchEventRequest_Table_Filter_ADJIN,
-                    Init: true,
-                },
-            },
-        },
-    }, func(res *api.WatchEventResponse) {
-        if table := res.GetTable(); table != nil {
-            totalPaths += len(table.Paths)
-            log.Printf("[BGP] Received %d new path(s), total so far: %d", len(table.Paths), totalPaths)
-        }
-    })
+	err := b.Server.WatchEvent(b.Ctx, &api.WatchEventRequest{
+		Table: &api.WatchEventRequest_Table{
+			Filters: []*api.WatchEventRequest_Table_Filter{
+				{
+					Type: api.WatchEventRequest_Table_Filter_ADJIN,
+					Init: true,
+				},
+			},
+		},
+	}, func(res *api.WatchEventResponse) {
+		if table := res.GetTable(); table != nil {
+			totalInitialPaths += len(table.Paths)
 
-    if err != nil {
-        log.Printf("[BGP] WatchEvent error (updates): %v", err)
-    }
+			if totalInitialPaths%100000 == 0 {
+				log.Printf("[BGP] Initial sync progress: %d prefixes...", totalInitialPaths)
+			}
+		}
+	})
+
+	if err != nil {
+		log.Printf("[BGP] WatchEvent error (updates): %v", err)
+		return
+	}
+
+	log.Printf("[BGP] Initial table sync complete. Total prefixes received: %d", totalInitialPaths)
 }
 
 

@@ -76,62 +76,51 @@ func getPrefixFromNlri(nlri *anypb.Any) (*net.IPNet, error) {
     // Check the type URL to determine how to handle this NLRI
     switch nlri.TypeUrl {
     case "type.googleapis.com/apipb.IPAddressPrefix":
-        // This is an API protobuf type, not a BGP packet type
         var pfx api.IPAddressPrefix
         if err := nlri.UnmarshalTo(&pfx); err != nil {
             return nil, fmt.Errorf("failed to unmarshal API IPAddressPrefix: %w", err)
         }
-        
         ip := net.IP(pfx.Prefix)
         if ip == nil {
             return nil, fmt.Errorf("invalid IP bytes: %v", pfx.Prefix)
         }
-        
-        // Determine if this is IPv4 or IPv6 based on the length
-        var maskBits int
+        // Determine if IPv4 or IPv6
+        var maxBits int
         if len(ip) == 4 || (len(ip) == 16 && ip.To4() != nil) {
-            maskBits = 32
+            maxBits = 32
             if len(ip) == 16 {
-                ip = ip.To4() // Convert to IPv4
+                ip = ip.To4()
             }
         } else {
-            maskBits = 128
+            maxBits = 128
         }
-        
-        mask := net.CIDRMask(int(pfx.PrefixLen), maskBits)
+        mask := net.CIDRMask(int(pfx.PrefixLen), maxBits)
         return &net.IPNet{IP: ip.Mask(mask), Mask: mask}, nil
-        
+
     default:
-        // Try to unmarshal as BGP packet types
-        nlriInterface, err := apiutil.UnmarshalNLRI(bgp.RF_IPv4_UC, nlri)
+        // Try to unmarshal as BGP packet NLRI
+        nlriIntf, err := apiutil.UnmarshalNLRI(bgp.RF_IPv4_UC, nlri)
         if err != nil {
-            // Try with IPv6 route family
-            nlriInterface, err = apiutil.UnmarshalNLRI(bgp.RF_IPv6_UC, nlri)
+            nlriIntf, err = apiutil.UnmarshalNLRI(bgp.RF_IPv6_UC, nlri)
             if err != nil {
                 return nil, fmt.Errorf("failed to unmarshal NLRI (TypeUrl: %s): %w", nlri.TypeUrl, err)
             }
         }
-
-        // Handle different NLRI types
-        switch v := nlriInterface.(type) {
+        switch v := nlriIntf.(type) {
         case *bgp.IPAddrPrefix:
-            // IPv4 prefix
             ip := net.IP(v.Prefix)
             if ip == nil {
                 return nil, fmt.Errorf("invalid IPv4 prefix: %v", v.Prefix)
             }
             mask := net.CIDRMask(int(v.Length), 32)
             return &net.IPNet{IP: ip.Mask(mask), Mask: mask}, nil
-            
         case *bgp.IPv6AddrPrefix:
-            // IPv6 prefix
             ip := net.IP(v.Prefix)
             if ip == nil {
                 return nil, fmt.Errorf("invalid IPv6 prefix: %v", v.Prefix)
             }
             mask := net.CIDRMask(int(v.Length), 128)
             return &net.IPNet{IP: ip.Mask(mask), Mask: mask}, nil
-            
         default:
             return nil, fmt.Errorf("unsupported NLRI type: %T (TypeUrl: %s)", v, nlri.TypeUrl)
         }
@@ -144,11 +133,10 @@ func (b *BGPListener) watchUpdates() {
         log.Fatalf("cannot open dump file: %v", err)
     }
     defer f.Close()
-    
+
     log.Println("[BGP] Starting update watcher")
     var totalInitialPaths int
 
-    // *Here* we change the Filter to BEST so we have correct NLRI
     if err := b.Server.WatchEvent(b.Ctx, &api.WatchEventRequest{
         Table: &api.WatchEventRequest_Table{
             Filters: []*api.WatchEventRequest_Table_Filter{
@@ -166,14 +154,14 @@ func (b *BGPListener) watchUpdates() {
                     debugLog.Printf("[BGP] Skipping path with nil NLRI")
                     continue
                 }
-                
                 debugLog.Printf("[BGP] Processing NLRI TypeUrl: %s", nlriAny.TypeUrl)
-                
+
                 prefix, err := getPrefixFromNlri(nlriAny)
                 if err != nil {
                     debugLog.Printf("[BGP] getPrefix error: %v", err)
                     continue
                 }
+                debugLog.Printf("[BGP] Parsed prefix: %s", prefix.String())
 
                 // Decode attributes
                 var asPath []string

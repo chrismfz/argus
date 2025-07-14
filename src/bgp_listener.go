@@ -34,26 +34,50 @@ func NewBGPListener(cfg BGPListenerConfig) *BGPListener {
 }
 
 func (b *BGPListener) Start() error {
-        log.Println("[BGP] Starting embedded BGP listener")
+    log.Println("[BGP] Starting embedded BGP listener")
 
-        err := b.Server.StartBgp(b.Ctx, &api.StartBgpRequest{
-                Global: &api.Global{
-                        Asn:        b.Cfg.ASN,
-                        RouterId:   b.Cfg.RouterID,
-                        ListenPort: 179, 
-                },
-        })
-        if err != nil {
-                return fmt.Errorf("failed to start BGP: %w", err)
-        }
+    err := b.Server.StartBgp(b.Ctx, &api.StartBgpRequest{
+        Global: &api.Global{
+            Asn:        b.Cfg.ASN,
+            RouterId:   b.Cfg.RouterID,
+            ListenPort: -1, // passive mode
+        },
+    })
+    if err != nil {
+        return fmt.Errorf("failed to start BGP: %w", err)
+    }
 
-        log.Printf("[BGP] Listening for peers at %s (ASN %d)", b.Cfg.ListenIP, b.Cfg.ASN)
+    log.Printf("[BGP] Listening for peers at %s (ASN %d)", b.Cfg.ListenIP, b.Cfg.ASN)
 
-        go b.watchUpdates()
-        go b.watchPeers()
+    // 🧩 Προσθέτουμε τον peer εδώ
+    err = b.Server.AddPeer(b.Ctx, &api.AddPeerRequest{
+        Peer: &api.Peer{
+            Conf: &api.PeerConf{
+                NeighborAddress: b.Cfg.RouterID,
+                PeerAsn:         b.Cfg.ASN,
+            },
+            Transport: &api.Transport{
+                PassiveMode: true,
+            },
+        },
+    })
+    if err != nil {
+        return fmt.Errorf("failed to add BGP peer: %w", err)
+    }
+    log.Printf("[BGP] Peer added: %s (ASN %d)", b.Cfg.RouterID, b.Cfg.ASN)
 
-        return nil
+    go b.watchUpdates()
+    go b.watchPeers()
+
+    return nil
 }
+
+
+
+
+
+
+
 
 func (b *BGPListener) watchUpdates() {
         log.Println("[BGP] Starting update watcher")

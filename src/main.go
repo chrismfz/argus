@@ -52,14 +52,6 @@ func main() {
 		case "--show-flows":
 			showFlows = true
 
-case "--find-path":
-    if i+1 < len(os.Args) {
-        ip := os.Args[i+1]
-        findASPath(ip)
-        return
-    } else {
-        log.Fatal("Missing IP for --find-path")
-    }
 
 		case "--config", "-c":
 			if i+1 < len(os.Args) {
@@ -144,6 +136,15 @@ if enrichEnabled(cfg, "bgp") && cfg.BGP.Listener.Enabled {
 	if err != nil {
 		log.Fatalf("Kafka consumer error: %v", err)
 	}
+
+
+if len(os.Args) > 1 && os.Args[1] == "--find-path" && len(os.Args) > 2 {
+    ip := os.Args[2]
+    time.Sleep(5 * time.Second) // ή μέχρι να συγχρονιστεί πλήρως
+    findASPath(ip)
+    return
+}
+
 }
 
 func handleSignals(cancel context.CancelFunc) {

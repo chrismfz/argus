@@ -14,7 +14,7 @@ import (
 	api "github.com/osrg/gobgp/v3/api"
 	"github.com/osrg/gobgp/v3/pkg/apiutil"
 	bgp "github.com/osrg/gobgp/v3/pkg/packet/bgp"
-	"github.com/osrg/gobgp/v3/pkg/server" // <--- ADDED THIS IMPORT
+	"github.com/osrg/gobgp/v3/pkg/server"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 )
@@ -24,7 +24,7 @@ var debugLog = log.New(os.Stdout, "[DEBUG] ", log.LstdFlags)
 
 // BGPListener handles the embedded BGP server
 type BGPListener struct {
-	Server    *server.BgpServer // Corrected type declaration
+	Server    *server.BgpServer
 	Ctx       context.Context
 	Cfg       BGPListenerConfig
 	Ranger    cidranger.Ranger
@@ -84,31 +84,33 @@ func getPrefixFromNlri(nlri *anypb.Any) (*net.IPNet, error) {
 		}
 		debugLog.Printf("Successfully unmarshaled IPAddressPrefix. Raw Prefix Bytes: %x, PrefixLen: %d", pfx.Prefix, pfx.PrefixLen)
 
-		ip := net.IP(pfx.Prefix)
-		if ip == nil || len(pfx.Prefix) == 0 { // Added len(pfx.Prefix) == 0 check
-			debugLog.Printf("net.IP(pfx.Prefix) returned nil or pfx.Prefix was empty. Raw pfx.Prefix was: %x", pfx.Prefix)
-			return nil, fmt.Errorf("invalid or empty IP bytes for prefix: %v", pfx.Prefix)
+		// --- MODIFICATION START ---
+		ipStr := string(pfx.Prefix) // Convert the byte slice to a string
+		ip := net.ParseIP(ipStr)    // Use net.ParseIP to parse the string into a net.IP
+		// --- MODIFICATION END ---
+
+		if ip == nil {
+			debugLog.Printf("net.ParseIP(\"%s\") returned nil. Raw pfx.Prefix was: %x", ipStr, pfx.Prefix)
+			return nil, fmt.Errorf("invalid IP string for prefix: \"%s\"", ipStr)
 		}
 		debugLog.Printf("net.IP conversion successful: %s", ip.String())
 
 		// Determine address family and calculate mask
 		var maxBits int
-		if len(ip) == 4 || (len(ip) == 16 && ip.To4() != nil) {
+		if ip.To4() != nil { // Check if it's an IPv4 address (or IPv6-mapped IPv4)
 			maxBits = 32
-			if len(ip) == 16 { // If it's an IPv6 representation of an IPv4 address
-				debugLog.Printf("Converting IPv6-mapped IPv4 address %s to IPv4.", ip.String())
-				ip = ip.To4()
-			}
-			debugLog.Printf("Identified as IPv4. IP after To4 (if applicable): %s", ip.String())
-		} else if len(ip) == 16 {
+			ip = ip.To4() // Ensure it's a 4-byte IPv4 representation
+			debugLog.Printf("Identified as IPv4. IP after To4: %s", ip.String())
+		} else if len(ip) == 16 { // If not IPv4, check if it's a 16-byte IPv6 address
 			maxBits = 128
 			debugLog.Printf("Identified as IPv6.")
 		} else {
-			debugLog.Printf("Unexpected IP length: %d bytes. Raw IP: %x", len(ip), ip)
-			return nil, fmt.Errorf("unexpected IP address length: %d", len(ip))
+			debugLog.Printf("Unexpected IP length after ParseIP: %d bytes. Raw IP: %x", len(ip), ip)
+			return nil, fmt.Errorf("unexpected IP address length after parsing: %d", len(ip))
 		}
 
 		mask := net.CIDRMask(int(pfx.PrefixLen), maxBits)
+		// ip.Mask(mask) will create a new IP slice with the network address
 		calculatedNet := &net.IPNet{IP: ip.Mask(mask), Mask: mask}
 		debugLog.Printf("Calculated IPNet: %s/%d (%s)", calculatedNet.IP.String(), pfx.PrefixLen, calculatedNet.String())
 		return calculatedNet, nil
@@ -178,8 +180,6 @@ func (b *BGPListener) watchUpdates() {
 					debugLog.Printf("[BGP] Error getting prefix from NLRI (TypeUrl %s): %v", nlriAny.TypeUrl, err)
 					continue
 				}
-				// prefix.String() will print "<nil>" if prefix itself is nil, or if prefix.IP is nil.
-				// The debug inside getPrefixFromNlri should clarify why it's nil.
 				debugLog.Printf("[BGP] Successfully parsed prefix: %s", prefix.String())
 
 				// Decode attributes

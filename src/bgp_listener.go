@@ -235,7 +235,7 @@ func (b *BGPListener) watchUpdates() {
 					totalPaths++
 					b.PathCount = totalPaths
 					if totalPaths%1000 == 0 { // Changed to 1000 for more frequent updates if many routes
-						log.Printf("[BGP] Progress: %d prefixes...", totalPaths)
+						fmt.Printf("\r[BGP] Progress: %d prefixes...", totalPaths)
 					}
 				}
 

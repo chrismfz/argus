@@ -40,7 +40,7 @@ func (b *BGPListener) Start() error {
         Global: &api.Global{
             Asn:        b.Cfg.ASN,
             RouterId:   b.Cfg.RouterID,
-            ListenPort: -1, // passive mode
+            ListenPort: 179, // passive mode
         },
     })
     if err != nil {

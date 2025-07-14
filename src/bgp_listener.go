@@ -141,6 +141,18 @@ func (b *BGPListener) watchUpdates() {
                     rawPattrs[i] = hex.EncodeToString(attrAny.Value)
                 }
 
+                // Increment path count and enrich ranger for lookups
+                totalInitialPaths++
+                entry := BGPEnrichedEntry{
+                    network:   *prefix,
+                    ASPath:    asPath,
+                    LocalPref: localPref,
+                }
+                if err := b.Ranger.Insert(entry); err != nil {
+                    debugLog.Printf("[BGP] Ranger insert error: %v", err)
+                }
+                b.PathCount = totalInitialPaths
+
                 // Build dump record
                 dump := struct {
                     NLRI      string   `json:"nlri"`
@@ -153,16 +165,9 @@ func (b *BGPListener) watchUpdates() {
                     ASPath:    asPath,
                     LocalPref: localPref,
                 }
-
-                // Write JSONL line
                 if line, err := json.Marshal(dump); err == nil {
                     f.Write(line)
                     f.Write([]byte("\n"))
-                }
-
-                totalInitialPaths++
-                if totalInitialPaths%100000 == 0 {
-                    log.Printf("[BGP] Initial sync progress: %d prefixes...", totalInitialPaths)
                 }
             }
         }

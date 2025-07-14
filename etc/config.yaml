@@ -1,6 +1,6 @@
 
 bgp:
-  table_file: "/var/log/nfacctd/bgp_table.json"
+#  table_file: "/var/log/nfacctd/bgp_table.json"
   bgp_listener:
     enabled: true
     listen_ip: "0.0.0.0"

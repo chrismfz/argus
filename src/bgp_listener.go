@@ -172,7 +172,7 @@ func (b *BGPListener) watchUpdates() {
 		},
 	}, func(res *api.WatchEventResponse) {
 		if table := res.GetTable(); table != nil {
-			debugLog.Printf("[BGP] Received table event with %d paths.", len(table.Paths))
+			//debugLog.Printf("[BGP] Received table event with %d paths.", len(table.Paths))
 			for _, path := range table.Paths {
 				nlriAny := path.GetNlri()
 				if nlriAny == nil {

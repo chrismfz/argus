@@ -19,7 +19,7 @@ import (
 	"github.com/osrg/gobgp/v3/pkg/server"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
-	"google.golang.org/protobuf/encoding/protojson"
+	_ "google.golang.org/protobuf/encoding/protojson"
 )
 
 // Optional: debug logging toggle
@@ -330,18 +330,18 @@ func (b *BGPListener) logEstablishedPeerDetails(peerAddress string) {
 		}
 
 		// --- Keep this for now, it's very useful! ---
-		log.Printf("[BGP] Raw Peer Protobuf Message for %s:", peerAddress)
-		marshaler := protojson.MarshalOptions{
-			Multiline:     true,
-			Indent:        "  ",
-			UseProtoNames: true,
-		}
-		peerJSON, marshalErr := marshaler.Marshal(peer)
-		if marshalErr != nil {
-			log.Printf("[BGP] Error marshalling peer to JSON: %v", marshalErr)
-		} else {
-			log.Printf("[BGP] %s", string(peerJSON))
-		}
+		//log.Printf("[BGP] Raw Peer Protobuf Message for %s:", peerAddress)
+		//marshaler := protojson.MarshalOptions{
+		//	Multiline:     true,
+		//	Indent:        "  ",
+		//	UseProtoNames: true,
+		//}
+		//peerJSON, marshalErr := marshaler.Marshal(peer)
+		//if marshalErr != nil {
+		//	log.Printf("[BGP] Error marshalling peer to JSON: %v", marshalErr)
+		//} else {
+		//	log.Printf("[BGP] %s", string(peerJSON))
+		//}
 		// --- END DEBUGGING CODE ---
 
 		p := peer // The actual Peer object from the callback

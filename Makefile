@@ -1,5 +1,5 @@
-# Makefile for flowenricher
 BIN_DIR := bin
+SRC_DIR := src
 BINARY := $(BIN_DIR)/flowenricher
 
 .PHONY: help setup update build run clean
@@ -11,23 +11,23 @@ help: ## Show this help message
 	@echo ""
 
 setup: ## First-time setup after git clone
-	go mod tidy
+	cd $(SRC_DIR) && go mod tidy
 	@echo "✅ Setup complete."
 
 update: ## Update all dependencies
 	@echo "🔍 Checking for module updates..."
-	@go list -m -u all | grep -E '\[|\.'
-	go get -u ./...
-	go mod tidy
+	cd $(SRC_DIR) && go list -m -u all | grep -E '\[|\.'
+	cd $(SRC_DIR) && go get -u ./...
+	cd $(SRC_DIR) && go mod tidy
 	@echo "✅ Dependencies updated."
 
 build: ## Build the binary into ./bin/
 	@mkdir -p $(BIN_DIR)
-	go build -o $(BINARY) .
+	cd $(SRC_DIR) && go build -o ../$(BINARY)
 	@echo "✅ Built: $(BINARY)"
 
 run: build ## Run the application
-	@$(BINARY)
+	@./$(BINARY)
 
 clean: ## Remove build artifacts
 	@rm -rf $(BIN_DIR)

@@ -183,7 +183,7 @@ func (b *BGPListener) watchUpdates() {
 
 				prefix, err := getPrefixFromNlri(nlriAny)
 				if err != nil {
-					debugLog.Printf("[BGP] Error getting prefix from NLRI (TypeUrl %s): %v", nlriAny.TypeUrl, err)
+					//debugLog.Printf("[BGP] Error getting prefix from NLRI (TypeUrl %s): %v", nlriAny.TypeUrl, err)
 					continue
 				}
 				debugLog.Printf("[BGP] Successfully parsed prefix: %s", prefix.String())
@@ -194,7 +194,7 @@ func (b *BGPListener) watchUpdates() {
 				if attrs, err := apiutil.UnmarshalPathAttributes(path.Pattrs); err == nil {
 					debugLog.Printf("[BGP] Unmarshaled %d path attributes.", len(attrs))
 					for _, attr := range attrs {
-						debugLog.Printf("[BGP] Processing attribute type: %T", attr)
+						//debugLog.Printf("[BGP] Processing attribute type: %T", attr)
 						switch v := attr.(type) {
 						case *bgp.PathAttributeAsPath:
 							for _, seg := range v.Value {
@@ -212,13 +212,13 @@ func (b *BGPListener) watchUpdates() {
 							debugLog.Printf("[BGP] Parsed ASPath: %v", asPath)
 						case *bgp.PathAttributeLocalPref:
 							localPref = v.Value
-							debugLog.Printf("[BGP] Parsed LocalPref: %d", localPref)
+							//debugLog.Printf("[BGP] Parsed LocalPref: %d", localPref)
 						default:
-							debugLog.Printf("[BGP] Skipping unknown BGP attribute type: %T", v)
+							//debugLog.Printf("[BGP] Skipping unknown BGP attribute type: %T", v)
 						}
 					}
 				} else {
-					debugLog.Printf("[BGP] Error unmarshaling path attributes: %v", err)
+					//debugLog.Printf("[BGP] Error unmarshaling path attributes: %v", err)
 				}
 
 				// The 'rawPattrs' part is for debugging raw attribute bytes, good for seeing what's there
@@ -226,11 +226,11 @@ func (b *BGPListener) watchUpdates() {
 				for i, attrAny := range path.Pattrs {
 					rawPattrs[i] = hex.EncodeToString(attrAny.Value)
 				}
-				debugLog.Printf("[BGP] Raw Path Attributes: %v", rawPattrs)
+				//debugLog.Printf("[BGP] Raw Path Attributes: %v", rawPattrs)
 
 				entry := BGPEnrichedEntry{network: *prefix, ASPath: asPath, LocalPref: localPref}
 				if err := b.Ranger.Insert(entry); err != nil {
-					debugLog.Printf("[BGP] Ranger insert error for %s: %v", prefix.String(), err)
+					//debugLog.Printf("[BGP] Ranger insert error for %s: %v", prefix.String(), err)
 				} else {
 					totalPaths++
 					b.PathCount = totalPaths

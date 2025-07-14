@@ -84,24 +84,30 @@ func (b *BGPListener) watchUpdates() {
     if err != nil {
         log.Fatalf("cannot open dump file: %v", err)
     }
-    // Δεν κάνουμε defer f.Close() γιατί θέλουμε το αρχείο ανοιχτό όσο τρέχει ο watcher
+    // Κρατάμε το αρχείο ανοιχτό όσο τρέχει ο watcher
     log.Println("[BGP] Starting update watcher")
 
-    // Για να μετράμε πόσες εισαγωγές κάναμε
     var totalInitialPaths int
 
-    // Ξεκινάμε να παρακολουθούμε το RIB
+    // Παρακολούθηση του RIB με BEST filter για σωστά NLRI
     if err := b.Server.WatchEvent(b.Ctx, &api.WatchEventRequest{
         Table: &api.WatchEventRequest_Table{
-            Filters: []*api.WatchEventRequest_Table_Filter{{
-                Type: api.WatchEventRequest_Table_Filter_ADJIN,
-                Init: true,
-            }},
+            Filters: []*api.WatchEventRequest_Table_Filter{
+                {
+                    Type: api.WatchEventRequest_Table_Filter_BEST,
+                    Init: true,
+                },
+                // Αν θέλεις και ADJIN updates, ξε-σχολίασε το παρακάτω:
+                // {
+                //     Type: api.WatchEventRequest_Table_Filter_ADJIN,
+                //     Init: true,
+                // },
+            },
         },
     }, func(res *api.WatchEventResponse) {
         if table := res.GetTable(); table != nil {
             for _, path := range table.Paths {
-                // 1) Πάρε το NLRI Any
+                // 1) Πάρε το NLRI
                 nlriAny := path.GetNlri()
                 if nlriAny == nil {
                     continue
@@ -137,13 +143,13 @@ func (b *BGPListener) watchUpdates() {
                     }
                 }
 
-                // 3) Μετέτρεψε τα raw Pattrs σε hex
+                // 3) Raw path attrs σε hex
                 rawPattrs := make([]string, len(path.Pattrs))
                 for i, attrAny := range path.Pattrs {
                     rawPattrs[i] = hex.EncodeToString(attrAny.Value)
                 }
 
-                // 4) Enrichment: insert στον ranger
+                // 4) Enrichment στον Ranger
                 entry := BGPEnrichedEntry{
                     network:   *prefix,
                     ASPath:    asPath,

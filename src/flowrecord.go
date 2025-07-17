@@ -1,9 +1,13 @@
 package main
 
-import "time"
+import (
+	"flowenricher/fields"
+	"time"
+)
 
 type FlowRecord struct {
         TimestampStart   time.Time  `ch:"timestamp_start"`
+        TimestampEnd     time.Time  `ch:"timestamp_end"` // New field for LAST_SWITCHED
         Proto            uint8      `ch:"proto"`
         TCPFlags         uint8      `ch:"tcpflags"`
         TOS              uint8      `ch:"tos"`
@@ -13,6 +17,9 @@ type FlowRecord struct {
         DstHost          string     `ch:"dst_host"`
         DstPort          uint16     `ch:"dst_port"`
         DstHostCountry   string     `ch:"dst_host_country"`
+        InputInterface   uint32     `ch:"input_interface"`  // New field for INPUT_SNMP
+        OutputInterface  uint32     `ch:"output_interface"` // New field for OUTPUT_SNMP
+        NextHop          string     `ch:"next_hop"`         // New field for IPV4_NEXT_HOP
         PeerSrcAS        uint32     `ch:"peer_src_as"`
         PeerDstAS        uint32     `ch:"peer_dst_as"`
         ASPath           []string   `ch:"as_path"`
@@ -26,42 +33,84 @@ type FlowRecord struct {
         DstHostPTR       string     `ch:"dst_host_ptr"`
 }
 
-/* useful fields for Mikrotik:
 
+func ConvertToFlowRecord(raw map[uint16]fields.Value) *FlowRecord {
+	fr := &FlowRecord{}
 
-(10) INPUT_SNMP (Input Interface SNMP ifIndex) Add an InputInterface uint32  then typically map this ifIndex to a human-readable interface name (e.g., "ether1", "bridge-local") using SNMP lookups on your router.
+	// Χρόνος: από CUSTOM_TIMESTAMP ή now
+	if tsVal, ok := raw[fields.CUSTOM_TIMESTAMP]; ok {
+		ts := time.Unix(int64(tsVal.ToInt()), 0).UTC()
+		fr.TimestampStart = ts
+		fr.TimestampEnd = ts
+	} else {
+		now := time.Now().UTC()
+		fr.TimestampStart = now
+		fr.TimestampEnd = now
+	}
 
-(14) OUTPUT_SNMP (Output Interface SNMP ifIndex)
+	// Πρωτόκολλο, σημαίες, tos
+	if v, ok := raw[fields.PROTOCOL]; ok {
+		fr.Proto = uint8(v.ToInt())
+	}
+	if v, ok := raw[fields.TCP_FLAGS]; ok {
+		fr.TCPFlags = uint8(v.ToInt())
+	}
+	if v, ok := raw[fields.SRC_TOS]; ok {
+		fr.TOS = uint8(v.ToInt())
+	}
 
-    What it is: The SNMP interface index of the interface where the flow exited the router.
+	// Πηγές και προορισμοί (IPv4 ή IPv6)
+	if v, ok := raw[fields.IPV4_SRC_ADDR]; ok {
+		fr.SrcHost = v.ToString()
+	} else if v, ok := raw[fields.IPV6_SRC_ADDR]; ok {
+		fr.SrcHost = v.ToString()
+	}
+	if v, ok := raw[fields.IPV4_DST_ADDR]; ok {
+		fr.DstHost = v.ToString()
+	} else if v, ok := raw[fields.IPV6_DST_ADDR]; ok {
+		fr.DstHost = v.ToString()
+	}
 
-    Why it's useful: Just like INPUT_SNMP, this is essential for knowing which interface traffic is leaving your router. It's vital for understanding traffic paths, egress bandwidth usage, and identifying potential bottlenecks.
+	// Πόρτες
+	if v, ok := raw[fields.L4_SRC_PORT]; ok {
+		fr.SrcPort = uint16(v.ToInt())
+	}
+	if v, ok := raw[fields.L4_DST_PORT]; ok {
+		fr.DstPort = uint16(v.ToInt())
+	}
 
-    Recommendation: Add an OutputInterface uint32 (or uint16) field to your FlowRecord.
+	// Interfaces
+	if v, ok := raw[fields.INPUT_SNMP]; ok {
+		fr.InputInterface = uint32(v.ToInt())
+	}
+	if v, ok := raw[fields.OUTPUT_SNMP]; ok {
+		fr.OutputInterface = uint32(v.ToInt())
+	}
 
+	// NextHop
+	if v, ok := raw[fields.IPV4_NEXT_HOP]; ok {
+		fr.NextHop = v.ToString()
+	}
 
-(15) IPV4_NEXT_HOP (IPv4 Next Hop Address)
+	// Packets & Bytes
+	if v, ok := raw[fields.IN_PKTS]; ok {
+		fr.Packets = uint64(v.ToInt())
+	}
+	if v, ok := raw[fields.IN_BYTES]; ok {
+		fr.Bytes = uint64(v.ToInt())
+	}
 
-    What it is: The IPv4 address of the next-hop router for the flow.
+	// ASNs
+	if v, ok := raw[fields.SRC_AS]; ok {
+		fr.PeerSrcAS = uint32(v.ToInt())
+	}
+	if v, ok := raw[fields.DST_AS]; ok {
+		asn := uint32(v.ToInt())
+		fr.PeerDstAS = asn
+		fr.DstAS = asn
+	}
 
-    Why it's useful: This provides crucial routing information. It tells you the immediate next router that the traffic was sent to. This is very valuable for tracing traffic paths, verifying routing decisions, and debugging connectivity issues.
+	// Το enrichment (GeoIP / PTR / ASPath) θα το κάνεις ξεχωριστά από το batcher.
 
-    Recommendation: Add a NextHop string field to your FlowRecord.
-
-(21) LAST_SWITCHED (Last Switched Timestamp)
-
-    What it is: The system uptime in milliseconds when the last packet of this flow was observed.
-
-    Why it's useful: While you have TimestampStart (derived from FIRST_SWITCHED or CUSTOM_TIMESTAMP), LAST_SWITCHED allows you to calculate the duration of the flow. This is important for understanding flow longevity, identifying long-lived connections (e.g., VPNs, large downloads), and detecting potential anomalies.
-
-    Recommendation: You could add TimestampEnd time.Time to your FlowRecord and derive it similarly to TimestampStart, or add FlowDurationMs uint32 and calculate it from LAST_SWITCHED - FIRST_SWITCHED.
-
-
-In short:
-InputInterface
-OutputInterface
-NextHop
-
-*/
-
-
+	return fr
+}

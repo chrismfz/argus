@@ -243,6 +243,7 @@ type netflowPacket struct {
 }
 type netflowPacketHeader struct {
 	Version  uint16
+	Length   uint16 // <--- THIS WAS MISSING
 	Count    uint16
 	Uptime   uint32
 	Usecs    uint32
@@ -600,3 +601,85 @@ func (nf Netflow) Start() {
 	}
 }
 
+
+
+
+// NEW: Add flowChannel parameter
+func NewNetflowCollector(addr string, port int, debug bool, flowChannel chan map[uint16]fields.Value, writer io.Writer) (*Netflow, error) {
+	parsedAddr := net.ParseIP(addr)
+	if parsedAddr == nil {
+		return nil, fmt.Errorf("invalid bind address: %s", addr)
+	}
+
+	logger := log.New(writer, "GOFLOW: ", log.Ldate|log.Ltime|log.Lshortfile)
+
+	return &Netflow{
+		Templates:   make(map[uint32]map[uint32]map[uint16]netflowPacketTemplate),
+		BindAddr:    parsedAddr,
+		BindPort:    port,
+		debug:       debug,
+		FlowChannel: flowChannel, // Initialize the channel
+		logger:      logger,
+	}, nil
+}
+
+
+
+
+func (nf *Netflow) HandleUDPFlow(remoteAddr *net.UDPAddr, packet []byte) {
+	nfpacket := netflowPacket{}
+	
+	// Ensure packet is long enough for the header
+	if len(packet) < 20 {
+		nf.logger.Printf("Packet too short for Netflow header. Length: %d. Skipping.\n", len(packet))
+		return // Exit early
+	}
+
+	// Parse Netflow Header
+	nfpacket.Header.Version = binary.BigEndian.Uint16(packet[0:2])
+	nfpacket.Header.Length = binary.BigEndian.Uint16(packet[2:4])
+	nfpacket.Header.Uptime = binary.BigEndian.Uint32(packet[4:8])
+	nfpacket.Header.Usecs = binary.BigEndian.Uint32(packet[8:12])
+	nfpacket.Header.Sequence = binary.BigEndian.Uint32(packet[12:16])
+	nfpacket.Header.Id = binary.BigEndian.Uint32(packet[16:20])
+
+	// Basic validation for Netflow header length
+	if int(nfpacket.Header.Length) > len(packet) {
+		nf.logger.Printf("Netflow packet header claims length %d, but actual packet size is %d. Skipping.\n", nfpacket.Header.Length, len(packet))
+		return // Exit early if header length is invalid
+	}
+
+
+	switch nfpacket.Header.Version {
+	case 5:
+		nf.logger.Printf("Wrong Netflow version (%d), only v9+ supported. Exiting.\n", nfpacket.Header.Version)
+		os.Exit(1)
+	case 9: // Explicitly handle v9
+		// Continue processing
+	default:
+		nf.logger.Printf("Unsupported Netflow version (%d). Skipping packet.\n", nfpacket.Header.Version)
+		return // Skip packet if version is not 9
+	}
+
+	nfpacket = Route(nfpacket, packet, uint16(20), nf.logger) // Pass logger to Route
+	nf.Templates = nfpacket.Templates
+
+	for _, dfs := range nfpacket.Data {
+		for _, record := range dfs.Records {
+			// CORRECTED LINE: Use nfpacket.Header.Uptime and nfpacket.Header.Usecs
+			record.calcTime(nfpacket.Header.Uptime, nfpacket.Header.Usecs)
+			
+			if nf.FlowChannel != nil {
+				nf.FlowChannel <- record.ValuesMap
+			}
+
+			if nf.debug {
+				var sl []string
+				for t, val := range record.ValuesMap {
+					sl = append(sl, fmt.Sprintf("(%v)%v", t, val.ToString()))
+				}
+				nf.logger.Printf("%s", strings.Join(sl, " : "))
+			}
+		}
+	}
+}

@@ -11,6 +11,7 @@ import (
         "syscall"
         "time"
         "flowenricher/config"
+        "flowenricher/collectors"
 )
 
 var debug bool
@@ -174,6 +175,8 @@ if err != nil {
         )
         defer batcher.Close()
 
+
+
         err = StartKafkaConsumer(ctx, cfg, geo, listener.Ranger, resolver, batcher)
         if err != nil {
                 log.Fatalf("Kafka consumer error: %v", err)
@@ -200,6 +203,22 @@ if err != nil {
         }
         // --- End Netflow Collectors startup ---
 
+//Send flows to batcher //
+
+
+
+for _, f := range flowCollectors {
+    if netflow, ok := f.(*collectors.Netflow); ok && netflow.FlowChannel != nil {
+        go func(n *collectors.Netflow) {
+            for raw := range n.FlowChannel {
+                flow := ConvertToFlowRecord(raw)
+                batcher.Add(flow)
+            }
+        }(netflow)
+    } else {
+        log.Println("Skipping collector without FlowChannel or incorrect type")
+    }
+}
 
 
 

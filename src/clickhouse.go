@@ -2,7 +2,7 @@ package main
 import (
 	"context"
 	"time"
-
+	"flowenricher/config"
 	ch "github.com/ClickHouse/clickhouse-go/v2"
 )
 
@@ -12,7 +12,7 @@ type ClickHouseInserter struct {
 	fields []string
 }
 
-func NewClickHouseInserter(cfg *Config) (*ClickHouseInserter, error) {
+func NewClickHouseInserter(cfg *config.Config) (*ClickHouseInserter, error) {
 	conn, err := ch.Open(&ch.Options{
 		Addr: []string{cfg.ClickHouse.Host + ":9000"},
 		Auth: ch.Auth{

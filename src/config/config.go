@@ -1,10 +1,12 @@
-package main
+package config
 
 import (
     "fmt"
     "os"
     "path/filepath"
     "gopkg.in/yaml.v3"
+    "flowenricher/collectors"
+
 )
 
 // 🔧 Αυτά είναι έξω από το Config struct
@@ -21,10 +23,18 @@ type BGPConfig struct {
     Listener  BGPListenerConfig  `yaml:"bgp_listener"`
 }
 
+
+type FrontendConfig struct {
+        Type    string
+        Config  map[string]string
+        // Exporters string // Removed, as debug flag will handle stdout
+}
+
+
 // ✅ Το κύριο Config struct
 type Config struct {
     BGP BGPConfig `yaml:"bgp"`
-
+    Collectors map[string]FrontendConfig `yaml:"collectors"`
     Enrich string `yaml:"enrich"`
 
     ClickHouse struct {
@@ -62,7 +72,7 @@ type Config struct {
 
 
 
-func getDefaultConfigPath() (string, error) {
+func GetDefaultConfigPath() (string, error) {
 	exePath, err := os.Executable()
 	if err != nil {
 		return "", fmt.Errorf("cannot determine executable path: %w", err)
@@ -100,4 +110,20 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf("error parsing config file %s: %w", path, err)
 	}
 	return &cfg, nil
+}
+
+
+func (gc Config) GetCollectors() []collectors.Frontend {
+        var r []collectors.Frontend
+        for n, fields := range gc.Collectors {
+         switch n {
+         case "netflow":
+           f := collectors.Netflow{}
+           f.Configure(fields.Config)
+           r = append(r, &f)
+         default:
+           panic(fmt.Sprintf("Error: Invalid collector type %v", n))
+         }
+        }
+        return r
 }

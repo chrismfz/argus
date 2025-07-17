@@ -1,6 +1,13 @@
+collectors:
+  netflow:
+    config:
+      bindaddr: 0.0.0.0
+      bindport: 2055
+      debug: true
+
+
 
 bgp:
-#  table_file: "/var/log/nfacctd/bgp_table.json"
   bgp_listener:
     enabled: true
     listen_ip: "0.0.0.0"
@@ -42,3 +49,5 @@ enrich: "geoip, bgp"
 insert:
   batch_size: 200
   flush_interval_ms: 1000
+
+

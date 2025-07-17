@@ -10,6 +10,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"flowenricher/config"
 )
 
 var debug bool
@@ -53,11 +54,11 @@ func main() {
 
 	// If --find-path mode, only load config and start BGP
 	if findPathMode {
-configPath, err := getDefaultConfigPath()
+configPath, err := config.GetDefaultConfigPath()
 if err != nil {
     log.Fatalf("Error locating default config: %v", err)
 }
-cfg, err := LoadConfig(configPath)
+cfg, err := config.LoadConfig(configPath)
 if err != nil {
     log.Fatalf("Error loading config: %v", err)
 }
@@ -112,13 +113,13 @@ if err != nil {
 
 	if configPath == "" {
 		var err error
-		configPath, err = getDefaultConfigPath()
+		configPath, err = config.GetDefaultConfigPath()
 		if err != nil {
 			log.Fatalf("Error locating default config: %v", err)
 		}
 	}
 
-	cfg, err := LoadConfig(configPath)
+	cfg, err := config.LoadConfig(configPath)
 	if err != nil {
 		log.Fatalf("Error loading config: %v", err)
 	}
@@ -182,7 +183,7 @@ func handleSignals(cancel context.CancelFunc) {
 	cancel()
 }
 
-func enrichEnabled(cfg *Config, name string) bool {
+func enrichEnabled(cfg *config.Config, name string) bool {
 	if strings.ToLower(cfg.Enrich) == "none" {
 		return false
 	}

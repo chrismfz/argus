@@ -10,7 +10,7 @@ import (
 	"os"
 	"time"
 	// "io" // REMOVED: "io" imported and not used
-
+	"flowenricher/config"
 	"github.com/yl2chen/cidranger"
 
 	api "github.com/osrg/gobgp/v3/api"
@@ -29,12 +29,12 @@ var debugLog = log.New(os.Stdout, "[DEBUG] ", log.LstdFlags)
 type BGPListener struct {
 	Server    *server.BgpServer
 	Ctx       context.Context
-	Cfg       BGPListenerConfig
+	Cfg       config.BGPListenerConfig
 	Ranger    cidranger.Ranger
 	PathCount int
 }
 
-func NewBGPListener(cfg BGPListenerConfig) *BGPListener {
+func NewBGPListener(cfg config.BGPListenerConfig) *BGPListener {
 	ctx := context.Background()
 	s := server.NewBgpServer()
 	go s.Serve()

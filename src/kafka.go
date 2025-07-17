@@ -6,12 +6,12 @@ import (
 	"log"
 	"strings"
 	"time"
-
+	"flowenricher/config"
 	"github.com/segmentio/kafka-go"
 	"github.com/yl2chen/cidranger"
 )
 
-func StartKafkaConsumer(ctx context.Context, cfg *Config, geo *GeoIP, ranger cidranger.Ranger, dns *DNSResolver, batcher *InsertFlowBatcher) error {
+func StartKafkaConsumer(ctx context.Context, cfg *config.Config, geo *GeoIP, ranger cidranger.Ranger, dns *DNSResolver, batcher *InsertFlowBatcher) error {
 	r := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:     cfg.Kafka.Brokers,
 		Topic:       cfg.Kafka.Topic,

@@ -173,6 +173,33 @@ if err != nil {
 	if err != nil {
 		log.Fatalf("Kafka consumer error: %v", err)
 	}
+
+
+
+// --- Start Netflow/Flow Collectors here (corrected logic) ---
+	fmt.Printf("Starting Netflow Collectors...\n")
+
+	// Get collectors using the existing GetCollectors method on your config.Config
+	flowCollectors := cfg.GetCollectors() // This implicitly checks if 'collectors' section exists and is populated
+
+	if len(flowCollectors) == 0 {
+		fmt.Println("No Netflow Collectors configured in config.yml. Skipping collector startup.")
+	} else {
+		for _, f := range flowCollectors {
+			// Check for error on Start() if your collectors.Frontend.Start() returns one
+			// For simplicity, I'm assuming it doesn't return an error here,
+			// or that it logs its own errors.
+			go f.Start() // Start each collector in a goroutine
+		}
+		fmt.Printf("[ OK ] Netflow Collectors started.\n")
+	}
+	// --- End Netflow Collectors startup ---
+
+
+
+
+
+
 }
 
 func handleSignals(cancel context.CancelFunc) {

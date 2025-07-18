@@ -69,10 +69,6 @@ func (b *InsertFlowBatcher) autoFlushLoop() {
 
 
 
-
-
-
-
 func (b *InsertFlowBatcher) flush() {
     b.lock.Lock()
     if b.isFlushing {
@@ -94,15 +90,20 @@ func (b *InsertFlowBatcher) flush() {
         return
     }
 
+    // ✅ GeoIP enrichment (ανεξάρτητα από BGP)
     for _, rec := range batch {
-        for _, direction := range []struct {
-            ipStr  string
-            isSrc  bool
-        }{
-            {rec.SrcHost, true},
-            {rec.DstHost, false},
-        } {
-            ip := net.ParseIP(direction.ipStr)
+        if geo != nil {
+            rec.SrcHostCountry = geo.GetCountry(rec.SrcHost)
+            rec.DstHostCountry = geo.GetCountry(rec.DstHost)
+            rec.PeerSrcASName = geo.GetASNName(rec.SrcHost)
+            rec.PeerDstASName = geo.GetASNName(rec.DstHost)
+        }
+    }
+
+    // ✅ BGP enrichment
+    for _, rec := range batch {
+        for _, ipStr := range []string{rec.SrcHost, rec.DstHost} {
+            ip := net.ParseIP(ipStr)
             if ip == nil {
                 continue
             }
@@ -112,7 +113,6 @@ func (b *InsertFlowBatcher) flush() {
                 continue
             }
 
-            // Find most specific prefix
             var bestEntry cidranger.RangerEntry
             bestMask := -1
             for _, entry := range entries {
@@ -122,35 +122,27 @@ func (b *InsertFlowBatcher) flush() {
                     bestEntry = entry
                 }
             }
-            if bestEntry == nil {
-                continue
-            }
 
             enriched, ok := bestEntry.(BGPEnrichedEntry)
             if !ok {
                 continue
             }
 
+            prefix := enriched.network.String()
+            path := enriched.ASPath
+            localPref := enriched.LocalPref
+            rec.LocalPref = localPref
+
             if rec.ASPath == nil || len(rec.ASPath) == 0 {
-                rec.ASPath = enriched.ASPath
+                rec.ASPath = path
             }
 
-            rec.LocalPref = enriched.LocalPref
-            asn, _ := toASNFromPrefix(enriched.network.String())
-
-            if direction.isSrc {
+            asn, _ := toASNFromPrefix(prefix)
+            if ipStr == rec.SrcHost {
                 rec.PeerSrcAS = asn
-                if geo != nil {
-                    rec.PeerSrcASName = geo.GetASNName(direction.ipStr)
-                    rec.SrcHostCountry = geo.GetCountry(direction.ipStr)
-                }
-            } else {
+            } else if ipStr == rec.DstHost {
                 rec.PeerDstAS = asn
                 rec.DstAS = asn
-                if geo != nil {
-                    rec.PeerDstASName = geo.GetASNName(direction.ipStr)
-                    rec.DstHostCountry = geo.GetCountry(direction.ipStr)
-                }
             }
         }
     }
@@ -161,7 +153,6 @@ func (b *InsertFlowBatcher) flush() {
         log.Printf("[ERROR] Failed to insert batch: %v", err)
     }
 }
-
 
 
 

@@ -553,21 +553,20 @@ func (nf Netflow) Start() {
 
 		nfpacket.Source = binary.BigEndian.Uint32(remoteAddr.IP)
 
-		p := netflowPacketHeader{}
-		p.Version = binary.BigEndian.Uint16(packet[:2])
+p := netflowPacketHeader{}
+p.Version = binary.BigEndian.Uint16(packet[:2])
 
-		nf.ReportedVersionOnce.Do(func() {
-		        nf.ReportedVersion = nfpacket.Header.Version
-		        switch nfpacket.Header.Version {
-		        case 9:
-		                nf.logger.Println("[NETFLOW] Detected NetFlow v9")
-		        case 10:
-		                nf.logger.Println("[NETFLOW] Detected IPFIX (v10)")
-		        default:
-		                nf.logger.Printf("[NETFLOW] Detected unknown NetFlow version: %d", nfpacket.Header.Version)
-		        }
-		})
-
+nf.ReportedVersionOnce.Do(func() {
+	nf.ReportedVersion = p.Version
+	switch p.Version {
+	case 9:
+		nf.logger.Println("[NETFLOW] Detected NetFlow v9")
+	case 10:
+		nf.logger.Println("[NETFLOW] Detected IPFIX (v10)")
+	default:
+		nf.logger.Printf("[NETFLOW] Detected unknown NetFlow version: %d", p.Version)
+	}
+})
 
 		if nfpacket.Length < 20 {
 			nf.logger.Printf("Packet too short. Skipping.\n")

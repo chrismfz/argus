@@ -63,6 +63,16 @@ func (b *InsertFlowBatcher) autoFlushLoop() {
 	}
 }
 
+
+
+
+
+
+
+
+
+
+
 func (b *InsertFlowBatcher) flush() {
 	b.lock.Lock()
 	if b.isFlushing {
@@ -84,20 +94,20 @@ func (b *InsertFlowBatcher) flush() {
 		return
 	}
 
-	// BGP enrichment using ranger
+	// BGP + GeoIP enrichment
 	for _, rec := range batch {
-		// check both src and dst
 		for _, ipStr := range []string{rec.SrcHost, rec.DstHost} {
 			ip := net.ParseIP(ipStr)
 			if ip == nil {
 				continue
 			}
+
 			entries, err := b.ranger.ContainingNetworks(ip)
 			if err != nil || len(entries) == 0 {
 				continue
 			}
 
-			// pick most specific (longest prefix)
+			// Pick most specific (longest mask)
 			var bestEntry cidranger.RangerEntry
 			bestMask := -1
 			for _, entry := range entries {
@@ -111,30 +121,35 @@ func (b *InsertFlowBatcher) flush() {
 				continue
 			}
 
-enriched, ok := bestEntry.(BGPEnrichedEntry)
-if !ok {
-    continue
-}
-prefix := enriched.network.String()
-path := enriched.ASPath
-localPref := enriched.LocalPref
-rec.LocalPref = localPref
+			enriched, ok := bestEntry.(BGPEnrichedEntry)
+			if !ok {
+				continue
+			}
+
+			prefix := enriched.network.String()
+			path := enriched.ASPath
+			localPref := enriched.LocalPref
+			rec.LocalPref = localPref
+
 			if rec.ASPath == nil || len(rec.ASPath) == 0 {
 				rec.ASPath = path
 			}
 
 			asn, _ := toASNFromPrefix(prefix)
+
 			if ipStr == rec.SrcHost {
 				rec.PeerSrcAS = asn
 				if geo != nil {
 					rec.PeerSrcASName = geo.GetASNName(ipStr)
+					rec.SrcHostCountry = geo.GetCountry(ipStr)
 				}
 			} else if ipStr == rec.DstHost {
 				rec.PeerDstAS = asn
+				rec.DstAS = asn
 				if geo != nil {
 					rec.PeerDstASName = geo.GetASNName(ipStr)
+					rec.DstHostCountry = geo.GetCountry(ipStr)
 				}
-				rec.DstAS = asn
 			}
 		}
 	}
@@ -145,6 +160,17 @@ rec.LocalPref = localPref
 		log.Printf("[ERROR] Failed to insert batch: %v", err)
 	}
 }
+
+
+
+
+
+
+
+
+
+
+
 
 func toASNFromPrefix(prefix string) (uint32, error) {
 	// For now we just extract the prefix and fake an ASN

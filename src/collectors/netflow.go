@@ -236,6 +236,7 @@ type Netflow struct {
 	logFile     *os.File    // To hold the file handle if logging to file
 	ReportedVersionOnce sync.Once
 	ReportedVersion     uint16
+	
 }
 type netflowPacket struct {
 	Source    uint32
@@ -251,7 +252,9 @@ type netflowPacketHeader struct {
 	Uptime   uint32
 	Usecs    uint32
 	Sequence uint32
-	Id       uint32
+	Id                  uint32 // v9: Engine ID, v10: ObservationDomainID
+        ObservationDomainID uint32 // ipfix
+	ExportTime          uint32 // ipfix
 }
 type netflowPacketFlowset struct {
 	FlowSetID uint16
@@ -300,6 +303,13 @@ func (r flowRecord) toString() string {
 	}
 	return strings.Join(sl, " : ") + "\n"
 }
+
+//calculate time for ipfix
+//func (r *record) calcTimeFromExportTime(exportTime uint32) {
+//	ts := time.Unix(int64(exportTime), 0).UTC()
+//	r.ValuesMap[TypeTimeStart] = netflowValue{Raw: ts}
+//	r.ValuesMap[TypeTimeEnd] = netflowValue{Raw: ts}
+//}
 
 /*
 ParseData
@@ -555,6 +565,7 @@ func (nf Netflow) Start() {
 
 p := netflowPacketHeader{}
 p.Version = binary.BigEndian.Uint16(packet[:2])
+p.Length = binary.BigEndian.Uint16(packet[2:4])
 
 nf.ReportedVersionOnce.Do(func() {
 	nf.ReportedVersion = p.Version
@@ -579,11 +590,19 @@ nf.ReportedVersionOnce.Do(func() {
 			nf.logger.Printf("Packet too short. Skipping.\n")
 			continue
 		}
-		p.Uptime = binary.BigEndian.Uint32(packet[4:8])
-		p.Usecs = binary.BigEndian.Uint32(packet[8:12])
-		p.Sequence = binary.BigEndian.Uint32(packet[12:16])
-		p.Id = binary.BigEndian.Uint32(packet[16:20])
 
+switch p.Version {
+case 9:
+        p.Uptime = binary.BigEndian.Uint32(packet[4:8])
+        p.Usecs = binary.BigEndian.Uint32(packet[8:12])
+        p.Sequence = binary.BigEndian.Uint32(packet[12:16])
+        p.Id = binary.BigEndian.Uint32(packet[16:20])
+case 10:
+        p.ExportTime = binary.BigEndian.Uint32(packet[4:8])
+        p.Sequence = binary.BigEndian.Uint32(packet[8:12])
+        p.ObservationDomainID = binary.BigEndian.Uint32(packet[12:16])
+        p.Id = p.ObservationDomainID // προαιρετικό, για κοινή χρήση
+}
 		switch p.Version {
 		case 5:
 			nf.logger.Printf("NetFlow v5 unsupported. Exiting.\n")

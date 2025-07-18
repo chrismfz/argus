@@ -147,7 +147,7 @@ if enrichEnabled(cfg, "bgp") && cfg.BGP.Listener.Enabled {
     }
 
     fmt.Println("[INFO] Warming up BGP session to collect prefixes...")
-    time.Sleep(20 * time.Second)
+    time.Sleep(30 * time.Second)
     fmt.Printf("[INFO] BGP warm-up done. Known prefixes: %d\n", listener.PathCount)
 
     // 👉 Inject manually your own prefixes into the Ranger

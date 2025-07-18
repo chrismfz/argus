@@ -25,8 +25,6 @@ type InsertFlowBatcher struct {
 }
 
 
-
-
 func NewInsertFlowBatcher(
     inserter *ClickHouseInserter,
     batchSize int,
@@ -52,8 +50,6 @@ func NewInsertFlowBatcher(
     go b.autoFlushLoop()
     return b
 }
-
-
 
 
 func (b *InsertFlowBatcher) Add(flow *FlowRecord) {
@@ -192,6 +188,7 @@ for _, rec := range batch {
     }
     rec.LocalPref = enriched.LocalPref
         rec.DstAS = enriched.ASN
+	rec.PeerDstAS = enriched.ASN
 }
 
 

@@ -21,7 +21,6 @@ const (
 func StartPTRResolver(cfg *config.Config) {
 	resolver := NewDNSResolver(cfg.DNS.Nameserver)
 
-debug = debug || cfg.Debug // ensure flag is respected
 
 log.Printf("[INFO] DNS (PTR) Enrichment is enabled with Resolver: %s", cfg.DNS.Nameserver)
 

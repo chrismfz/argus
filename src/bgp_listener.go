@@ -384,13 +384,13 @@ func (b *BGPListener) logEstablishedPeerDetails(peerAddress string) {
 		for _, capAny := range p.State.RemoteCap {
 			remoteCaps = append(remoteCaps, capAny.TypeUrl)
 		}
-		log.Printf("[BGP]   Remote Capabilities: %v", remoteCaps)
+		//log.Printf("[BGP]   Remote Capabilities: %v", remoteCaps)
 
 		localCaps := make([]string, 0)
 		for _, capAny := range p.State.LocalCap {
 			localCaps = append(localCaps, capAny.TypeUrl)
 		}
-		log.Printf("[BGP]   Local Capabilities: %v", localCaps)
+		//log.Printf("[BGP]   Local Capabilities: %v", localCaps)
 
 		// AfiSafis are a top-level field of Peer
 		negotiatedAfiSafis := []string{}

@@ -19,6 +19,8 @@ var geo *GeoIP
 var listener *BGPListener
 var resolver *DNSResolver
 var myNets []*net.IPNet
+var Version   = "dev" // fallback version
+var BuildTime = "unknown"
 
 func dlog(msg string, args ...interface{}) {
         if debug {
@@ -33,6 +35,7 @@ Options:
   -h, --help           Show this help message
   -c, --config FILE    Path to config file (default: auto-detect)
   --debug              Enable debug output
+  -v, --version	       Show version (sic)
 
 You can also pass config.yaml as a positional argument.`)
 }
@@ -71,6 +74,9 @@ func main() {
 		case "--help", "-h":
 			printHelp()
 			return
+		case "--version", "-v":
+	        fmt.Printf("flowenricher version %s (built at %s)\n", Version, BuildTime)
+        	return
 		case "--debug":
 			debug = true
 		case "--config", "-c":
@@ -86,6 +92,9 @@ func main() {
 			}
 		}
 	}
+
+
+fmt.Printf("Starting flowenricher %s (built at %s)\n", Version, BuildTime)
 
 	// Φόρτωση config
 	if configPath == "" {

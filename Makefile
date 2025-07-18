@@ -23,9 +23,10 @@ update: ## Update all dependencies
 
 build: ## Build the binary into ./bin/
 	@mkdir -p $(BIN_DIR)
-	cd $(SRC_DIR) && go build -o ../$(BINARY)
+	cd $(SRC_DIR) && go build \
+		-ldflags "-X 'main.Version=$(shell date +%Y.%m.%d)' -X 'main.BuildTime=$(shell date +%Y-%m-%dT%H:%M:%S)'" \
+		-o ../$(BINARY)
 	@echo "✅ Built: $(BINARY)"
-
 run: build ## Run the application
 	@./$(BINARY)
 

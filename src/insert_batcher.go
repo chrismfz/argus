@@ -236,9 +236,14 @@ func (b *InsertFlowBatcher) Close() {
 	b.flush()
 }
 
+
 func (b *InsertFlowBatcher) isMine(ip net.IP) bool {
+    if ip4 := ip.To4(); ip4 != nil {
+        ip = ip4
+    }
     for _, n := range b.myNets {
         if n.Contains(ip) {
+            dlog("[DEBUG] IP %s matched local prefix %s -> using MyASN %d", ip.String(), n.String(), b.myASN)
             return true
         }
     }

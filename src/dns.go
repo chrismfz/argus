@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"log" // Added for logging errors within queryPTR
+//	"log" // Added for logging errors within queryPTR
 	"strings"
 	"sync"
 	"time"
@@ -13,9 +13,9 @@ import (
 
 const (
 	// Cache expiration time for successful DNS lookups
-	defaultCacheTTL = 5 * time.Minute
+	defaultCacheTTL = 60 * time.Minute
 	// Cache expiration time for failed DNS lookups (e.g., no PTR record)
-	defaultNegativeCacheTTL = 1 * time.Minute
+	defaultNegativeCacheTTL = 60 * time.Minute
 )
 
 // cacheEntry holds the PTR record and its expiration time
@@ -95,7 +95,7 @@ func (r *DNSResolver) queryPTR(ip string) (string, error) {
 	arpa, err := dns.ReverseAddr(ip)
 	if err != nil {
 		// Log specific IP parsing error, as ReverseAddr can fail for invalid IP formats
-		log.Printf("[ERROR] DNS ReverseAddr failed for IP '%s': %v", ip, err)
+		dlog("[ERROR] DNS ReverseAddr failed for IP '%s': %v", ip, err)
 		return "", err
 	}
 
@@ -111,7 +111,7 @@ func (r *DNSResolver) queryPTR(ip string) (string, error) {
 	resp, _, err := c.ExchangeContext(context.Background(), m, r.nameserver)
 	if err != nil {
 		// Log DNS exchange errors (e.g., server unreachable, timeout)
-		log.Printf("[ERROR] DNS exchange failed for %s (%s): %v", ip, arpa, err)
+		dlog("[ERROR] DNS exchange failed for %s (%s): %v", ip, arpa, err)
 		return "", err
 	}
 	if resp == nil || resp.Rcode != dns.RcodeSuccess {
@@ -120,7 +120,7 @@ func (r *DNSResolver) queryPTR(ip string) (string, error) {
 		if resp != nil {
 			rcodeStr = dns.RcodeToString[resp.Rcode]
 		}
-		log.Printf("[DEBUG] DNS query for %s (%s) failed or returned non-success Rcode: %s", ip, arpa, rcodeStr)
+		dlog("[DEBUG] DNS query for %s (%s) failed or returned non-success Rcode: %s", ip, arpa, rcodeStr)
 		return "", fmt.Errorf("DNS query non-successful: %s", rcodeStr)
 	}
 

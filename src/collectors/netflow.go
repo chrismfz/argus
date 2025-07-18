@@ -466,13 +466,15 @@ func Route(nfp netflowPacket, p []byte, start uint16, logger *log.Logger) netflo
 
 func (n *Netflow) Configure(config map[string]string) {
 	n.BindAddr = net.ParseIP(config["bindaddr"])
-	test, err := strconv.Atoi(config["bindport"])
-	n.BindPort = test
-	if err != nil {
-		panic(fmt.Sprintf("Error parsing bindport: %v", err)) // Use fmt.Sprintf for panic messages
-	}
 
-	// Check for the debug flag in the config
+	port, err := strconv.Atoi(config["bindport"])
+	if err != nil {
+		panic(fmt.Sprintf("Error parsing bindport: %v", err))
+	}
+	n.BindPort = port
+
+	// Parse debug flag
+	n.debug = false // default
 	if debugVal, ok := config["debug"]; ok {
 		n.debug, err = strconv.ParseBool(debugVal)
 		if err != nil {
@@ -480,27 +482,27 @@ func (n *Netflow) Configure(config map[string]string) {
 		}
 	}
 
-	//var logOutput io.Writer = os.Stdout // Default to stdout for debug=true or if file logging fails
-	logFileName := "goflow.log"        // Default log file name
+	// Default log file
+	logFileName := "goflow.log"
+	var logOutput io.Writer
 
-	// If not in debug mode, try to open a log file
-	if !n.debug {
+	if n.debug {
+		// Log to file ONLY, not stdout
 		file, err := os.OpenFile(logFileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
-			// If we can't open the log file, fall back to stdout and print an error
-			fmt.Printf("Error opening log file %s: %v. Logging to stdout instead.\n", logFileName, err)
-			//logOutput = os.Stdout
-		} else {
-			//logOutput = file
-			n.logFile = file // Store the file handle to close it later
+			panic(fmt.Sprintf("Error opening log file %s: %v", logFileName, err))
 		}
+		n.logFile = file
+		logOutput = file
+	} else {
+		// No logging at all
+		logOutput = io.Discard
 	}
 
-	// Initialize the logger
-	//n.logger = log.New(logOutput, "GOFLOW: ", log.Ldate|log.Ltime|log.Lshortfile)
+	n.logger = log.New(logOutput, "[DEBUG] ", log.Ldate|log.Ltime|log.Lshortfile)
 
-	// Initialize the channel for flowenricher
-	n.FlowChannel = make(chan map[uint16]fields.Value, 1000) // Example buffer size
+	// Init flow channel
+	n.FlowChannel = make(chan map[uint16]fields.Value, 1000)
 }
 
 

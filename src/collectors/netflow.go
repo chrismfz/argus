@@ -503,23 +503,21 @@ func (n *Netflow) Configure(config map[string]string) {
 	n.FlowChannel = make(chan map[uint16]fields.Value, 1000) // Example buffer size
 }
 
+
+
+
+
 func (nf Netflow) Start() {
-	// Close the log file when the Start method exits (e.g., on program shutdown)
 	if nf.logFile != nil {
 		defer func() {
 			if err := nf.logFile.Close(); err != nil {
-				// Use fmt.Printf here as the logger might be closed or have issues
 				fmt.Printf("Error closing log file: %v\n", err)
 			}
 		}()
 	}
 
-	// If not in debug mode, ensure the channel is ready
-	if !nf.debug {
-		if nf.FlowChannel == nil {
-			nf.logger.Printf("Error: FlowChannel is not initialized when debug is false. Exiting.\n")
-			os.Exit(1) // Exit if channel is not ready in non-debug mode
-		}
+	if nf.FlowChannel == nil {
+		nf.logger.Printf("Warning: FlowChannel is nil. Flows will be dropped.\n")
 	}
 
 	addr := net.UDPAddr{
@@ -527,79 +525,81 @@ func (nf Netflow) Start() {
 		IP:   nf.BindAddr,
 	}
 	conn, err := net.ListenUDP("udp", &addr)
-
 	if err != nil {
 		nf.logger.Printf("Error listening on UDP: %v\n", err)
 		return
 	}
-	nf.logger.Printf("Listen on Addr: %v, Port: %v\n", nf.BindAddr, nf.BindPort)
-	nf.Templates = make(map[uint32]map[uint32]map[uint16]netflowPacketTemplate)
-	// Listen to incoming flows
-	for {
-		nfpacket := netflowPacket{
-			Templates: nf.Templates,
-		}
 
-		p := netflowPacketHeader{}
+	nf.logger.Printf("[NETFLOW] Start() launched on %s:%d", nf.BindAddr, nf.BindPort)
+	nf.logger.Printf("Listening for NetFlow on %v\n", addr)
+
+	nf.Templates = make(map[uint32]map[uint32]map[uint16]netflowPacketTemplate)
+
+	for {
+		nfpacket := netflowPacket{Templates: nf.Templates}
 		packet := make([]byte, 1500)
-		var remoteAddr *net.UDPAddr
-		nfpacket.Length, remoteAddr, err = conn.ReadFromUDP(packet)
+
+		n, remoteAddr, err := conn.ReadFromUDP(packet)
 		if err != nil {
 			nf.logger.Printf("Error reading from UDP: %v\n", err)
-			continue // Continue to next iteration on read error
-		}
-
-		nfpacket.Source = binary.BigEndian.Uint32(remoteAddr.IP)
-		p.Version = binary.BigEndian.Uint16(packet[:2])
-		// Ensure enough bytes for header fields before accessing
-		if nfpacket.Length < 20 { // Minimum header length for v9
-			nf.logger.Printf("Warning: Packet too short for Netflow v9 header. Length: %d. Skipping.\n", nfpacket.Length)
 			continue
 		}
+		nfpacket.Length = n
 
+		nfpacket.Source = binary.BigEndian.Uint32(remoteAddr.IP)
+
+		p := netflowPacketHeader{}
+		p.Version = binary.BigEndian.Uint16(packet[:2])
+		if nfpacket.Length < 20 {
+			nf.logger.Printf("Packet too short. Skipping.\n")
+			continue
+		}
 		p.Uptime = binary.BigEndian.Uint32(packet[4:8])
 		p.Usecs = binary.BigEndian.Uint32(packet[8:12])
 		p.Sequence = binary.BigEndian.Uint32(packet[12:16])
 		p.Id = binary.BigEndian.Uint32(packet[16:20])
+
 		switch p.Version {
 		case 5:
-			nf.logger.Printf("Wrong Netflow version (%d), only v9+ supported. Exiting.\n", p.Version)
+			nf.logger.Printf("NetFlow v5 unsupported. Exiting.\n")
 			os.Exit(1)
-		case 9: // Explicitly handle v9
-			// Continue processing
+		case 9:
+			// supported
 		default:
-			nf.logger.Printf("Unsupported Netflow version (%d). Skipping packet.\n", p.Version)
-			continue // Skip packet if version is not 9
+			nf.logger.Printf("Unsupported NetFlow version: %d\n", p.Version)
+			continue
 		}
 
 		nfpacket.Header = p
-		nfpacket = Route(nfpacket, packet, uint16(20), nf.logger) // Pass logger to Route
+		nfpacket = Route(nfpacket, packet, uint16(20), nf.logger)
 		nf.Templates = nfpacket.Templates
+
 		for _, dfs := range nfpacket.Data {
 			for _, record := range dfs.Records {
 				record.calcTime(p.Uptime, p.Usecs)
-				// Conditional dispatch based on the debug flag
+
+				// Always push to channel if it's defined
+				if nf.FlowChannel != nil {
+					select {
+					case nf.FlowChannel <- record.ValuesMap:
+					default:
+						nf.logger.Printf("Warning: FlowChannel full. Dropping flow.\n")
+					}
+				}
+
+				// Also print if debug is enabled
 				if nf.debug {
-					// Directly print to stdout via logger
 					var sl []string
 					for t, val := range record.ValuesMap {
 						sl = append(sl, fmt.Sprintf("(%v)%v", t, val.ToString()))
 					}
-					nf.logger.Printf("%v\n", strings.Join(sl, " : "))
-				} else {
-					// Send the record to the Go channel for flowenricher
-					select {
-					case nf.FlowChannel <- record.ValuesMap:
-						// Successfully sent
-					default:
-						// Channel is full, drop the flow or log a warning
-						nf.logger.Printf("Warning: FlowChannel is full, dropping flow record.\n")
-					}
+					nf.logger.Printf("[FLOW] %s", strings.Join(sl, " : "))
 				}
 			}
 		}
 	}
 }
+
 
 
 

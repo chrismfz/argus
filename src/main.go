@@ -74,14 +74,9 @@ if err != nil {
                         }
                 }
 
-                fmt.Println("Waiting for BGP prefixes to load (min 700k)...")
-                for i := 0; i < 30; i++ { // max 30s
-                        if listener.PathCount >= 800000 {
-                                break
-                        }
-                        fmt.Printf("Loaded: %d prefixes\r", listener.PathCount)
-                        time.Sleep(1 * time.Second)
-                }
+
+		fmt.Println("Loading BGP prefixes...")
+		time.Sleep(5 * time.Second)
                 fmt.Printf("Prefixes loaded: %d\n", listener.PathCount)
                 findASPath(findPathIP)
                 return
@@ -198,6 +193,7 @@ if err != nil {
                         // For simplicity, I'm assuming it doesn't return an error here,
                         // or that it logs its own errors.
                         go f.Start() // Start each collector in a goroutine
+			fmt.Printf("Started collector: %+v\n", f)
                 }
                 fmt.Printf("[ OK ] Netflow Collectors started.\n")
         }

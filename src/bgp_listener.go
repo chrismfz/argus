@@ -262,9 +262,9 @@ func (b *BGPListener) watchUpdates() {
 				} else {
 					totalPaths++
 					b.PathCount = totalPaths
-					if totalPaths%1000 == 0 { // Changed to 1000 for more frequent updates if many routes
-						fmt.Printf("\r[BGP] Progress: %d prefixes...", totalPaths)
-					}
+					//if totalPaths%1000 == 0 { // Changed to 1000 for more frequent updates if many routes
+					//	fmt.Printf("\r[BGP] Progress: %d prefixes...", totalPaths)
+					//}
 				}
 
 				dump := struct {

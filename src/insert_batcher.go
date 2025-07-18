@@ -20,24 +20,38 @@ type InsertFlowBatcher struct {
 	flushCtx      context.Context
 	flushCancel   context.CancelFunc
 	isFlushing    bool
+	myASN  uint32
+	myNets []*net.IPNet
 }
 
-func NewInsertFlowBatcher(inserter *ClickHouseInserter, batchSize int, flushInterval time.Duration, ranger cidranger.Ranger) *InsertFlowBatcher {
-	ctx, cancel := context.WithCancel(context.Background())
-	b := &InsertFlowBatcher{
-		inserter:      inserter,
-		batchSize:     batchSize,
-		flushInterval: flushInterval,
-		ranger:        ranger,
-		buffer:        make([]*FlowRecord, 0, batchSize),
-		ticker:        time.NewTicker(flushInterval),
-		flushCtx:      ctx,
-		flushCancel:   cancel,
-		isFlushing:    false,
-	}
-	go b.autoFlushLoop()
-	return b
+func NewInsertFlowBatcher(
+    inserter *ClickHouseInserter,
+    batchSize int,
+    flushInterval time.Duration,
+    ranger cidranger.Ranger,
+    myASN uint32,
+    myNets []*net.IPNet,
+) *InsertFlowBatcher {
+    ctx, cancel := context.WithCancel(context.Background())
+    b := &InsertFlowBatcher{
+        inserter:      inserter,
+        batchSize:     batchSize,
+        flushInterval: flushInterval,
+        ranger:        ranger,
+        buffer:        make([]*FlowRecord, 0, batchSize),
+        ticker:        time.NewTicker(flushInterval),
+        flushCtx:      ctx,
+        flushCancel:   cancel,
+        isFlushing:    false,
+        myASN:         myASN,
+        myNets:        myNets,
+    }
+    go b.autoFlushLoop()
+    return b
 }
+
+
+
 
 func (b *InsertFlowBatcher) Add(flow *FlowRecord) {
 	b.lock.Lock()
@@ -133,7 +147,12 @@ for _, rec := range batch {
         rec.ASPath = enriched.ASPath
     }
     rec.LocalPref = enriched.LocalPref
+ 
+if b.isMine(ip) {
+    rec.PeerSrcAS = b.myASN
+} else {
     rec.PeerSrcAS = enriched.ASN
+}
 }
 
     // ✅ BGP enrichment - για DstHost
@@ -167,8 +186,14 @@ for _, rec := range batch {
         rec.ASPath = enriched.ASPath
     }
     rec.LocalPref = enriched.LocalPref
+if b.isMine(ip) {
+    rec.PeerDstAS = b.myASN
+    rec.DstAS = b.myASN
+} else {
     rec.PeerDstAS = enriched.ASN
     rec.DstAS = enriched.ASN
+}
+
 }
 
 
@@ -193,4 +218,13 @@ func (b *InsertFlowBatcher) Close() {
 	b.flushCancel()
 	b.ticker.Stop()
 	b.flush()
+}
+
+func (b *InsertFlowBatcher) isMine(ip net.IP) bool {
+    for _, n := range b.myNets {
+        if n.Contains(ip) {
+            return true
+        }
+    }
+    return false
 }

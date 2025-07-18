@@ -4,7 +4,7 @@ import (
         "context"
         "fmt"
         "log"
-//        "net"
+        "net"
         "os"
         "os/signal"
         "strings"
@@ -18,6 +18,7 @@ var debug bool
 var geo *GeoIP
 var listener *BGPListener
 var resolver *DNSResolver
+var myNets []*net.IPNet
 
 func dlog(msg string, args ...interface{}) {
         if debug {
@@ -56,7 +57,6 @@ func enrichEnabled(cfg *config.Config, name string) bool {
         }
         return false
 }
-
 
 
 
@@ -101,6 +101,21 @@ func main() {
 	}
 	debug = debug || cfg.Debug
 
+
+
+for _, s := range cfg.MyPrefixes {
+    _, n, err := net.ParseCIDR(s)
+    if err == nil {
+        myNets = append(myNets, n)
+    } else {
+        log.Printf("[WARN] Invalid CIDR in my_prefixes: %s", s)
+    }
+}
+
+
+
+
+
 	dlog("ClickHouse Host: %s", cfg.ClickHouse.Host)
 	dlog("GeoIP ASN DB: %s", cfg.GeoIP.ASNDB)
 	if cfg.GeoIP.CityDB != "" {
@@ -144,13 +159,15 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go handleSignals(cancel)
-
 	batcher := NewInsertFlowBatcher(
-		inserter,
-		cfg.Insert.BatchSize,
-		time.Duration(cfg.Insert.FlushIntervalMs)*time.Millisecond,
-		listener.Ranger,
+        inserter,
+        cfg.Insert.BatchSize,
+        time.Duration(cfg.Insert.FlushIntervalMs)*time.Millisecond,
+        listener.Ranger,
+        cfg.MyASN,
+        myNets, // από την earlier parsing σου στο main
 	)
+
 	defer batcher.Close()
 
 	// Kafka (αν είναι ενεργό)

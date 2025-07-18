@@ -67,6 +67,10 @@ type Config struct {
 
     Timezone string `yaml:"timezone"`
     Debug    bool   `yaml:"debug"`
+
+MyASN     uint32   `yaml:"my_asn"`
+MyPrefixes []string `yaml:"my_prefixes"`
+
 }
 
 

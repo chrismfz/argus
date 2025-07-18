@@ -69,6 +69,9 @@ func (b *InsertFlowBatcher) autoFlushLoop() {
 
 
 
+
+
+
 func (b *InsertFlowBatcher) flush() {
     b.lock.Lock()
     if b.isFlushing {
@@ -100,51 +103,76 @@ func (b *InsertFlowBatcher) flush() {
         }
     }
 
-    // ✅ BGP enrichment
+    // ✅ BGP enrichment - για SrcHost
     for _, rec := range batch {
-        for _, ipStr := range []string{rec.SrcHost, rec.DstHost} {
-            ip := net.ParseIP(ipStr)
-            if ip == nil {
-                continue
-            }
+        ip := net.ParseIP(rec.SrcHost)
+        if ip == nil {
+            continue
+        }
 
-            entries, err := b.ranger.ContainingNetworks(ip)
-            if err != nil || len(entries) == 0 {
-                continue
-            }
+        entries, err := b.ranger.ContainingNetworks(ip)
+        if err != nil || len(entries) == 0 {
+            continue
+        }
 
-            var bestEntry cidranger.RangerEntry
-            bestMask := -1
-            for _, entry := range entries {
-                mask, _ := entry.Network().Mask.Size()
-                if mask > bestMask {
-                    bestMask = mask
-                    bestEntry = entry
-                }
-            }
-
-            enriched, ok := bestEntry.(BGPEnrichedEntry)
-            if !ok {
-                continue
-            }
-
-            prefix := enriched.network.String()
-            path := enriched.ASPath
-            localPref := enriched.LocalPref
-            rec.LocalPref = localPref
-
-            if rec.ASPath == nil || len(rec.ASPath) == 0 {
-                rec.ASPath = path
-            }
-
-            asn, _ := toASNFromPrefix(prefix)
-            if ipStr == rec.SrcHost {
-                rec.PeerSrcAS = asn
-            } else if ipStr == rec.DstHost {
-                rec.PeerDstAS = asn
-                rec.DstAS = asn
+        var bestEntry cidranger.RangerEntry
+        bestMask := -1
+        for _, entry := range entries {
+            mask, _ := entry.Network().Mask.Size()
+            if mask > bestMask {
+                bestMask = mask
+                bestEntry = entry
             }
         }
+
+        enriched, ok := bestEntry.(BGPEnrichedEntry)
+        if !ok {
+            continue
+        }
+
+        if rec.ASPath == nil || len(rec.ASPath) == 0 {
+            rec.ASPath = enriched.ASPath
+        }
+        rec.LocalPref = enriched.LocalPref
+        asn, _ := toASNFromPrefix(enriched.network.String())
+        rec.PeerSrcAS = asn
+    }
+
+    // ✅ BGP enrichment - για DstHost
+    for _, rec := range batch {
+        ip := net.ParseIP(rec.DstHost)
+        if ip == nil {
+            continue
+        }
+
+        entries, err := b.ranger.ContainingNetworks(ip)
+        if err != nil || len(entries) == 0 {
+            continue
+        }
+
+        var bestEntry cidranger.RangerEntry
+        bestMask := -1
+        for _, entry := range entries {
+            mask, _ := entry.Network().Mask.Size()
+            if mask > bestMask {
+                bestMask = mask
+                bestEntry = entry
+            }
+        }
+
+        enriched, ok := bestEntry.(BGPEnrichedEntry)
+        if !ok {
+            continue
+        }
+
+        // Δεν ξαναγράφουμε ASPath αν έχει ήδη γραφτεί από SrcHost
+        if rec.ASPath == nil || len(rec.ASPath) == 0 {
+            rec.ASPath = enriched.ASPath
+        }
+        rec.LocalPref = enriched.LocalPref
+        asn, _ := toASNFromPrefix(enriched.network.String())
+        rec.PeerDstAS = asn
+        rec.DstAS = asn
     }
 
     dlog("Flushing %d flows to ClickHouse", len(batch))
@@ -153,6 +181,10 @@ func (b *InsertFlowBatcher) flush() {
         log.Printf("[ERROR] Failed to insert batch: %v", err)
     }
 }
+
+
+
+
 
 
 

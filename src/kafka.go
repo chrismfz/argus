@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"log"
 	"strings"
 	"time"
@@ -47,10 +46,6 @@ func StartKafkaConsumer(ctx context.Context, cfg *config.Config, geo *GeoIP, ran
 			continue
 		}
 
-		if showFlows {
-			b, _ := json.MarshalIndent(rec, "", "  ")
-			log.Printf("[FLOW] %s", string(b))
-		}
 
 		batcher.Add(rec)
 	}

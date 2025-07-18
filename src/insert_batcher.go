@@ -242,6 +242,7 @@ func (b *InsertFlowBatcher) isMine(ip net.IP) bool {
         ip = ip4
     }
     for _, n := range b.myNets {
+        dlog("[TRACE] Checking if %s ∈ %s", ip.String(), n.String())
         if n.Contains(ip) {
             dlog("[DEBUG] IP %s matched local prefix %s -> using MyASN %d", ip.String(), n.String(), b.myASN)
             return true

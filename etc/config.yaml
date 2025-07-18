@@ -30,6 +30,7 @@ geoip:
 
 
 kafka:
+  enabled: false
   brokers:
     - "localhost:9092"
   topic: "netflow"

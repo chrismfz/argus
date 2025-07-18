@@ -192,13 +192,7 @@ if enrichEnabled(cfg, "bgp") && cfg.BGP.Listener.Enabled {
 
 	defer batcher.Close()
 
-	// Kafka (αν είναι ενεργό)
-	go func() {
-		err := StartKafkaConsumer(ctx, cfg, geo, listener.Ranger, resolver, batcher)
-		if err != nil {
-			log.Fatalf("Kafka consumer error: %v", err)
-		}
-	}()
+
 
 	// NetFlow Collectors
 	fmt.Println("Starting Netflow Collectors...")
@@ -223,7 +217,7 @@ if enrichEnabled(cfg, "bgp") && cfg.BGP.Listener.Enabled {
 					flow := ConvertToFlowRecord(raw)
 					batcher.Add(flow)
 					counter++
-					if counter%1000 == 0 {
+					if counter%100000 == 0 {
 						log.Printf("[NETFLOW] Processed %d flows", counter)
 					}
 				}
@@ -232,6 +226,22 @@ if enrichEnabled(cfg, "bgp") && cfg.BGP.Listener.Enabled {
 			log.Println("Skipping collector without FlowChannel or incorrect type")
 		}
 	}
+
+
+
+// Kafka
+if cfg.Kafka.Enabled {
+    go func() {
+        err := StartKafkaConsumer(ctx, cfg, geo, listener.Ranger, resolver, batcher)
+        if err != nil {
+            log.Fatalf("Kafka consumer error: %v", err)
+        }
+    }()
+} else {
+    log.Println("[INFO] Kafka is disabled in config.yaml, skipping consumer.")
+}
+
+
 
 	<-ctx.Done()
 	log.Println("Shutdown complete.")

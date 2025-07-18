@@ -113,6 +113,12 @@ for _, s := range cfg.MyPrefixes {
 }
 
 
+fmt.Printf("[INFO] Loaded MyASN = %d\n", cfg.MyASN)
+fmt.Printf("[INFO] Loaded %d local prefixes:\n", len(myNets))
+for _, n := range myNets {
+    fmt.Printf("  - %s\n", n.String())
+}
+
 
 
 

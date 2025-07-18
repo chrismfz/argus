@@ -115,8 +115,11 @@ func (b *InsertFlowBatcher) flush() {
         }
     }
 
-    // ✅ BGP enrichment - για SrcHost
 
+
+
+
+// ✅ BGP enrichment - για SrcHost
 for _, rec := range batch {
     ip := net.ParseIP(rec.SrcHost)
     if ip == nil {
@@ -147,15 +150,22 @@ for _, rec := range batch {
         rec.ASPath = enriched.ASPath
     }
     rec.LocalPref = enriched.LocalPref
- 
-if b.isMine(ip) {
-    rec.PeerSrcAS = b.myASN
-} else {
-    rec.PeerSrcAS = enriched.ASN
-}
+
+    if b.isMine(ip) {
+        rec.PeerSrcAS = b.myASN
+        log.Printf("[MINE][SRC] %s belongs to my prefix -> setting ASN = %d", ip, b.myASN)
+    } else {
+        rec.PeerSrcAS = enriched.ASN
+        log.Printf("[BGP][SRC] %s => ASN %d from prefix %s", ip, enriched.ASN, enriched.network.String())
+    }
 }
 
-    // ✅ BGP enrichment - για DstHost
+
+
+
+
+
+// ✅ BGP enrichment - για DstHost
 for _, rec := range batch {
     ip := net.ParseIP(rec.DstHost)
     if ip == nil {
@@ -186,15 +196,21 @@ for _, rec := range batch {
         rec.ASPath = enriched.ASPath
     }
     rec.LocalPref = enriched.LocalPref
-if b.isMine(ip) {
-    rec.PeerDstAS = b.myASN
-    rec.DstAS = b.myASN
-} else {
-    rec.PeerDstAS = enriched.ASN
-    rec.DstAS = enriched.ASN
+
+    if b.isMine(ip) {
+        rec.PeerDstAS = b.myASN
+        rec.DstAS = b.myASN
+        log.Printf("[MINE][DST] %s belongs to my prefix -> setting ASN = %d", ip, b.myASN)
+    } else {
+        rec.PeerDstAS = enriched.ASN
+        rec.DstAS = enriched.ASN
+        log.Printf("[BGP][DST] %s => ASN %d from prefix %s", ip, enriched.ASN, enriched.network.String())
+    }
 }
 
-}
+
+
+
 
 
     dlog("Flushing %d flows to ClickHouse", len(batch))

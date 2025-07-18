@@ -178,7 +178,8 @@ if enrichEnabled(cfg, "bgp") && cfg.BGP.Listener.Enabled {
 
 	// PTR Resolver
 	if enrichEnabled(cfg, "ptr") {
-		resolver = NewDNSResolver(cfg.DNS.Nameserver)
+		//resolver = NewDNSResolver(cfg.DNS.Nameserver) // old slow way
+                StartPTRResolver(cfg) // async clickhouse queries
 	}
 
 	// ClickHouse Inserter

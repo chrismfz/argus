@@ -23,7 +23,7 @@ const IN_BYTES = 1
 const IN_PKTS = 2
 const FLOWS = 3
 const PROTOCOL = 4
-const SRC_TOS = 5 // Corrected: Cisco uses SRC_TOS for 5
+const SRC_TOS = 5
 const TCP_FLAGS = 6
 const L4_SRC_PORT = 7
 const IPV4_SRC_ADDR = 8
@@ -153,22 +153,26 @@ func (i IntValue) ToBytes() []byte {
 
 // Retrieve integer values from a field
 func GetInt(p []byte) Value {
-	var i IntValue
-	i.Bytes = p
-	switch {
-	case len(p) >= 4: // Use >= for robustness with N-byte fields
-		i.Data = int(binary.BigEndian.Uint32(p))
-		return i
-	case len(p) >= 2:
-		i.Data = int(binary.BigEndian.Uint16(p))
-		return i
-	case len(p) >= 1:
-		i.Data = int(uint8(p[0]))
-		return i
-	default:
-		return IntValue{Data: 0, Bytes: p} // Return a zero value for empty slices
-	}
+    var i IntValue
+    i.Bytes = p
+    switch {
+    case len(p) >= 8: // Handle 8-byte integers (UINT64)
+        i.Data = int(binary.BigEndian.Uint64(p))
+        return i
+    case len(p) >= 4: // Handle 4-byte integers (UINT32)
+        i.Data = int(binary.BigEndian.Uint32(p))
+        return i
+    case len(p) >= 2: // Handle 2-byte integers (UINT16)
+        i.Data = int(binary.BigEndian.Uint16(p))
+        return i
+    case len(p) >= 1: // Handle 1-byte integers (UINT8)
+        i.Data = int(uint8(p[0]))
+        return i
+    default:
+        return IntValue{Data: 0, Bytes: p} // Return a zero value for empty slices
+    }
 }
+
 
 // Address Values (IPv4)
 type AddrValue struct {

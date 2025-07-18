@@ -74,94 +74,93 @@ func (b *InsertFlowBatcher) autoFlushLoop() {
 
 
 func (b *InsertFlowBatcher) flush() {
-	b.lock.Lock()
-	if b.isFlushing {
-		b.lock.Unlock()
-		return
-	}
-	b.isFlushing = true
-	batch := b.buffer
-	b.buffer = make([]*FlowRecord, 0, b.batchSize)
-	b.lock.Unlock()
+    b.lock.Lock()
+    if b.isFlushing {
+        b.lock.Unlock()
+        return
+    }
+    b.isFlushing = true
+    batch := b.buffer
+    b.buffer = make([]*FlowRecord, 0, b.batchSize)
+    b.lock.Unlock()
 
-	defer func() {
-		b.lock.Lock()
-		b.isFlushing = false
-		b.lock.Unlock()
-	}()
+    defer func() {
+        b.lock.Lock()
+        b.isFlushing = false
+        b.lock.Unlock()
+    }()
 
-	if len(batch) == 0 {
-		return
-	}
+    if len(batch) == 0 {
+        return
+    }
 
-	// BGP + GeoIP enrichment
-	for _, rec := range batch {
-		for _, ipStr := range []string{rec.SrcHost, rec.DstHost} {
-			ip := net.ParseIP(ipStr)
-			if ip == nil {
-				continue
-			}
+    for _, rec := range batch {
+        for _, direction := range []struct {
+            ipStr  string
+            isSrc  bool
+        }{
+            {rec.SrcHost, true},
+            {rec.DstHost, false},
+        } {
+            ip := net.ParseIP(direction.ipStr)
+            if ip == nil {
+                continue
+            }
 
-			entries, err := b.ranger.ContainingNetworks(ip)
-			if err != nil || len(entries) == 0 {
-				continue
-			}
+            entries, err := b.ranger.ContainingNetworks(ip)
+            if err != nil || len(entries) == 0 {
+                continue
+            }
 
-			// Pick most specific (longest mask)
-			var bestEntry cidranger.RangerEntry
-			bestMask := -1
-			for _, entry := range entries {
-				mask, _ := entry.Network().Mask.Size()
-				if mask > bestMask {
-					bestMask = mask
-					bestEntry = entry
-				}
-			}
-			if bestEntry == nil {
-				continue
-			}
+            // Find most specific prefix
+            var bestEntry cidranger.RangerEntry
+            bestMask := -1
+            for _, entry := range entries {
+                mask, _ := entry.Network().Mask.Size()
+                if mask > bestMask {
+                    bestMask = mask
+                    bestEntry = entry
+                }
+            }
+            if bestEntry == nil {
+                continue
+            }
 
-			enriched, ok := bestEntry.(BGPEnrichedEntry)
-			if !ok {
-				continue
-			}
+            enriched, ok := bestEntry.(BGPEnrichedEntry)
+            if !ok {
+                continue
+            }
 
-			prefix := enriched.network.String()
-			path := enriched.ASPath
-			localPref := enriched.LocalPref
-			rec.LocalPref = localPref
+            if rec.ASPath == nil || len(rec.ASPath) == 0 {
+                rec.ASPath = enriched.ASPath
+            }
 
-			if rec.ASPath == nil || len(rec.ASPath) == 0 {
-				rec.ASPath = path
-			}
+            rec.LocalPref = enriched.LocalPref
+            asn, _ := toASNFromPrefix(enriched.network.String())
 
-			asn, _ := toASNFromPrefix(prefix)
+            if direction.isSrc {
+                rec.PeerSrcAS = asn
+                if geo != nil {
+                    rec.PeerSrcASName = geo.GetASNName(direction.ipStr)
+                    rec.SrcHostCountry = geo.GetCountry(direction.ipStr)
+                }
+            } else {
+                rec.PeerDstAS = asn
+                rec.DstAS = asn
+                if geo != nil {
+                    rec.PeerDstASName = geo.GetASNName(direction.ipStr)
+                    rec.DstHostCountry = geo.GetCountry(direction.ipStr)
+                }
+            }
+        }
+    }
 
-			if ipStr == rec.SrcHost {
-				rec.PeerSrcAS = asn
-				if geo != nil {
-					rec.PeerSrcASName = geo.GetASNName(ipStr)
-					rec.SrcHostCountry = geo.GetCountry(ipStr)
-				}
-			} else if ipStr == rec.DstHost {
-				rec.PeerDstAS = asn
-				rec.DstAS = asn
-				if geo != nil {
-					rec.PeerDstASName = geo.GetASNName(ipStr)
-					rec.DstHostCountry = geo.GetCountry(ipStr)
-				}
-			}
-		}
-	}
+    dlog("Flushing %d flows to ClickHouse", len(batch))
 
-	dlog("Flushing %d flows to ClickHouse", len(batch))
-
-	if err := b.inserter.InsertBatch(context.Background(), batch); err != nil {
-		log.Printf("[ERROR] Failed to insert batch: %v", err)
-	}
+    if err := b.inserter.InsertBatch(context.Background(), batch); err != nil {
+        log.Printf("[ERROR] Failed to insert batch: %v", err)
+    }
 }
-
-
 
 
 

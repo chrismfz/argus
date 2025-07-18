@@ -14,7 +14,7 @@ import (
 
 const (
 	ptrPlaceholder = "NoPTR"
-	batchSize      = 100
+	batchSize      = 20
 	sleepInterval  = 10 * time.Second
 )
 

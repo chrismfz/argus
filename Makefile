@@ -33,3 +33,9 @@ run: build ## Run the application
 clean: ## Remove build artifacts
 	@rm -rf $(BIN_DIR)
 	@echo "🧹 Cleaned: $(BIN_DIR)"
+
+git: ## Commit + push με προσαρμοσμένο μήνυμα
+	@read -p "Enter commit message: " MSG && \
+	git add . && \
+	git commit -m "$$MSG" && \
+	git push

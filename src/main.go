@@ -207,9 +207,14 @@ go func() {
 for _, f := range flowCollectors {
     if netflow, ok := f.(*collectors.Netflow); ok && netflow.FlowChannel != nil {
         go func(n *collectors.Netflow) {
+            counter := 0
             for raw := range n.FlowChannel {
                 flow := ConvertToFlowRecord(raw)
                 batcher.Add(flow)
+                counter++
+                if counter%1000 == 0 {
+                    log.Printf("[NETFLOW] Processed %d flows", counter)
+                }
             }
         }(netflow)
     } else {
@@ -217,6 +222,9 @@ for _, f := range flowCollectors {
     }
 }
 
+
+<-ctx.Done()
+log.Println("Shutdown complete.")
 
 
 

@@ -172,11 +172,12 @@ if err != nil {
 
 
 
-        err = StartKafkaConsumer(ctx, cfg, geo, listener.Ranger, resolver, batcher)
-        if err != nil {
-                log.Fatalf("Kafka consumer error: %v", err)
-        }
-
+go func() {
+    err := StartKafkaConsumer(ctx, cfg, geo, listener.Ranger, resolver, batcher)
+    if err != nil {
+        log.Fatalf("Kafka consumer error: %v", err)
+    }
+}()
 
 
 // --- Start Netflow/Flow Collectors here (corrected logic) ---

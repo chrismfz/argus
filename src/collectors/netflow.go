@@ -233,6 +233,8 @@ type Netflow struct {
 	FlowChannel chan map[uint16]fields.Value
 	logger      *log.Logger // New logger field
 	logFile     *os.File    // To hold the file handle if logging to file
+	ReportedVersionOnce sync.Once
+	ReportedVersion     uint16
 }
 type netflowPacket struct {
 	Source    uint32
@@ -565,7 +567,7 @@ func (nf Netflow) Start() {
 		case 5:
 			nf.logger.Printf("NetFlow v5 unsupported. Exiting.\n")
 			os.Exit(1)
-		case 9:
+		case 9, 10:
 			// supported
 		default:
 			nf.logger.Printf("Unsupported NetFlow version: %d\n", p.Version)
@@ -645,6 +647,21 @@ func (nf *Netflow) HandleUDPFlow(remoteAddr *net.UDPAddr, packet []byte) {
 	nfpacket.Header.Sequence = binary.BigEndian.Uint32(packet[12:16])
 	nfpacket.Header.Id = binary.BigEndian.Uint32(packet[16:20])
 
+
+nf.ReportedVersionOnce.Do(func() {
+	nf.ReportedVersion = nfpacket.Header.Version
+	switch nfpacket.Header.Version {
+	case 9:
+		nf.logger.Println("[NETFLOW] Detected NetFlow v9")
+	case 10:
+		nf.logger.Println("[NETFLOW] Detected IPFIX (v10)")
+	default:
+		nf.logger.Printf("[NETFLOW] Detected unknown NetFlow version: %d", nfpacket.Header.Version)
+	}
+})
+
+
+
 	// Basic validation for Netflow header length
 	if int(nfpacket.Header.Length) > len(packet) {
 		nf.logger.Printf("Netflow packet header claims length %d, but actual packet size is %d. Skipping.\n", nfpacket.Header.Length, len(packet))
@@ -656,7 +673,7 @@ func (nf *Netflow) HandleUDPFlow(remoteAddr *net.UDPAddr, packet []byte) {
 	case 5:
 		nf.logger.Printf("Wrong Netflow version (%d), only v9+ supported. Exiting.\n", nfpacket.Header.Version)
 		os.Exit(1)
-	case 9: // Explicitly handle v9
+	case 9, 10: // Explicitly handle v9
 		// Continue processing
 	default:
 		nf.logger.Printf("Unsupported Netflow version (%d). Skipping packet.\n", nfpacket.Header.Version)

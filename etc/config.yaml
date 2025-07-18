@@ -43,8 +43,9 @@ timezone: "Europe/Athens"
 
 debug: false
 
-enrich: "geoip, bgp"
-# could be geoip, bgp, ptr or none
+enrich: "geoip, bgp, ptr"
+# could be geoip, bgp, ptr or none #
+# surely, none fucks the purpose of doing all this program :-) #
 
 
 insert:

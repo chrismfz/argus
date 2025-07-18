@@ -260,7 +260,7 @@ func (b *BGPListener) watchUpdates() {
 				if len(asPath) > 0 {
 				fmt.Sscanf(asPath[len(asPath)-1], "%d", &originASN)
 				}
-				entry := BGPEnrichedEntry{network: *prefix, ASPath: asPath, LocalPref: localPref, ASN: originASN}
+				entry := BGPEnrichedEntry{Net: *prefix, ASPath: asPath, LocalPref: localPref, ASN: originASN}
 				if err := b.Ranger.Insert(entry); err != nil {
 					//debugLog.Printf("[BGP] Ranger insert error for %s: %v", prefix.String(), err)
 				} else {

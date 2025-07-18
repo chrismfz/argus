@@ -189,7 +189,7 @@ dlog("[DEBUG] Enriching SrcHost: %s", ip.String())
         log.Printf("[MINE][SRC] %s belongs to my prefix -> setting ASN = %d", ip, b.myASN)
     } else {
         rec.PeerSrcAS = enriched.ASN
-        log.Printf("[BGP][SRC] %s => ASN %d from prefix %s", ip, enriched.ASN, enriched.network.String())
+        log.Printf("[BGP][SRC] %s => ASN %d from prefix %s", ip, enriched.ASN, enriched.Net.String())
     }
 }
 
@@ -237,7 +237,7 @@ for _, rec := range batch {
     } else {
         rec.PeerDstAS = enriched.ASN
         rec.DstAS = enriched.ASN
-        log.Printf("[BGP][DST] %s => ASN %d from prefix %s", ip, enriched.ASN, enriched.network.String())
+        log.Printf("[BGP][DST] %s => ASN %d from prefix %s", ip, enriched.ASN, enriched.Net.String())
     }
 }
 

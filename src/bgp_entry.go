@@ -2,17 +2,16 @@ package main
 
 import (
     "net"
-
-//    "github.com/yl2chen/cidranger"
 )
 
 type BGPEnrichedEntry struct {
-    network    net.IPNet
-    ASPath     []string
-    LocalPref  uint32
-    ASN        uint32
+    Net       net.IPNet  // 🟡 Παλιά ήταν: Network net.IPNet
+    ASPath    []string
+    LocalPref uint32
+    ASN       uint32
 }
 
+// ✅ Χρειάζεται για να ικανοποιεί το cidranger.RangerEntry
 func (e BGPEnrichedEntry) Network() net.IPNet {
-    return e.network
+    return e.Net
 }

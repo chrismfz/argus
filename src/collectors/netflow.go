@@ -560,13 +560,20 @@ nf.ReportedVersionOnce.Do(func() {
 	nf.ReportedVersion = p.Version
 	switch p.Version {
 	case 9:
-		nf.logger.Println("[NETFLOW] Detected NetFlow v9")
+		msg := "[NETFLOW] Detected NetFlow v9"
+		nf.logger.Println(msg) // γράφει σε log αρχείο
+		fmt.Println(msg)        // δείχνει στην κονσόλα
 	case 10:
-		nf.logger.Println("[NETFLOW] Detected IPFIX (v10)")
+		msg := "[NETFLOW] Detected IPFIX (v10)"
+		nf.logger.Println(msg)
+		fmt.Println(msg)
 	default:
-		nf.logger.Printf("[NETFLOW] Detected unknown NetFlow version: %d", p.Version)
+		msg := fmt.Sprintf("[NETFLOW] Detected unknown NetFlow version: %d", p.Version)
+		nf.logger.Println(msg)
+		fmt.Println(msg)
 	}
 })
+
 
 		if nfpacket.Length < 20 {
 			nf.logger.Printf("Packet too short. Skipping.\n")

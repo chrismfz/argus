@@ -14,8 +14,8 @@ import (
 
 const (
 	ptrPlaceholder = "NoPTR"
-	batchSize      = 20
-	sleepInterval  = 10 * time.Second
+	batchSize      = 50
+	sleepInterval  = 2 * time.Second
 )
 
 func StartPTRResolver(cfg *config.Config) {

@@ -26,35 +26,6 @@ type InsertFlowBatcher struct {
 
 
 
-func (b *InsertFlowBatcher) isMine(ip net.IP) bool {
-    for _, n := range b.myNets {
-        // Normalize: Αν και τα δύο είναι IPv4 (wrapped σε 16 bytes), κάνε unwrap
-        ipNormalized := ip
-        netIPNormalized := n.IP
-
-        if ip4 := ip.To4(); ip4 != nil {
-            ipNormalized = ip4
-        }
-        if netIP4 := n.IP.To4(); netIP4 != nil {
-            netIPNormalized = netIP4
-        }
-
-        normalizedNet := &net.IPNet{
-            IP:   netIPNormalized,
-            Mask: n.Mask,
-        }
-
-        if normalizedNet.Contains(ipNormalized) {
-            log.Printf("[DEBUG] IP %s matched local prefix %s -> using MyASN %d", ipNormalized.String(), normalizedNet.String(), b.myASN)
-            return true
-        } else {
-            log.Printf("[TRACE] IP %s not in %s", ipNormalized.String(), normalizedNet.String())
-        }
-    }
-    return false
-}
-
-
 
 func NewInsertFlowBatcher(
     inserter *ClickHouseInserter,
@@ -157,8 +128,6 @@ for _, rec := range batch {
     if ip == nil {
         continue
     }
-dlog("[DEBUG] Enriching SrcHost: %s", ip.String())
-
     entries, err := b.ranger.ContainingNetworks(ip)
     if err != nil || len(entries) == 0 {
         continue
@@ -182,15 +151,8 @@ dlog("[DEBUG] Enriching SrcHost: %s", ip.String())
     if rec.ASPath == nil || len(rec.ASPath) == 0 {
         rec.ASPath = enriched.ASPath
     }
-    rec.LocalPref = enriched.LocalPref
-
-    if b.isMine(ip) {
-        rec.PeerSrcAS = b.myASN
-        log.Printf("[MINE][SRC] %s belongs to my prefix -> setting ASN = %d", ip, b.myASN)
-    } else {
-        rec.PeerSrcAS = enriched.ASN
-        log.Printf("[BGP][SRC] %s => ASN %d from prefix %s", ip, enriched.ASN, enriched.Net.String())
-    }
+	rec.LocalPref = enriched.LocalPref
+	rec.PeerSrcAS = enriched.ASN
 }
 
 
@@ -229,16 +191,7 @@ for _, rec := range batch {
         rec.ASPath = enriched.ASPath
     }
     rec.LocalPref = enriched.LocalPref
-
-    if b.isMine(ip) {
-        rec.PeerDstAS = b.myASN
-        rec.DstAS = b.myASN
-        log.Printf("[MINE][DST] %s belongs to my prefix -> setting ASN = %d", ip, b.myASN)
-    } else {
-        rec.PeerDstAS = enriched.ASN
         rec.DstAS = enriched.ASN
-        log.Printf("[BGP][DST] %s => ASN %d from prefix %s", ip, enriched.ASN, enriched.Net.String())
-    }
 }
 
 
@@ -252,11 +205,6 @@ for _, rec := range batch {
         log.Printf("[ERROR] Failed to insert batch: %v", err)
     }
 }
-
-
-
-
-
 
 
 

@@ -139,17 +139,33 @@ for _, n := range myNets {
 		}
 	}
 
-	// BGP Listener
-	if enrichEnabled(cfg, "bgp") && cfg.BGP.Listener.Enabled {
-		listener = NewBGPListener(cfg.BGP.Listener)
-		if err := listener.Start(); err != nil {
-			log.Fatalf("Failed to start BGP listener: %v", err)
-		}
+// BGP Listener
+if enrichEnabled(cfg, "bgp") && cfg.BGP.Listener.Enabled {
+    listener = NewBGPListener(cfg.BGP.Listener)
+    if err := listener.Start(); err != nil {
+        log.Fatalf("Failed to start BGP listener: %v", err)
+    }
 
-		fmt.Println("[INFO] Warming up BGP session to collect prefixes...")
-		time.Sleep(20 * time.Second)
-		fmt.Printf("[INFO] BGP warm-up done. Known prefixes: %d\n", listener.PathCount)
-	}
+    fmt.Println("[INFO] Warming up BGP session to collect prefixes...")
+    time.Sleep(20 * time.Second)
+    fmt.Printf("[INFO] BGP warm-up done. Known prefixes: %d\n", listener.PathCount)
+
+    // 👉 Inject manually your own prefixes into the Ranger
+    for _, n := range myNets {
+        entry := BGPEnrichedEntry{
+            Net:    *n,
+            ASN:    cfg.MyASN,
+            ASPath: []string{fmt.Sprintf("%d", cfg.MyASN)},
+        }
+        if err := listener.Ranger.Insert(entry); err != nil {
+            log.Printf("[WARN] Failed to insert local prefix %s: %v", n.String(), err)
+        } else {
+            log.Printf("[INFO] Inserted local prefix %s into BGP Ranger (ASN %d)", n.String(), cfg.MyASN)
+        }
+    }
+}
+
+
 
 	// PTR Resolver
 	if enrichEnabled(cfg, "ptr") {

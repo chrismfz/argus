@@ -43,10 +43,10 @@ timezone: "Europe/Athens"
 
 debug: false
 
-enrich: "geoip, bgp, ptr"
+enrich: "geoip, bgp"
 # could be geoip, bgp, ptr or none #
 # surely, none fucks the purpose of doing all this program :-) #
-
+# ptr hammers the system be careful
 
 insert:
   batch_size: 200

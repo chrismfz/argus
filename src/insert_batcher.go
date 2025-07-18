@@ -24,6 +24,38 @@ type InsertFlowBatcher struct {
 	myNets []*net.IPNet
 }
 
+
+
+func (b *InsertFlowBatcher) isMine(ip net.IP) bool {
+    for _, n := range b.myNets {
+        // Normalize: Αν και τα δύο είναι IPv4 (wrapped σε 16 bytes), κάνε unwrap
+        ipNormalized := ip
+        netIPNormalized := n.IP
+
+        if ip4 := ip.To4(); ip4 != nil {
+            ipNormalized = ip4
+        }
+        if netIP4 := n.IP.To4(); netIP4 != nil {
+            netIPNormalized = netIP4
+        }
+
+        normalizedNet := &net.IPNet{
+            IP:   netIPNormalized,
+            Mask: n.Mask,
+        }
+
+        if normalizedNet.Contains(ipNormalized) {
+            log.Printf("[DEBUG] IP %s matched local prefix %s -> using MyASN %d", ipNormalized.String(), normalizedNet.String(), b.myASN)
+            return true
+        } else {
+            log.Printf("[TRACE] IP %s not in %s", ipNormalized.String(), normalizedNet.String())
+        }
+    }
+    return false
+}
+
+
+
 func NewInsertFlowBatcher(
     inserter *ClickHouseInserter,
     batchSize int,
@@ -238,17 +270,3 @@ func (b *InsertFlowBatcher) Close() {
 }
 
 
-func (b *InsertFlowBatcher) isMine(ip net.IP) bool {
-    if ip4 := ip.To4(); ip4 != nil {
-        ip = ip4
-    }
-    for _, n := range b.myNets {
-        dlog("[TRACE] Checking if %s ∈ %s", ip.String(), n.String())
-log.Printf("[DEBUG] Checking IP %s against local prefixes...", ip.String())
-        if n.Contains(ip) {
-            dlog("[DEBUG] IP %s matched local prefix %s -> using MyASN %d", ip.String(), n.String(), b.myASN)
-            return true
-        }
-    }
-    return false
-}

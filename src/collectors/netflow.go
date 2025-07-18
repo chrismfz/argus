@@ -480,7 +480,7 @@ func (n *Netflow) Configure(config map[string]string) {
 		}
 	}
 
-	var logOutput io.Writer = os.Stdout // Default to stdout for debug=true or if file logging fails
+	//var logOutput io.Writer = os.Stdout // Default to stdout for debug=true or if file logging fails
 	logFileName := "goflow.log"        // Default log file name
 
 	// If not in debug mode, try to open a log file
@@ -489,15 +489,15 @@ func (n *Netflow) Configure(config map[string]string) {
 		if err != nil {
 			// If we can't open the log file, fall back to stdout and print an error
 			fmt.Printf("Error opening log file %s: %v. Logging to stdout instead.\n", logFileName, err)
-			logOutput = os.Stdout
+			//logOutput = os.Stdout
 		} else {
-			logOutput = file
+			//logOutput = file
 			n.logFile = file // Store the file handle to close it later
 		}
 	}
 
 	// Initialize the logger
-	n.logger = log.New(logOutput, "GOFLOW: ", log.Ldate|log.Ltime|log.Lshortfile)
+	//n.logger = log.New(logOutput, "GOFLOW: ", log.Ldate|log.Ltime|log.Lshortfile)
 
 	// Initialize the channel for flowenricher
 	n.FlowChannel = make(chan map[uint16]fields.Value, 1000) // Example buffer size

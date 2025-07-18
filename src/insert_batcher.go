@@ -125,6 +125,7 @@ for _, rec := range batch {
     if ip == nil {
         continue
     }
+dlog("[DEBUG] Enriching SrcHost: %s", ip.String())
 
     entries, err := b.ranger.ContainingNetworks(ip)
     if err != nil || len(entries) == 0 {
@@ -243,6 +244,7 @@ func (b *InsertFlowBatcher) isMine(ip net.IP) bool {
     }
     for _, n := range b.myNets {
         dlog("[TRACE] Checking if %s ∈ %s", ip.String(), n.String())
+log.Printf("[DEBUG] Checking IP %s against local prefixes...", ip.String())
         if n.Contains(ip) {
             dlog("[DEBUG] IP %s matched local prefix %s -> using MyASN %d", ip.String(), n.String(), b.myASN)
             return true

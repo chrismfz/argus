@@ -256,7 +256,11 @@ func (b *BGPListener) watchUpdates() {
 				}
 				//debugLog.Printf("[BGP] Raw Path Attributes: %v", rawPattrs)
 
-				entry := BGPEnrichedEntry{network: *prefix, ASPath: asPath, LocalPref: localPref}
+				originASN := uint32(0)
+				if len(asPath) > 0 {
+				fmt.Sscanf(asPath[len(asPath)-1], "%d", &originASN)
+				}
+				entry := BGPEnrichedEntry{network: *prefix, ASPath: asPath, LocalPref: localPref, ASN: originASN}
 				if err := b.Ranger.Insert(entry); err != nil {
 					//debugLog.Printf("[BGP] Ranger insert error for %s: %v", prefix.String(), err)
 				} else {

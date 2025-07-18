@@ -10,6 +10,7 @@ type BGPEnrichedEntry struct {
     network    net.IPNet
     ASPath     []string
     LocalPref  uint32
+    ASN        uint32
 }
 
 func (e BGPEnrichedEntry) Network() net.IPNet {

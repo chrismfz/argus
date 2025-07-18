@@ -2,12 +2,10 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net"
 	"sync"
 	"time"
-
 	"github.com/yl2chen/cidranger"
 )
 
@@ -104,76 +102,75 @@ func (b *InsertFlowBatcher) flush() {
     }
 
     // ✅ BGP enrichment - για SrcHost
-    for _, rec := range batch {
-        ip := net.ParseIP(rec.SrcHost)
-        if ip == nil {
-            continue
-        }
 
-        entries, err := b.ranger.ContainingNetworks(ip)
-        if err != nil || len(entries) == 0 {
-            continue
-        }
-
-        var bestEntry cidranger.RangerEntry
-        bestMask := -1
-        for _, entry := range entries {
-            mask, _ := entry.Network().Mask.Size()
-            if mask > bestMask {
-                bestMask = mask
-                bestEntry = entry
-            }
-        }
-
-        enriched, ok := bestEntry.(BGPEnrichedEntry)
-        if !ok {
-            continue
-        }
-
-        if rec.ASPath == nil || len(rec.ASPath) == 0 {
-            rec.ASPath = enriched.ASPath
-        }
-        rec.LocalPref = enriched.LocalPref
-        asn, _ := toASNFromPrefix(enriched.network.String())
-        rec.PeerSrcAS = asn
+for _, rec := range batch {
+    ip := net.ParseIP(rec.SrcHost)
+    if ip == nil {
+        continue
     }
+
+    entries, err := b.ranger.ContainingNetworks(ip)
+    if err != nil || len(entries) == 0 {
+        continue
+    }
+
+    var bestEntry cidranger.RangerEntry
+    bestMask := -1
+    for _, entry := range entries {
+        mask, _ := entry.Network().Mask.Size()
+        if mask > bestMask {
+            bestMask = mask
+            bestEntry = entry
+        }
+    }
+
+    enriched, ok := bestEntry.(BGPEnrichedEntry)
+    if !ok {
+        continue
+    }
+
+    if rec.ASPath == nil || len(rec.ASPath) == 0 {
+        rec.ASPath = enriched.ASPath
+    }
+    rec.LocalPref = enriched.LocalPref
+    rec.PeerSrcAS = enriched.ASN
+}
 
     // ✅ BGP enrichment - για DstHost
-    for _, rec := range batch {
-        ip := net.ParseIP(rec.DstHost)
-        if ip == nil {
-            continue
-        }
-
-        entries, err := b.ranger.ContainingNetworks(ip)
-        if err != nil || len(entries) == 0 {
-            continue
-        }
-
-        var bestEntry cidranger.RangerEntry
-        bestMask := -1
-        for _, entry := range entries {
-            mask, _ := entry.Network().Mask.Size()
-            if mask > bestMask {
-                bestMask = mask
-                bestEntry = entry
-            }
-        }
-
-        enriched, ok := bestEntry.(BGPEnrichedEntry)
-        if !ok {
-            continue
-        }
-
-        // Δεν ξαναγράφουμε ASPath αν έχει ήδη γραφτεί από SrcHost
-        if rec.ASPath == nil || len(rec.ASPath) == 0 {
-            rec.ASPath = enriched.ASPath
-        }
-        rec.LocalPref = enriched.LocalPref
-        asn, _ := toASNFromPrefix(enriched.network.String())
-        rec.PeerDstAS = asn
-        rec.DstAS = asn
+for _, rec := range batch {
+    ip := net.ParseIP(rec.DstHost)
+    if ip == nil {
+        continue
     }
+
+    entries, err := b.ranger.ContainingNetworks(ip)
+    if err != nil || len(entries) == 0 {
+        continue
+    }
+
+    var bestEntry cidranger.RangerEntry
+    bestMask := -1
+    for _, entry := range entries {
+        mask, _ := entry.Network().Mask.Size()
+        if mask > bestMask {
+            bestMask = mask
+            bestEntry = entry
+        }
+    }
+
+    enriched, ok := bestEntry.(BGPEnrichedEntry)
+    if !ok {
+        continue
+    }
+
+    if rec.ASPath == nil || len(rec.ASPath) == 0 {
+        rec.ASPath = enriched.ASPath
+    }
+    rec.LocalPref = enriched.LocalPref
+    rec.PeerDstAS = enriched.ASN
+    rec.DstAS = enriched.ASN
+}
+
 
     dlog("Flushing %d flows to ClickHouse", len(batch))
 
@@ -191,16 +188,6 @@ func (b *InsertFlowBatcher) flush() {
 
 
 
-
-
-
-func toASNFromPrefix(prefix string) (uint32, error) {
-	// For now we just extract the prefix and fake an ASN
-	// In future you could map prefixes to ASNs via another map
-	var asn uint32 = 0
-	_, err := fmt.Sscanf(prefix, "%d", &asn)
-	return asn, err
-}
 
 func (b *InsertFlowBatcher) Close() {
 	b.flushCancel()

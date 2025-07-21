@@ -1,6 +1,10 @@
 # flowenricher
 
-`flowenricher` is a real-time NetFlow/IPFIX enrichment and ingestion engine written in Go. It processes JSON-formatted flow logs (typically from `nfacctd`), enriches them with GeoIP, ASN, BGP AS paths, and PTR (reverse DNS), and inserts them into a ClickHouse database for lightning-fast analytics.
+`flowenricher` is a real-time NetFlow/IPFIX enrichment and ingestion engine written in Go. 
+It works as standalone app but can also process JSON-formatted flow logs (typically from `nfacctd`), enriches them with GeoIP, ASN, BGP AS paths, and PTR (reverse DNS), and inserts them into a ClickHouse database for lightning-fast analytics. It also supports Kafka.
+
+
+
 
 ---
 
@@ -18,54 +22,94 @@
 - ✅ ClickHouse batch insertion
 - ✅ Modular enrichment (enable/disable via config)
 - ✅ Supports caching of expensive lookups
+- ✅ **New** Integrated netflow collector
+
 
 ---
 
 ## 📦 Architecture Overview
 
+New Structure:
+[flowenricher] → [ClickHouse]
+
+Old structure:
 [nfacctd] → [Kafka] → [flowenricher] → [Enrich (GeoIP + BGP + PTR)] → [ClickHouse]
 
+
+flowenricher now accepts Netflow v9 and enriches realtime with BGP + GeoIP + ASN + PTR
 
 ---
 
 ## ⚙️ Configuration
 
+Left my (working) configuration for reference/example
+
 All configuration is stored in `config.yaml`. Example:
 
 ```yaml
+
+collectors:
+  netflow:
+    config:
+      bindaddr: 0.0.0.0
+      bindport: 2055
+      debug: false
+
+
+bgp:
+  bgp_listener:
+    enabled: true
+    listen_ip: "0.0.0.0"
+    asn: 216285
+    router_id: "84.54.49.1"
+    max_peers: 2
+
+
 clickhouse:
   host: "localhost"
-  port: 9000
-  username: "default"
+  user: "default"
   password: ""
   database: "pmacct"
   table: "flows"
+
 
 geoip:
   asn_db: "/etc/pmacct/GeoLite2-ASN.mmdb"
   city_db: "/etc/pmacct/GeoLite2-City.mmdb"
 
-dns:
-  nameserver: "1.1.1.1"
-
-bgp:
-  table_file: "/var/log/nfacctd/bgp_table.json"
 
 kafka:
+  enabled: false
   brokers:
     - "localhost:9092"
   topic: "netflow"
   group_id: "flowenricher-group"
 
-insert:
-  batch_size: 500
-  flush_interval_ms: 1000
+dns:
+  nameserver: "1.1.1.1"
 
 timezone: "Europe/Athens"
 
-enrich: "geoip,bgp,ptr"
-
 debug: false
+
+enrich: "geoip, bgp"
+# could be geoip, bgp, ptr or none #
+# surely, "none" beats the purpose of doing all this program :-) #
+# ptr hammers the system be careful
+
+insert:
+  batch_size: 200
+  flush_interval_ms: 1000
+
+
+my_asn: 216285
+my_prefixes:
+  - 84.54.49.0/24
+  - 194.153.116.0/24
+  - 2a14:4280::/29
+
+
+
 ```
 
 🚀 Running

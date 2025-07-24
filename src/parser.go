@@ -64,12 +64,6 @@ func ParseAndEnrich(line string, geo *GeoIP, dns *DNSResolver, timezone string) 
         dstASNName = geo.GetASNName(dst)
     }
 
-    // PTR lookups - will make it async ptr
-// ptr//    var srcPTR, dstPTR string
-// ptr //   if dns != nil {
-// ptr //       srcPTR = dns.LookupPTR(src)
-// ptr //       dstPTR = dns.LookupPTR(dst)
-//    }
 
     return &FlowRecord{
         TimestampStart:   tUTC,
@@ -84,14 +78,11 @@ func ParseAndEnrich(line string, geo *GeoIP, dns *DNSResolver, timezone string) 
         DstHostCountry:   dstCountry,
         PeerSrcAS:        toUint32(j["peer_as_src"], srcASN),
         PeerDstAS:        toUint32(j["peer_as_dst"], dstASN),
-//        ASPath:           asPath,
         Packets:          toUint64(j["packets"]),
         Bytes:            toUint64(j["bytes"]),
         PeerDstASName:    dstASNName,
         PeerSrcASName:    srcASNName,
         DstAS:            dstAS,
-//        SrcHostPTR:       srcPTR,
-//        DstHostPTR:       dstPTR,
     }, nil
 }
 

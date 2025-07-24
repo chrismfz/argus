@@ -29,8 +29,6 @@ type FlowRecord struct {
         PeerDstASName    string     `ch:"peer_dst_as_name"`
         PeerSrcASName    string     `ch:"peer_src_as_name"`
         DstAS            uint32     `ch:"dst_as"`
-        SrcHostPTR       string     `ch:"src_host_ptr"`
-        DstHostPTR       string     `ch:"dst_host_ptr"`
 	InputInterfaceName   string `ch:"input_interface_name"`
 	OutputInterfaceName  string `ch:"output_interface_name"`
 	FlowDirection        uint8  `ch:"flow_direction"`

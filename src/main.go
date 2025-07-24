@@ -12,6 +12,7 @@ import (
         "time"
         "flowenricher/config"
         "flowenricher/collectors"
+	
 )
 
 var debug bool
@@ -148,6 +149,35 @@ for _, n := range myNets {
 		}
 	}
 
+
+
+// Start SNMP
+
+// Start SNMP
+if cfg.SNMP.Enabled {
+    fmt.Printf("[INFO] SNMP enrichment is ENABLED (target = %s)\n", cfg.SNMP.Target)
+} else {
+    fmt.Printf("[INFO] SNMP enrichment is DISABLED\n")
+}
+
+
+var ifNameCache *IFNameCache
+if enrichEnabled(cfg, "snmp") && cfg.SNMP.Enabled {
+    fmt.Printf("[INFO] SNMP enrichment is ENABLED (target = %s)\n", cfg.SNMP.Target)
+    snmpClient, err := InitSNMPClient(cfg.SNMP)
+    if err != nil {
+        log.Printf("[WARN] SNMP connect failed: %v\n", err)
+    } else {
+        ifNameCache = NewIFNameCache()
+        ifNameCache.StartRefreshLoop(snmpClient, 5*time.Minute)
+    }
+} else {
+    fmt.Println("[INFO] SNMP enrichment is DISABLED")
+}
+
+
+
+
 // BGP Listener
 if enrichEnabled(cfg, "bgp") && cfg.BGP.Listener.Enabled {
     listener = NewBGPListener(cfg.BGP.Listener)
@@ -197,7 +227,8 @@ if enrichEnabled(cfg, "bgp") && cfg.BGP.Listener.Enabled {
         time.Duration(cfg.Insert.FlushIntervalMs)*time.Millisecond,
         listener.Ranger,
         cfg.MyASN,
-        myNets, // από την earlier parsing σου στο main
+        myNets, // my IPs and my ASN
+	    ifNameCache, // interface names
 	)
 
 	defer batcher.Close()

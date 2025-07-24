@@ -71,9 +71,18 @@ type Config struct {
 
 MyASN     uint32   `yaml:"my_asn"`
 MyPrefixes []string `yaml:"my_prefixes"`
-
+SNMP SNMPConfig `yaml:"snmp"`
 }
 
+
+type SNMPConfig struct {
+    Enabled   bool   `yaml:"enabled"`
+    Target    string `yaml:"target"`
+    Community string `yaml:"community"`
+    Port      uint16 `yaml:"port"`
+    Timeout   int    `yaml:"timeout"` // seconds
+    Retries   int    `yaml:"retries"`
+}
 
 
 

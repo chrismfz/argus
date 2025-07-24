@@ -25,6 +25,7 @@ require (
 	github.com/go-faster/errors v0.7.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.3.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/gosnmp/gosnmp v1.42.1 // indirect
 	github.com/k-sone/critbitgo v1.4.0 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/oschwald/maxminddb-golang v1.13.1 // indirect

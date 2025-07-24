@@ -22,6 +22,7 @@ type InsertFlowBatcher struct {
 	isFlushing    bool
 	myASN  uint32
 	myNets []*net.IPNet
+	ifNames *IFNameCache
 }
 
 
@@ -32,6 +33,7 @@ func NewInsertFlowBatcher(
     ranger cidranger.Ranger,
     myASN uint32,
     myNets []*net.IPNet,
+    ifNames *IFNameCache,
 ) *InsertFlowBatcher {
     ctx, cancel := context.WithCancel(context.Background())
     b := &InsertFlowBatcher{
@@ -46,10 +48,12 @@ func NewInsertFlowBatcher(
         isFlushing:    false,
         myASN:         myASN,
         myNets:        myNets,
+        ifNames:       ifNames, // ✅ ΤΩΡΑ σωστά
     }
     go b.autoFlushLoop()
     return b
 }
+
 
 
 func (b *InsertFlowBatcher) Add(flow *FlowRecord) {
@@ -114,8 +118,15 @@ func (b *InsertFlowBatcher) flush() {
         }
     }
 
-
-
+// interface names
+for _, rec := range batch {
+    if rec.InputInterface != 0 && b.ifNames != nil {
+        rec.InputInterfaceName = b.ifNames.Get(rec.InputInterface)
+    }
+    if rec.OutputInterface != 0 && b.ifNames != nil {
+        rec.OutputInterfaceName = b.ifNames.Get(rec.OutputInterface)
+    }
+}
 
 
 // ✅ BGP enrichment - για SrcHost

@@ -43,7 +43,7 @@ timezone: "Europe/Athens"
 
 debug: false
 
-enrich: "geoip, bgp, snmp"
+enrich: "geoip, bgp, snmp, ptr"
 # could be geoip, bgp, ptr, smtp or none #
 # surely, none fucks the purpose of doing all this program :-) #
 # ptr hammers the system be careful

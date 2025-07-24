@@ -154,12 +154,6 @@ for _, n := range myNets {
 // Start SNMP
 
 // Start SNMP
-if cfg.SNMP.Enabled {
-    fmt.Printf("[INFO] SNMP enrichment is ENABLED (target = %s)\n", cfg.SNMP.Target)
-} else {
-    fmt.Printf("[INFO] SNMP enrichment is DISABLED\n")
-}
-
 
 var ifNameCache *IFNameCache
 if enrichEnabled(cfg, "snmp") && cfg.SNMP.Enabled {

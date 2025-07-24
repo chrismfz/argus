@@ -220,6 +220,9 @@ ORDER BY (timestamp_start, src_host, dst_host);
 CREATE TABLE IF NOT EXISTS ptr_cache (
     ip String,
     ptr String,
+    asn UInt32 DEFAULT 0,
+    asn_name String DEFAULT '',
+    country String DEFAULT '',
     updated_at DateTime DEFAULT now()
 ) ENGINE = MergeTree
 ORDER BY ip;

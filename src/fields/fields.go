@@ -77,7 +77,7 @@ const OUT_DST_MAC = 57 // Corrected: Cisco uses OUT_DST_MAC for 57
 const SRC_VLAN = 58
 const DST_VLAN = 59
 const IP_PROTOCOL_VERSION = 60 // Corrected: Cisco uses IP_PROTOCOL_VERSION for 60
-const DIRECTION = 61
+const FLOW_DIRECTION = 61
 const IPV6_NEXT_HOP = 62
 const BPG_IPV6_NEXT_HOP = 63
 const IPV6_OPTION_HEADERS = 64
@@ -129,6 +129,8 @@ const FIREWALL_EVENT = 233 // Kept as a common IPFIX field, but not 80 in Cisco 
 
 // Extension fields (your custom timestamp)
 const CUSTOM_TIMESTAMP = 256 // New ID for your custom timestamp to avoid conflict with REPLICATION_FACTOR (99)
+
+const DIRECTION = FLOW_DIRECTION // Alias for backward compatibility
 
 // Integer Values
 type IntValue struct {

@@ -40,6 +40,10 @@ func NewClickHouseInserter(cfg *config.Config) (*ClickHouseInserter, error) {
 			"packets", "bytes",
 			"peer_dst_as_name", "peer_src_as_name", "dst_as",
 			"src_host_ptr", "dst_host_ptr",
+   // new feilds:
+    "input_interface", "output_interface",
+    "input_interface_name", "output_interface_name",
+    "flow_direction", "ip_protocol",
 		},
 	}, nil
 }

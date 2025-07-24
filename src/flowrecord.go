@@ -31,6 +31,10 @@ type FlowRecord struct {
         DstAS            uint32     `ch:"dst_as"`
         SrcHostPTR       string     `ch:"src_host_ptr"`
         DstHostPTR       string     `ch:"dst_host_ptr"`
+	InputInterfaceName   string `ch:"input_interface_name"`
+	OutputInterfaceName  string `ch:"output_interface_name"`
+	FlowDirection        uint8  `ch:"flow_direction"`
+	IPProtocol           uint8  `ch:"ip_protocol"`
 }
 
 
@@ -109,6 +113,24 @@ func ConvertToFlowRecord(raw map[uint16]fields.Value) *FlowRecord {
 		fr.PeerDstAS = asn
 		fr.DstAS = asn
 	}
+
+//Interface In ID
+if v, ok := raw[fields.INPUT_SNMP]; ok {
+    fr.InputInterface = uint32(v.ToInt())
+}
+//Interface Out ID
+if v, ok := raw[fields.OUTPUT_SNMP]; ok {
+    fr.OutputInterface = uint32(v.ToInt())
+}
+//Flow direction (1/0)
+if v, ok := raw[fields.FLOW_DIRECTION]; ok {
+    fr.FlowDirection = uint8(v.ToInt())
+}
+//IP Protocol
+if v, ok := raw[fields.IP_PROTOCOL_VERSION]; ok {
+    fr.IPProtocol = uint8(v.ToInt())
+}
+
 
 	// Το enrichment (GeoIP / PTR / ASPath) θα το κάνεις ξεχωριστά από το batcher.
 

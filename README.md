@@ -141,36 +141,7 @@ ORDER BY ingested_at DESC
 LIMIT 10;
 
 
-🗃 Schema (ClickHouse Table)
-
-Make sure your ClickHouse table matches:
-CREATE TABLE pmacct.flows (
-    timestamp_start DateTime,
-    proto UInt8,
-    tcpflags UInt8,
-    tos UInt8,
-    src_host String,
-    src_port UInt16,
-    src_host_country String,
-    dst_host String,
-    dst_port UInt16,
-    dst_host_country String,
-    peer_src_as UInt32,
-    peer_dst_as UInt32,
-    as_path Array(String),
-    packets UInt64,
-    bytes UInt64,
-    peer_dst_as_name String,
-    peer_src_as_name String,
-    dst_as UInt32,
-    src_host_ptr String,
-    dst_host_ptr String,
-    ingested_at DateTime DEFAULT now()
-) ENGINE = MergeTree()
-ORDER BY (timestamp_start, src_host, dst_host);
-
-
----> nfacctd.conf Example:
+---> nfacctd.conf old Example (we got netflow and bgp now!)':
 
 ```yaml
  
@@ -215,3 +186,40 @@ bgp_table_dump_refresh_time: 120
 
 ```
 :-)
+
+🗃 Schema (ClickHouse Table)
+
+Make sure your ClickHouse table matches:
+CREATE TABLE pmacct.flows (
+    timestamp_start DateTime,
+    proto UInt8,
+    tcpflags UInt8,
+    tos UInt8,
+    src_host String,
+    src_port UInt16,
+    src_host_country String,
+    dst_host String,
+    dst_port UInt16,
+    dst_host_country String,
+    peer_src_as UInt32,
+    peer_dst_as UInt32,
+    as_path Array(String),
+    packets UInt64,
+    bytes UInt64,
+    peer_dst_as_name String,
+    peer_src_as_name String,
+    dst_as UInt32,
+    src_host_ptr String,
+    dst_host_ptr String,
+    ingested_at DateTime DEFAULT now()
+) ENGINE = MergeTree()
+ORDER BY (timestamp_start, src_host, dst_host);
+
+
+
+CREATE TABLE IF NOT EXISTS ptr_cache (
+    ip String,
+    ptr String,
+    updated_at DateTime DEFAULT now()
+) ENGINE = MergeTree
+ORDER BY ip;

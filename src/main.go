@@ -341,35 +341,6 @@ if cfg.Kafka.Enabled {
 
 
 
-// Μπορείς να προσθέσεις αυτό στο main() για δοκιμή
-go func() {
-    time.Sleep(5 * time.Second)
-    detection.LogDetection(
-        detection.DetectionRule{
-            Name: "manual_test",
-            Proto: "tcp",
-            DstPort: 80,
-            TimeWindow: "5s",
-            Action: "alert",
-        },
-        []detection.Flow{
-            {
-                SrcIP: "1.2.3.4",
-                DstIP: "5.6.7.8",
-                Proto: "tcp",
-                SrcPort: 12345,
-                DstPort: 80,
-                Timestamp: time.Now(),
-                Packets: 10,
-                Bytes: 1000,
-            },
-        },
-        geo,
-        resolver,
-    )
-}()
-
-
 
 
 	<-ctx.Done()

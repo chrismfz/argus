@@ -117,3 +117,16 @@ rules:
     time_window: 10s
     action: alert
 
+  - name: test_dns_flood
+    proto: udp
+    dst_port: 53
+    min_flows: 2
+    time_window: 10s
+    action: alert
+
+  - name: test_all_tcp
+    proto: tcp
+    min_flows: 1
+    time_window: 10s
+    action: alert
+

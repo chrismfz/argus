@@ -73,15 +73,22 @@ func LogDetection(rule DetectionRule, flows []Flow, geo GeoIP, resolver DNSResol
         asnName := "?"
         ptr := "?"
 
-        if record, ok := geo.Lookup(ip); ok {
-            geoCountry = record.Country
-            asn = fmt.Sprintf("%d", record.ASN)
-            asnName = record.ASNName
-        }
+if geo != nil {
+    if record, ok := geo.Lookup(ip); ok {
+        geoCountry = record.Country
+        asn = fmt.Sprintf("%d", record.ASN)
+        asnName = record.ASNName
+    }
+}
 
-        if hostname, ok := resolver.Lookup(ip); ok {
-            ptr = hostname
-        }
+
+
+if resolver != nil {
+    if hostname, ok := resolver.Lookup(ip); ok {
+        ptr = hostname
+    }
+}
+
 
         detectionLogger.Printf("         SRC: %-15s | PTR: %-30s | ASN: %-8s | ASNAME: %-30s | COUNTRY: %s",
             ip, ptr, asn, asnName, geoCountry)

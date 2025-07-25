@@ -68,6 +68,9 @@ func enrichEnabled(cfg *config.Config, name string) bool {
 
 
 
+
+
+
 /////////////////// MAIN //////////////////
 func main() {
         var configPath string
@@ -157,8 +160,6 @@ for _, n := range myNets {
 
 // Start SNMP
 
-// Start SNMP
-
 var ifNameCache *IFNameCache
 if enrichEnabled(cfg, "snmp") && cfg.SNMP.Enabled {
     fmt.Printf("[INFO] SNMP enrichment is ENABLED (target = %s)\n", cfg.SNMP.Target)
@@ -232,7 +233,6 @@ if enrichEnabled(cfg, "bgp") && cfg.BGP.Listener.Enabled {
         defer batcher.Close()
 
 
-
 // NetFlow Collectors
         fmt.Println("Starting Netflow Collectors...")
         flowCollectors := cfg.GetCollectors()
@@ -261,7 +261,7 @@ if enrichEnabled(cfg, "bgp") && cfg.BGP.Listener.Enabled {
 
                                         if engine != nil {
                                                 flowToAdd := detection.Flow{
-                                                        Timestamp: time.Now().UTC(),
+                                                        Timestamp: flow.TimestampEnd,
                                                         SrcIP:     flow.SrcHost,
                                                         DstIP:     flow.DstHost,
                                                         SrcPort:   flow.SrcPort,
@@ -272,6 +272,7 @@ if enrichEnabled(cfg, "bgp") && cfg.BGP.Listener.Enabled {
                                                         Bytes:     flow.Bytes,
                                                 }
                                                 engine.AddFlow(flowToAdd)
+dlog("Extracted timestamp for flow: %s", flowToAdd.Timestamp.Format(time.RFC3339Nano))
                                                 dlog("Added flow to detection engine: SrcIP=%s, DstIP=%s, DstPort=%d, Proto=%s, Packets=%d, Timestamp=%s",
                                                         flowToAdd.SrcIP, flowToAdd.DstIP, flowToAdd.DstPort, flowToAdd.Proto, flowToAdd.Packets, flowToAdd.Timestamp.Format(time.RFC3339Nano))
                                         } else {

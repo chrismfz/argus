@@ -1,7 +1,7 @@
 package detection
 
 import (
-	"fmt"
+//	"fmt" // fmt is not strictly needed if only using log.Printf and dlogEngine
 	"log"
 	"os"
 	"sync"
@@ -16,9 +16,6 @@ var (
 	detectionLogger *log.Logger
 	once            sync.Once
 )
-
-
-
 
 func initLogger() {
 	f, err := openDetectionLog()
@@ -39,7 +36,8 @@ func LogDetection(rule DetectionRule, flows []Flow) {
 	once.Do(initLogger)
 
 	if len(flows) == 0 {
-		fmt.Println("LogDetection called with empty flows for rule: %s", rule.Name) // Debug log
+		// Corrected from fmt.Println to dlogEngine for formatted debug output
+		dlogEngine("LogDetection called with empty flows for rule: %s", rule.Name)
 		return
 	}
 
@@ -60,6 +58,7 @@ func LogDetection(rule DetectionRule, flows []Flow) {
 		detectionLogger.Printf("         SRC: %-15s", ip)
 	}
 	detectionLogger.Println("---")
-	fmt.Println("Alert logged for rule '%s'", rule.Name) // Debug log
+	// Corrected from fmt.Println to dlogEngine for formatted debug output
+	dlogEngine("Alert logged for rule '%s'", rule.Name)
 }
 

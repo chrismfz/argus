@@ -84,7 +84,7 @@ func (e *Engine) runDetection() {
 	e.mu.Lock()
 	defer e.mu.Unlock() // Ensure mutex is unlocked even if there's an early return or panic
 
-	now := time.Now()
+	now := time.Now().UTC() // CHANGED: Use UTC for consistent time comparison
 	dlogEngine("runDetection started. Current raw flow cache size: %d", len(e.flows))
 
 	// Διατήρηση flows μέσα στο maxWindow

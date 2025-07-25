@@ -7,18 +7,18 @@ import (
 	"time"
 )
 
-// dlogEngine is assumed to be available from engine.go as this file is part of the same package.
+// DlogEngine is assumed to be available from engine.go as this file is part of the same package.
 
 // 🔎 Ελέγχει αν ένας rule ταιριάζει με πρόσφατα flows
 func evaluateRule(rule DetectionRule, flows []Flow, myNets []*net.IPNet) (bool, []Flow) {
-	now := time.Now()
+	now := time.Now().UTC() // CHANGED: Use UTC for consistent time comparison
 	window, err := time.ParseDuration(rule.TimeWindow)
 	if err != nil {
-		dlogEngine("Invalid TimeWindow for rule %s: %v", rule.Name, err)
+		DlogEngine("Invalid TimeWindow for rule %s: %v", rule.Name, err) // CHANGED: Call DlogEngine
 		return false, nil // invalid rule
 	}
 	cutoff := now.Add(-window)
-	dlogEngine("Evaluating rule '%s' with %d flows. TimeWindow: %s, Cutoff: %s", rule.Name, len(flows), rule.TimeWindow, cutoff.Format(time.RFC3339))
+	DlogEngine("Evaluating rule '%s' with %d flows. TimeWindow: %s, Cutoff: %s", rule.Name, len(flows), rule.TimeWindow, cutoff.Format(time.RFC3339)) // CHANGED: Call DlogEngine
 
 
 	type key struct {
@@ -29,25 +29,25 @@ func evaluateRule(rule DetectionRule, flows []Flow, myNets []*net.IPNet) (bool, 
 
 	for _, f := range flows {
 		if f.Timestamp.Before(cutoff) {
-			dlogEngine("  Flow %s->%s (at %s) is before rule cutoff %s, skipping.", f.SrcIP, f.DstIP, f.Timestamp.Format(time.RFC3339Nano), cutoff.Format(time.RFC3339))
+			DlogEngine("  Flow %s->%s (at %s) is before rule cutoff %s, skipping.", f.SrcIP, f.DstIP, f.Timestamp.Format(time.RFC3339Nano), cutoff.Format(time.RFC3339)) // CHANGED: Call DlogEngine
 			continue
 		}
 		if rule.Proto != "" && strings.ToLower(f.Proto) != strings.ToLower(rule.Proto) {
-			dlogEngine("  Flow %s->%s proto mismatch: expected %s, got %s. Skipping.", f.SrcIP, f.DstIP, rule.Proto, f.Proto)
+			DlogEngine("  Flow %s->%s proto mismatch: expected %s, got %s. Skipping.", f.SrcIP, f.DstIP, rule.Proto, f.Proto) // CHANGED: Call DlogEngine
 			continue
 		}
 		if rule.DstPort != 0 && f.DstPort != rule.DstPort {
-			dlogEngine("  Flow %s->%s dst port mismatch: expected %d, got %d. Skipping.", f.SrcIP, f.DstIP, rule.DstPort, f.DstPort)
+			DlogEngine("  Flow %s->%s dst port mismatch: expected %d, got %d. Skipping.", f.SrcIP, f.DstIP, rule.DstPort, f.DstPort) // CHANGED: Call DlogEngine
 			continue
 		}
 		if rule.TCPFlags != "" && !matchTCPFlags(f.TCPFlags, rule.TCPFlags) {
-			dlogEngine("  Flow %s->%s TCP flags mismatch: expected %s, got %d. Skipping.", f.SrcIP, f.DstIP, rule.TCPFlags, f.TCPFlags)
+			DlogEngine("  Flow %s->%s TCP flags mismatch: expected %s, got %d. Skipping.", f.SrcIP, f.DstIP, rule.TCPFlags, f.TCPFlags) // CHANGED: Call DlogEngine
 			continue
 		}
 		// This condition applies if any of the SameDstIP, SameDstPort, MinUniqueSrcIPs, UniqueDstIPs are relevant
 		// For test_all_tcp, none of these are true, so this check will be skipped.
 		if (rule.SameDstIP || rule.SameDstPort || rule.MinUniqueSrcIPs > 0 || rule.UniqueDstIPs > 0) && !isMyPrefix(f.DstIP, myNets) {
-			dlogEngine("  Flow %s->%s DstIP %s is not in myNets, and rule requires local destination. Skipping.", f.SrcIP, f.DstIP, f.DstIP)
+			DlogEngine("  Flow %s->%s DstIP %s is not in myNets, and rule requires local destination. Skipping.", f.SrcIP, f.DstIP, f.DstIP) // CHANGED: Call DlogEngine
 			continue
 		}
 
@@ -61,19 +61,19 @@ func evaluateRule(rule DetectionRule, flows []Flow, myNets []*net.IPNet) (bool, 
 		}
 
 		groups[k] = append(groups[k], f)
-		dlogEngine("  Flow %s->%s added to group %v. Group size: %d", f.SrcIP, f.DstIP, k, len(groups[k]))
+		DlogEngine("  Flow %s->%s added to group %v. Group size: %d", f.SrcIP, f.DstIP, k, len(groups[k])) // CHANGED: Call DlogEngine
 	}
 
 	if len(groups) == 0 {
-		dlogEngine("No groups formed for rule '%s'.", rule.Name)
+		DlogEngine("No groups formed for rule '%s'.", rule.Name) // CHANGED: Call DlogEngine
 		return false, nil
 	}
 
 	for k, group := range groups {
-		dlogEngine("  Evaluating group %v for rule '%s' with %d flows.", k, rule.Name, len(group))
+		DlogEngine("  Evaluating group %v for rule '%s' with %d flows.", k, rule.Name, len(group)) // CHANGED: Call DlogEngine
 
 		if len(group) < rule.MinFlows {
-			dlogEngine("    Group size %d less than MinFlows %d. Skipping group.", len(group), rule.MinFlows)
+			DlogEngine("    Group size %d less than MinFlows %d. Skipping group.", len(group), rule.MinFlows) // CHANGED: Call DlogEngine
 			continue
 		}
 
@@ -93,39 +93,39 @@ func evaluateRule(rule DetectionRule, flows []Flow, myNets []*net.IPNet) (bool, 
 		}
 
 		if rule.UniqueDstPorts > 0 && len(uniquePorts) < rule.UniqueDstPorts {
-			dlogEngine("    Unique DstPorts %d less than required %d. Skipping group.", len(uniquePorts), rule.UniqueDstPorts)
+			DlogEngine("    Unique DstPorts %d less than required %d. Skipping group.", len(uniquePorts), rule.UniqueDstPorts) // CHANGED: Call DlogEngine
 			continue
 		}
 
 		if rule.MinUniqueSrcIPs > 0 && len(uniqueSrcs) < rule.MinUniqueSrcIPs {
-			dlogEngine("    Unique SrcIPs %d less than required %d. Skipping group.", len(uniqueSrcs), rule.MinUniqueSrcIPs)
+			DlogEngine("    Unique SrcIPs %d less than required %d. Skipping group.", len(uniqueSrcs), rule.MinUniqueSrcIPs) // CHANGED: Call DlogEngine
 			continue
 		}
 
 		if rule.UniqueDstIPs > 0 && len(uniqueDstIPs) < rule.UniqueDstIPs { 
-			dlogEngine("    Unique DstIPs %d less than required %d. Skipping group.", len(uniqueDstIPs), rule.UniqueDstIPs)
+			DlogEngine("    Unique DstIPs %d less than required %d. Skipping group.", len(uniqueDstIPs), rule.UniqueDstIPs) // CHANGED: Call DlogEngine
 			continue
 		}
 
 		if rule.MinAvgPPS > 0 {
 			if groupDurationSeconds > 0 {
 				avgPps := float64(totalPackets) / groupDurationSeconds
-				dlogEngine("    Calculated AvgPPS: %.2f (Total Packets: %d, Duration: %.2f s). Required MinAvgPPS: %d", avgPps, totalPackets, groupDurationSeconds, rule.MinAvgPPS)
+				DlogEngine("    Calculated AvgPPS: %.2f (Total Packets: %d, Duration: %.2f s). Required MinAvgPPS: %d", avgPps, totalPackets, groupDurationSeconds, rule.MinAvgPPS) // CHANGED: Call DlogEngine
 				if avgPps < float64(rule.MinAvgPPS) {
-					dlogEngine("    AvgPPS %.2f less than required %d. Skipping group.", avgPps, rule.MinAvgPPS)
+					DlogEngine("    AvgPPS %.2f less than required %d. Skipping group.", avgPps, rule.MinAvgPPS) // CHANGED: Call DlogEngine
 					continue
 				}
 			} else {
-				dlogEngine("    Group duration is zero or negative (%f), cannot calculate AvgPPS. Skipping AvgPPS check.", groupDurationSeconds)
+				DlogEngine("    Group duration is zero or negative (%f), cannot calculate AvgPPS. Skipping AvgPPS check.", groupDurationSeconds) // CHANGED: Call DlogEngine
 				continue 
 			}
 		}
 
-		dlogEngine("  Rule '%s' matched for group %v!", rule.Name, k)
+		DlogEngine("  Rule '%s' matched for group %v!", rule.Name, k) // CHANGED: Call DlogEngine
 		return true, group
 	}
 
-	dlogEngine("No group matched for rule '%s'.", rule.Name)
+	DlogEngine("No group matched for rule '%s'.", rule.Name) // CHANGED: Call DlogEngine
 	return false, nil
 }
 
@@ -139,7 +139,7 @@ func matchTCPFlags(flowFlags uint8, required string) bool {
 	case "SYN-ACK":
 		return (flowFlags&0x02 != 0) && (flowFlags&0x10 != 0)
 	default:
-		dlogEngine("Unknown TCP flag requirement: %s", required)
+		DlogEngine("Unknown TCP flag requirement: %s", required) // CHANGED: Call DlogEngine
 		return false
 	}
 }
@@ -147,7 +147,7 @@ func matchTCPFlags(flowFlags uint8, required string) bool {
 func isMyPrefix(ipStr string, nets []*net.IPNet) bool {
 	ip := net.ParseIP(ipStr)
 	if ip == nil {
-		dlogEngine("Failed to parse IP in isMyPrefix: %s", ipStr)
+		DlogEngine("Failed to parse IP in isMyPrefix: %s", ipStr) // CHANGED: Call DlogEngine
 		return false
 	}
 	for _, n := range nets {

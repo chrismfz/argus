@@ -4,7 +4,7 @@ import (
     "fmt"
     "net"
     "sync"
-    "flowenricher/detection"
+//    "flowenricher/detection"
     "github.com/oschwald/geoip2-golang"
 )
 
@@ -131,14 +131,3 @@ func (g *GeoIP) ASNName(asn uint32) string {
 
 
 
-func (g *GeoIP) Lookup(ip string) (detection.GeoRecord, bool) {
-    parsed := net.ParseIP(ip)
-    if parsed == nil {
-        return detection.GeoRecord{}, false
-    }
-    return detection.GeoRecord{
-        ASN:     g.GetASNNumber(ip),
-        ASNName: g.GetASNName(ip),
-        Country: g.GetCountry(ip),
-    }, true
-}

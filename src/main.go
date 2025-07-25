@@ -307,9 +307,9 @@ if cfg.Detection.Enabled {
     // 👉 Εκκίνηση detection engine με παραμέτρους
     engine := detection.NewEngine(
         detectionRules,
-        geo,
-        resolver,
-        ifNameCache,
+//        geo,
+//       resolver,
+//        ifNameCache,
         cfg.MyASN,
         myNets,
         maxWin,

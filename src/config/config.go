@@ -79,6 +79,7 @@ type Config struct {
         Enabled     bool   `yaml:"enable_detection_engine"`
         RulesConfig string `yaml:"rules_config"`
         FlowCacheMaxWindow string `yaml:"flow_cache_max_window"`
+	DebugDetection bool `yaml:"debug_detection"`
     } `yaml:"detection"`
 
 

@@ -7,17 +7,40 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"os"
 )
 
-// Add a debug flag or function if you want to control these logs
-var debugEngine = true // Set to false for production
 
-// DlogEngine is an exported debug logging function for the detection package.
-func DlogEngine(msg string, args ...interface{}) { // CHANGED: Function name to DlogEngine (capital D)
-	if debugEngine {
-		log.Printf("[DEBUG-ENGINE] "+msg, args...)
+var (
+	debugEngine   = false
+	debugLog      *log.Logger
+	debugLogOnce  sync.Once
+)
+
+func InitDebugDetection(enabled bool) {
+	debugEngine = enabled
+	if enabled {
+		debugLogOnce.Do(func() {
+			f, err := os.OpenFile("detection.debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			if err != nil {
+				log.Printf("[WARN] Cannot open detection.debug.log: %v", err)
+				return
+			}
+			debugLog = log.New(f, "", log.Ldate|log.Ltime)
+		})
 	}
 }
+
+func DlogEngine(msg string, args ...interface{}) {
+	if debugEngine && debugLog != nil {
+		debugLog.Printf("[DEBUG-ENGINE] "+msg, args...)
+	}
+}
+
+
+
+
+
 
 type Flow struct {
 	Timestamp time.Time

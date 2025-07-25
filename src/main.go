@@ -292,7 +292,14 @@ dlog("Extracted timestamp for flow: %s", flowToAdd.Timestamp.Format(time.RFC3339
 
 
         // Detection Engine //
-        if cfg.Detection.Enabled {
+
+
+
+if cfg.Detection.Enabled {
+	// ✅ Ενεργοποίησε detection debugging αν ζητήθηκε
+	detection.InitDebugDetection(cfg.Detection.DebugDetection)
+	debugLog.Println("== Detection debug log initialized ==")
+
                 fmt.Println("[INFO] Detection engine is ENABLED")
                 detectionRules, err = detection.LoadDetectionRules(cfg.Detection.RulesConfig)
                 if err != nil {

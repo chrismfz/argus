@@ -10,6 +10,7 @@ import (
         "strings"
         "syscall"
         "time"
+	"flowenricher/fields"
         "flowenricher/config"
         "flowenricher/collectors"
 	"flowenricher/detection"
@@ -23,6 +24,7 @@ var myNets []*net.IPNet
 var Version   = "dev" // fallback version
 var BuildTime = "unknown"
 var engine *detection.Engine
+var detectionRules []detection.DetectionRule // MOVED THIS DECLARATION TO GLOBAL SCOPE
 
 
 func dlog(msg string, args ...interface{}) {
@@ -231,7 +233,7 @@ if enrichEnabled(cfg, "bgp") && cfg.BGP.Listener.Enabled {
 
 
 
-	// NetFlow Collectors
+// NetFlow Collectors
 	fmt.Println("Starting Netflow Collectors...")
 	flowCollectors := cfg.GetCollectors()
 
@@ -251,25 +253,33 @@ if enrichEnabled(cfg, "bgp") && cfg.BGP.Listener.Enabled {
 			go func(n *collectors.Netflow) {
 				counter := 0
 				for raw := range n.FlowChannel {
+					dlog("Received raw flow from collector. Raw data (first few fields): Proto=%v, SrcIP=%v, DstIP=%v",
+						raw[fields.PROTOCOL], raw[fields.IPV4_SRC_ADDR], raw[fields.IPV4_DST_ADDR])
+
 					flow := ConvertToFlowRecord(raw)
 					batcher.Add(flow)
 
-if engine != nil {
-    engine.AddFlow(detection.Flow{
-        Timestamp: flow.TimestampStart,
-        SrcIP:     flow.SrcHost,
-        DstIP:     flow.DstHost,
-        SrcPort:   flow.SrcPort,
-        DstPort:   flow.DstPort,
-        Proto:     detection.ProtocolToString(flow.Proto),
-        TCPFlags:  flow.TCPFlags,
-        Packets:   flow.Packets,
-        Bytes:     flow.Bytes,
-    })
-}
+					if engine != nil {
+						flowToAdd := detection.Flow{
+							Timestamp: flow.TimestampStart, // Use the flow's actual timestamp
+							SrcIP:     flow.SrcHost,
+							DstIP:     flow.DstHost,
+							SrcPort:   flow.SrcPort,
+							DstPort:   flow.DstPort,
+							Proto:     detection.ProtocolToString(flow.Proto),
+							TCPFlags:  flow.TCPFlags,
+							Packets:   flow.Packets,
+							Bytes:     flow.Bytes,
+						}
+						engine.AddFlow(flowToAdd)
+						dlog("Added flow to detection engine: SrcIP=%s, DstIP=%s, DstPort=%d, Proto=%s, Packets=%d, Timestamp=%s",
+							flowToAdd.SrcIP, flowToAdd.DstIP, flowToAdd.DstPort, flowToAdd.Proto, flowToAdd.Packets, flowToAdd.Timestamp.Format(time.RFC3339Nano))
+					} else {
+						log.Println("[WARN] Detection engine is nil, cannot add flow.")
+					}
 
 					counter++
-					if counter%100000 == 0 {
+					if counter%1000 == 0 { // Changed to 1000 for more frequent updates during debug
 						log.Printf("[NETFLOW] Processed %d flows", counter)
 					}
 				}
@@ -280,45 +290,40 @@ if engine != nil {
 	}
 
 
+	// Detection Engine //
+	if cfg.Detection.Enabled {
+		fmt.Println("[INFO] Detection engine is ENABLED")
+		detectionRules, err = detection.LoadDetectionRules(cfg.Detection.RulesConfig)
+		if err != nil {
+			log.Fatalf("Failed to load detection rules: %v", err)
+		}
+		fmt.Printf("[INFO] Loaded %d detection rules\n", len(detectionRules))
+
+		maxWin := 10 * time.Second // default
+		if cfg.Detection.FlowCacheMaxWindow != "" {
+			if d, err := time.ParseDuration(cfg.Detection.FlowCacheMaxWindow); err == nil {
+				maxWin = d
+			} else {
+				log.Printf("[WARN] Invalid flow_cache_max_window: %v", err)
+			}
+		}
+
+		engine = detection.NewEngine(
+			detectionRules,
+			cfg.MyASN,
+			myNets,
+			maxWin,
+		)
+
+		go engine.Run(ctx)
+		dlog("Detection engine started with maxWindow: %s", maxWin.String())
+	} else {
+		fmt.Println("[INFO] Detection engine is DISABLED")
+	}
 
 
 
-// Detection Engine //
-var detectionRules []detection.DetectionRule
 
-if cfg.Detection.Enabled {
-    fmt.Println("[INFO] Detection engine is ENABLED")
-    detectionRules, err = detection.LoadDetectionRules(cfg.Detection.RulesConfig)
-    if err != nil {
-        log.Fatalf("Failed to load detection rules: %v", err)
-    }
-    fmt.Printf("[INFO] Loaded %d detection rules\n", len(detectionRules))
-
-    // 👉 Ανάγνωση flow_cache_max_window από config
-    maxWin := 10 * time.Second // προεπιλογή
-    if cfg.Detection.FlowCacheMaxWindow != "" {
-        if d, err := time.ParseDuration(cfg.Detection.FlowCacheMaxWindow); err == nil {
-            maxWin = d
-        } else {
-            log.Printf("[WARN] Invalid flow_cache_max_window: %v", err)
-        }
-    }
-
-    // 👉 Εκκίνηση detection engine με παραμέτρους
-    engine := detection.NewEngine(
-        detectionRules,
-//        geo,
-//       resolver,
-//        ifNameCache,
-        cfg.MyASN,
-        myNets,
-        maxWin,
-    )
-
-    go engine.Run(ctx)
-} else {
-    fmt.Println("[INFO] Detection engine is DISABLED")
-}
 
 
 

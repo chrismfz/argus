@@ -39,16 +39,42 @@ type FlowRecord struct {
 func ConvertToFlowRecord(raw map[uint16]fields.Value) *FlowRecord {
 	fr := &FlowRecord{}
 
-	// Χρόνος: από CUSTOM_TIMESTAMP ή now
-	if tsVal, ok := raw[fields.CUSTOM_TIMESTAMP]; ok {
-		ts := time.Unix(int64(tsVal.ToInt()), 0).UTC()
-		fr.TimestampStart = ts
-		fr.TimestampEnd = ts
+	// Prioritize LAST_SWITCHED or FIRST_SWITCHED for accurate flow time
+	// Use blank identifier '_' for tsVal where its value is not directly used
+	if _, ok := raw[fields.LAST_SWITCHED]; ok {
+		// Netflow v9 Uptime is in milliseconds, LAST_SWITCHED is in milliseconds relative to Uptime
+		// The calcTime in netflow.go already converts this to an absolute Unix timestamp.
+		// We just need to use that CUSTOM_TIMESTAMP field.
+		if customTsVal, customTsOk := raw[fields.CUSTOM_TIMESTAMP]; customTsOk {
+			fr.TimestampStart = time.Unix(int64(customTsVal.ToInt()), 0).UTC()
+			fr.TimestampEnd = fr.TimestampStart // For now, assume end is same as start if no explicit end time
+		} else {
+			// Fallback if CUSTOM_TIMESTAMP wasn't set by calcTime (shouldn't happen if calcTime is called)
+			now := time.Now().UTC()
+			fr.TimestampStart = now
+			fr.TimestampEnd = now
+		}
+	} else if _, ok := raw[fields.FIRST_SWITCHED]; ok {
+		// Handle FIRST_SWITCHED if LAST_SWITCHED is not available
+		if customTsVal, customTsOk := raw[fields.CUSTOM_TIMESTAMP]; customTsOk {
+			fr.TimestampStart = time.Unix(int64(customTsVal.ToInt()), 0).UTC()
+			fr.TimestampEnd = fr.TimestampStart
+		} else {
+			now := time.Now().UTC()
+			fr.TimestampStart = now
+			fr.TimestampEnd = now
+		}
+	} else if tsVal, ok := raw[fields.CUSTOM_TIMESTAMP]; ok {
+		// If only CUSTOM_TIMESTAMP is directly available
+		fr.TimestampStart = time.Unix(int64(tsVal.ToInt()), 0).UTC()
+		fr.TimestampEnd = fr.TimestampStart
 	} else {
+		// Default to current time if no flow timestamp is available
 		now := time.Now().UTC()
 		fr.TimestampStart = now
 		fr.TimestampEnd = now
 	}
+
 
 	// Πρωτόκολλο, σημαίες, tos
 	if v, ok := raw[fields.PROTOCOL]; ok {
@@ -134,3 +160,4 @@ if v, ok := raw[fields.IP_PROTOCOL_VERSION]; ok {
 
 	return fr
 }
+

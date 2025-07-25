@@ -9,7 +9,15 @@ import (
 	"time"
 )
 
-// Flow struct remains the same, as it's a core data structure for detection
+// Add a debug flag or function if you want to control these logs
+var debugEngine = true // Set to false for production
+
+func dlogEngine(msg string, args ...interface{}) {
+	if debugEngine {
+		log.Printf("[DEBUG-ENGINE] "+msg, args...)
+	}
+}
+
 type Flow struct {
 	Timestamp time.Time
 	SrcIP     string
@@ -28,16 +36,15 @@ type Engine struct {
 	rules     []DetectionRule
 	myASN     uint32
 	myNets    []*net.IPNet
-	// Removed resolver, geoip, ifnames fields from Engine
 	maxWindow time.Duration
 }
 
 // ✅ Δημιουργία του detection engine
 // Removed geo, resolver, ifnames parameters
 func NewEngine(rules []DetectionRule, asn uint32, prefixes []*net.IPNet, maxWin time.Duration) *Engine {
+	dlogEngine("NewEngine created with %d rules, maxWindow: %s", len(rules), maxWin.String())
 	return &Engine{
 		rules:     rules,
-		// Removed geoip, resolver, ifnames assignments
 		myASN:     asn,
 		myNets:    prefixes,
 		flows:     make([]Flow, 0),
@@ -50,6 +57,8 @@ func (e *Engine) AddFlow(f Flow) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.flows = append(e.flows, f)
+	dlogEngine("Flow added. Current flow cache size: %d. Added: Src=%s, Dst=%s, DstPort=%d, Proto=%s, Timestamp=%s",
+		len(e.flows), f.SrcIP, f.DstIP, f.DstPort, f.Proto, f.Timestamp.Format(time.RFC3339Nano))
 }
 
 // ✅ Κύρια detection loop
@@ -57,11 +66,14 @@ func (e *Engine) Run(ctx context.Context) {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
+	dlogEngine("Detection engine Run loop started.")
 	for {
 		select {
 		case <-ctx.Done():
+			dlogEngine("Detection engine Run loop stopped by context cancellation.")
 			return
 		case <-ticker.C:
+			dlogEngine("Ticker fired, running detection.")
 			e.runDetection()
 		}
 	}
@@ -70,7 +82,10 @@ func (e *Engine) Run(ctx context.Context) {
 // ✅ Εφαρμογή detection rules κάθε 1s
 func (e *Engine) runDetection() {
 	e.mu.Lock()
+	defer e.mu.Unlock() // Ensure mutex is unlocked even if there's an early return or panic
+
 	now := time.Now()
+	dlogEngine("runDetection started. Current raw flow cache size: %d", len(e.flows))
 
 	// Διατήρηση flows μέσα στο maxWindow
 	cutoff := now.Add(-e.maxWindow)
@@ -78,18 +93,28 @@ func (e *Engine) runDetection() {
 	for _, f := range e.flows {
 		if f.Timestamp.After(cutoff) {
 			recent = append(recent, f)
+		} else {
+			dlogEngine("Flow %s -> %s (at %s) is older than cutoff %s, dropping.", f.SrcIP, f.DstIP, f.Timestamp.Format(time.RFC3339), cutoff.Format(time.RFC3339))
 		}
 	}
 	e.flows = recent
-	e.mu.Unlock()
+	dlogEngine("Flow cache after cleanup (flows within %s window): %d", e.maxWindow.String(), len(e.flows))
+
+	if len(e.flows) == 0 {
+		dlogEngine("No recent flows to evaluate. Skipping rule evaluation.")
+		return
+	}
 
 	// Εφαρμογή detection rules
 	for _, rule := range e.rules {
+		dlogEngine("Evaluating rule: %s", rule.Name)
 		matched, flows := evaluateRule(rule, recent, e.myNets)
 		if !matched {
+			dlogEngine("Rule '%s' did not match.", rule.Name)
 			continue
 		}
 
+		dlogEngine("Rule '%s' matched with %d flows. Actions: %s", rule.Name, len(flows), rule.Action)
 		for _, act := range parseActions(rule.Action) {
 			switch act {
 			case "alert":

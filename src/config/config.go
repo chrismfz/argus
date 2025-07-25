@@ -69,9 +69,19 @@ type Config struct {
     Timezone string `yaml:"timezone"`
     Debug    bool   `yaml:"debug"`
 
-MyASN     uint32   `yaml:"my_asn"`
-MyPrefixes []string `yaml:"my_prefixes"`
-SNMP SNMPConfig `yaml:"snmp"`
+    MyASN     uint32   `yaml:"my_asn"`
+    MyPrefixes []string `yaml:"my_prefixes"`
+
+    SNMP SNMPConfig `yaml:"snmp"`
+
+
+    Detection struct {
+        Enabled     bool   `yaml:"enable_detection_engine"`
+        RulesConfig string `yaml:"rules_config"`
+        FlowCacheMaxWindow string `yaml:"flow_cache_max_window"`
+    } `yaml:"detection"`
+
+
 }
 
 

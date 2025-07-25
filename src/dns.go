@@ -115,3 +115,13 @@ func (r *DNSResolver) LookupBatch(ips []string) map[string]string {
     }
     return results
 }
+
+
+
+func (r *DNSResolver) Lookup(ip string) (string, bool) {
+    ptr := r.LookupPTR(ip)
+    if ptr == "" {
+        return "", false
+    }
+    return ptr, true
+}

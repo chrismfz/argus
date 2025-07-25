@@ -1,0 +1,119 @@
+#actions: alert for now. TODO: Clickhouse, API, BGP-Blackhole, Slack
+rules:
+
+  # ──────────────── DDoS & Floods ────────────────
+  - name: ddos_generic
+    proto: any
+    same_dst_ip: true
+    min_flows: 10000
+    min_unique_src_ips: 100
+    time_window: 5s
+    action: alert
+
+  - name: syn_flood
+    proto: tcp
+    tcp_flags: SYN
+    same_dst_ip: true
+    min_flows: 5000
+    min_avg_pps: 1000
+    time_window: 5s
+    action: alert
+
+  - name: udp_flood
+    proto: udp
+    same_dst_ip: true
+    min_flows: 5000
+    min_avg_pps: 2000
+    time_window: 5s
+    action: alert
+
+  - name: icmp_flood
+    proto: icmp
+    same_dst_ip: true
+    min_flows: 1000
+    min_avg_pps: 1000
+    time_window: 5s
+    action: alert
+
+  # ──────────────── Brute Force Attacks ────────────────
+  - name: ssh_brute
+    proto: tcp
+    dst_port: 22
+    same_dst_ip: true
+    min_flows: 50
+    time_window: 10s
+    action: alert
+
+  - name: smtp_brute
+    proto: tcp
+    dst_port: 25
+    same_dst_ip: true
+    min_flows: 40
+    time_window: 10s
+    action: alert
+
+  - name: imap_brute
+    proto: tcp
+    dst_port: 143
+    same_dst_ip: true
+    min_flows: 40
+    time_window: 10s
+    action: alert
+
+  - name: rdp_brute
+    proto: tcp
+    dst_port: 3389
+    same_dst_ip: true
+    min_flows: 40
+    time_window: 10s
+    action: alert
+
+  # ──────────────── Port Scanning ────────────────
+  - name: vertical_scan
+    proto: tcp
+    same_dst_ip: true
+    unique_dst_ports: 100
+    min_flows: 150
+    time_window: 10s
+    action: alert
+
+  - name: horizontal_scan
+    proto: tcp
+    same_dst_port: true
+    unique_dst_ips: 100
+    min_flows: 150
+    time_window: 10s
+    action: alert
+
+  - name: generic_scanner
+    proto: any
+    unique_dst_ports: 200
+    min_flows: 300
+    time_window: 10s
+    action: alert
+
+  - name: dns_flood
+    proto: udp
+    dst_port: 53
+    same_dst_ip: true
+    min_flows: 3000
+    min_unique_src_ips: 50
+    time_window: 5s
+    action: alert
+
+  - name: slow_horizontal_scan
+    proto: tcp
+    same_dst_port: true
+    unique_dst_ips: 50
+    min_flows: 70
+    time_window: 60s
+    action: alert
+
+  - name: udp_port_scan
+    proto: udp
+    same_dst_ip: true
+    unique_dst_ports: 50
+    min_flows: 100
+    time_window: 10s
+    action: alert
+

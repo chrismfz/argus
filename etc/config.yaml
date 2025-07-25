@@ -67,3 +67,8 @@ snmp:
   port: 161
   timeout: 2
   retries: 3
+
+detection:
+  enable_detection_engine: true
+  rules_config: /opt/flowenricher/config/detection.yml
+  flow_cache_max_window: 20s

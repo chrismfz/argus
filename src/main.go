@@ -12,7 +12,7 @@ import (
         "time"
         "flowenricher/config"
         "flowenricher/collectors"
-	
+	"flowenricher/detection"
 )
 
 var debug bool
@@ -22,6 +22,8 @@ var resolver *DNSResolver
 var myNets []*net.IPNet
 var Version   = "dev" // fallback version
 var BuildTime = "unknown"
+var engine *detection.Engine
+
 
 func dlog(msg string, args ...interface{}) {
         if debug {
@@ -251,6 +253,21 @@ if enrichEnabled(cfg, "bgp") && cfg.BGP.Listener.Enabled {
 				for raw := range n.FlowChannel {
 					flow := ConvertToFlowRecord(raw)
 					batcher.Add(flow)
+
+if engine != nil {
+    engine.AddFlow(detection.Flow{
+        Timestamp: flow.TimestampStart,
+        SrcIP:     flow.SrcHost,
+        DstIP:     flow.DstHost,
+        SrcPort:   flow.SrcPort,
+        DstPort:   flow.DstPort,
+        Proto:     detection.ProtocolToString(flow.Proto),
+        TCPFlags:  flow.TCPFlags,
+        Packets:   flow.Packets,
+        Bytes:     flow.Bytes,
+    })
+}
+
 					counter++
 					if counter%100000 == 0 {
 						log.Printf("[NETFLOW] Processed %d flows", counter)
@@ -261,6 +278,51 @@ if enrichEnabled(cfg, "bgp") && cfg.BGP.Listener.Enabled {
 			log.Println("Skipping collector without FlowChannel or incorrect type")
 		}
 	}
+
+
+
+
+
+// Detection Engine //
+var detectionRules []detection.DetectionRule
+
+if cfg.Detection.Enabled {
+    fmt.Println("[INFO] Detection engine is ENABLED")
+    detectionRules, err = detection.LoadDetectionRules(cfg.Detection.RulesConfig)
+    if err != nil {
+        log.Fatalf("Failed to load detection rules: %v", err)
+    }
+    fmt.Printf("[INFO] Loaded %d detection rules\n", len(detectionRules))
+
+    // 👉 Ανάγνωση flow_cache_max_window από config
+    maxWin := 10 * time.Second // προεπιλογή
+    if cfg.Detection.FlowCacheMaxWindow != "" {
+        if d, err := time.ParseDuration(cfg.Detection.FlowCacheMaxWindow); err == nil {
+            maxWin = d
+        } else {
+            log.Printf("[WARN] Invalid flow_cache_max_window: %v", err)
+        }
+    }
+
+    // 👉 Εκκίνηση detection engine με παραμέτρους
+    engine := detection.NewEngine(
+        detectionRules,
+        geo,
+        resolver,
+        ifNameCache,
+        cfg.MyASN,
+        myNets,
+        maxWin,
+    )
+
+    go engine.Run(ctx)
+} else {
+    fmt.Println("[INFO] Detection engine is DISABLED")
+}
+
+
+
+
 
 
 

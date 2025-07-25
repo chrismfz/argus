@@ -70,5 +70,5 @@ snmp:
 
 detection:
   enable_detection_engine: true
-  rules_config: /opt/flowenricher/config/detection.yml
+  rules_config: /opt/flowenricher/etc/detection.yml
   flow_cache_max_window: 20s

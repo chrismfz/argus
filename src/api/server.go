@@ -9,6 +9,7 @@ import (
 	"github.com/yl2chen/cidranger"
 	"log"
 	"fmt"
+	"sort"
 )
 
 type GeoIPResponse struct {
@@ -30,6 +31,7 @@ var Ranger cidranger.Ranger
 func Start() {
 	http.HandleFunc("/geoip", handleGeoIP)
 	http.HandleFunc("/status", handleStatus)
+	http.HandleFunc("/communities", handleCommunities)
 
 	log.Println("[API] Listening on 127.0.0.1:9600")
 	if err := http.ListenAndServe("127.0.0.1:9600", nil); err != nil {
@@ -100,4 +102,36 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 		"bgp":      Ranger != nil,
 	}
 	json.NewEncoder(w).Encode(status)
+}
+
+
+// list communities
+func handleCommunities(w http.ResponseWriter, r *http.Request) {
+	set := make(map[string]struct{})
+
+	if Ranger != nil {
+		entries, err := Ranger.CoveredNetworks(net.IPNet{
+			IP:   net.IPv4zero,
+			Mask: net.CIDRMask(0, 32),
+		})
+		if err == nil {
+			for _, e := range entries {
+				if bgpEntry, ok := e.(bgp.BGPEnrichedEntry); ok {
+					for _, c := range bgpEntry.Communities {
+						comStr := fmt.Sprintf("%d:%d", c>>16, c&0xFFFF)
+						set[comStr] = struct{}{}
+					}
+				}
+			}
+		}
+	}
+
+	var result []string
+	for k := range set {
+		result = append(result, k)
+	}
+
+	sort.Strings(result)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }

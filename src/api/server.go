@@ -26,6 +26,7 @@ var Ranger cidranger.Ranger
 func Start() {
 	http.HandleFunc("/geoip", handleGeoIP)
 	http.ListenAndServe("127.0.0.1:9600", nil)
+	http.HandleFunc("/status", handleStatus)
 }
 
 func handleGeoIP(w http.ResponseWriter, r *http.Request) {
@@ -76,3 +77,12 @@ func lenMask(mask net.IPMask) int {
 }
 
 
+
+func handleStatus(w http.ResponseWriter, r *http.Request) {
+	status := map[string]bool{
+		"geoip":    Geo != nil,
+		"resolver": Resolver != nil,
+		"bgp":      Ranger != nil,
+	}
+	json.NewEncoder(w).Encode(status)
+}

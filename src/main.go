@@ -167,16 +167,6 @@ for _, n := range myNets {
         }
 
 
-// START API 
-// εκκίνηση REST API
-if geo != nil && resolver != nil && listener != nil {
-	go func() {
-		api.Geo = geo
-		api.Resolver = resolver
-		api.Ranger = listener.Ranger
-		api.Start()
-	}()
-}
 
 // Start SNMP
 
@@ -355,6 +345,17 @@ if cfg.Detection.Enabled {
 
 
 
+
+// START API - make sure it's the last one
+// εκκίνηση REST API
+go func() {
+        api.Geo = geo
+        api.Resolver = resolver
+        if listener != nil {
+                api.Ranger = listener.Ranger
+        }
+        api.Start()
+}()
 
 
 

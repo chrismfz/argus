@@ -4,6 +4,7 @@ go 1.24.4
 
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.37.2
+	github.com/gosnmp/gosnmp v1.42.1
 	github.com/miekg/dns v1.1.67
 	github.com/oschwald/geoip2-golang v1.13.0
 	github.com/osrg/gobgp/v3 v3.37.0
@@ -25,7 +26,6 @@ require (
 	github.com/go-faster/errors v0.7.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.3.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/gosnmp/gosnmp v1.42.1 // indirect
 	github.com/k-sone/critbitgo v1.4.0 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/oschwald/maxminddb-golang v1.13.1 // indirect

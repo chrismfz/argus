@@ -6,6 +6,7 @@ import (
 	"os"
 	"sync"
 	"time"
+	"flowenricher/enrich"
 )
 
 // NOTE: IFNameCache, GeoRecord, GeoIP, and DNSResolver interfaces
@@ -32,7 +33,7 @@ func openDetectionLog() (*os.File, error) {
 // 🔔 Εγγραφή σε log όταν ταιριάζει κάποιο rule (χωρίς enrichment εδώ)
 // Enrichment (GeoIP, PTR, IFName) should be handled upstream (e.g., in main)
 // before passing flows to the detection engine, or by a separate enrichment service.
-func LogDetection(rule DetectionRule, flows []Flow) {
+func LogDetection(rule DetectionRule, flows []Flow, geo *enrich.GeoIP, dns *enrich.DNSResolver) {
 	once.Do(initLogger)
 
 	if len(flows) == 0 {

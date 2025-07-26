@@ -1,4 +1,4 @@
-package main
+package enrich
 
 import (
     "context"
@@ -6,7 +6,7 @@ import (
     "strings"
     "sync"
     "time"
-
+    "log"
     "github.com/miekg/dns"
     "golang.org/x/sync/singleflight"
 )
@@ -32,7 +32,7 @@ func NewDNSResolver(nameserver string) *DNSResolver {
     if !strings.Contains(nameserver, ":") {
         nameserver += ":53"
     }
-    dlog("Initializing DNS resolver with nameserver: %s", nameserver)
+    log.Printf("Initializing DNS resolver with nameserver: %s", nameserver)
     return &DNSResolver{nameserver: nameserver}
 }
 
@@ -40,13 +40,13 @@ func (r *DNSResolver) LookupPTR(ip string) string {
     if val, ok := r.cache.Load(ip); ok {
         entry := val.(*cacheEntry)
         if time.Now().Before(entry.expiration) {
-            dlog("Cache hit for %s: %s", ip, entry.ptr)
+            log.Printf("Cache hit for %s: %s", ip, entry.ptr)
             if entry.ptr == NoPTR {
                 return ""
             }
             return entry.ptr
         }
-        dlog("Cache expired for %s", ip)
+        log.Printf("Cache expired for %s", ip)
         r.cache.Delete(ip)
     }
 
@@ -56,9 +56,9 @@ func (r *DNSResolver) LookupPTR(ip string) string {
         if err != nil || ptr == "" {
             ptr = NoPTR
             ttl = defaultNegativeCacheTTL
-            dlog("PTR lookup failed for %s: %v", ip, err)
+            log.Printf("PTR lookup failed for %s: %v", ip, err)
         } else {
-            dlog("PTR lookup success for %s: %s", ip, ptr)
+            log.Printf("PTR lookup success for %s: %s", ip, ptr)
         }
 
         r.cache.Store(ip, &cacheEntry{
@@ -78,7 +78,7 @@ func (r *DNSResolver) LookupPTR(ip string) string {
 func (r *DNSResolver) queryPTR(ip string) (string, error) {
     arpa, err := dns.ReverseAddr(ip)
     if err != nil {
-        dlog("[ERROR] Invalid IP for PTR: %s", ip)
+        log.Printf("[ERROR] Invalid IP for PTR: %s", ip)
         return "", err
     }
 

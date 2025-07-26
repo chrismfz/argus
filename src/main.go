@@ -14,12 +14,14 @@ import (
         "flowenricher/config"
         "flowenricher/collectors"
         "flowenricher/detection"
+        "flowenricher/enrich"
+
 )
 
 var debug bool
-var geo *GeoIP
+var geo *enrich.GeoIP
 var listener *BGPListener
-var resolver *DNSResolver
+var resolver *enrich.DNSResolver
 var myNets []*net.IPNet
 var Version   = "dev" // fallback version
 var BuildTime = "unknown"
@@ -118,6 +120,10 @@ fmt.Printf("Starting flowenricher %s (built at %s)\n", Version, BuildTime)
         }
         debug = debug || cfg.Debug
 
+enrichers, err := enrich.Init(cfg)
+if err != nil {
+	log.Fatalf("Failed to initialize enrichment modules: %v", err)
+}
 
 
 for _, s := range cfg.MyPrefixes {
@@ -140,19 +146,19 @@ for _, n := range myNets {
 
 
         dlog("ClickHouse Host: %s", cfg.ClickHouse.Host)
-        dlog("GeoIP ASN DB: %s", cfg.GeoIP.ASNDB)
+        dlog("enrich.GeoIP ASN DB: %s", cfg.GeoIP.ASNDB)
         if cfg.GeoIP.CityDB != "" {
-                dlog("GeoIP City DB: %s", cfg.GeoIP.CityDB)
+                dlog("enrich.GeoIP City DB: %s", cfg.GeoIP.CityDB)
         }
         if cfg.DNS.Nameserver != "" {
                 dlog("Using DNS resolver: %s", cfg.DNS.Nameserver)
         }
 
-        // GeoIP resolver
+        // enrich.GeoIP resolver
         if enrichEnabled(cfg, "geoip") {
-                geo, err = NewGeoIP(cfg.GeoIP.ASNDB, cfg.GeoIP.CityDB)
+                geo, err = enrich.NewGeoIP(cfg.GeoIP.ASNDB, cfg.GeoIP.CityDB)
                 if err != nil {
-                        log.Fatalf("GeoIP init error: %v", err)
+                        log.Fatalf("enrich.GeoIP init error: %v", err)
                 }
         }
 
@@ -160,14 +166,14 @@ for _, n := range myNets {
 
 // Start SNMP
 
-var ifNameCache *IFNameCache
+var ifNameCache *enrich.IFNameCache
 if enrichEnabled(cfg, "snmp") && cfg.SNMP.Enabled {
     fmt.Printf("[INFO] SNMP enrichment is ENABLED (target = %s)\n", cfg.SNMP.Target)
-    snmpClient, err := InitSNMPClient(cfg.SNMP)
+    snmpClient, err := enrich.InitSNMPClient(cfg.SNMP)
     if err != nil {
         log.Printf("[WARN] SNMP connect failed: %v\n", err)
     } else {
-        ifNameCache = NewIFNameCache()
+        ifNameCache = enrich.NewIFNameCache()
         ifNameCache.StartRefreshLoop(snmpClient, 5*time.Minute)
     }
 } else {
@@ -207,7 +213,7 @@ if enrichEnabled(cfg, "bgp") && cfg.BGP.Listener.Enabled {
 
         // PTR Resolver
         if enrichEnabled(cfg, "ptr") {
-                //resolver = NewDNSResolver(cfg.DNS.Nameserver) // old slow way
+                //resolver = enrich.NewDNSResolver(cfg.DNS.Nameserver) // old slow way
                 StartPTRResolver(cfg) // async clickhouse queries
         }
 
@@ -321,6 +327,8 @@ if cfg.Detection.Enabled {
                         cfg.MyASN,
                         myNets,
                         maxWin,
+			enrichers.Geo,
+			enrichers.DNS,
                 )
 
                 go engine.Run(ctx)

@@ -5,9 +5,9 @@ import (
     "fmt"
     "log"
     "time"
-
     ch "github.com/ClickHouse/clickhouse-go/v2"
     "flowenricher/config"
+    "flowenricher/enrich"
 )
 
 const (
@@ -17,7 +17,7 @@ const (
 )
 
 func StartPTRResolver(cfg *config.Config) {
-    resolver := NewDNSResolver(cfg.DNS.Nameserver)
+    resolver := enrich.NewDNSResolver(cfg.DNS.Nameserver)
     log.Printf("[INFO] DNS (PTR) enrichment is enabled with resolver: %s", cfg.DNS.Nameserver)
 
     conn, err := ch.Open(&ch.Options{
@@ -42,7 +42,7 @@ func StartPTRResolver(cfg *config.Config) {
     }()
 }
 
-func processPTRBatch(conn ch.Conn, resolver *DNSResolver) {
+func processPTRBatch(conn ch.Conn, resolver *enrich.DNSResolver) {
     ctx := context.Background()
 
     query := fmt.Sprintf(`
@@ -84,7 +84,7 @@ func processPTRBatch(conn ch.Conn, resolver *DNSResolver) {
     for _, ip := range ipList {
         ptr := resolver.LookupPTR(ip)
         if ptr == "" {
-            ptr = NoPTR
+            ptr = enrich.NoPTR
         }
 
         asn := geo.GetASNNumber(ip)

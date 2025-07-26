@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 	"github.com/yl2chen/cidranger"
+	"flowenricher/enrich"
 )
 
 type InsertFlowBatcher struct {
@@ -22,7 +23,7 @@ type InsertFlowBatcher struct {
 	isFlushing    bool
 	myASN  uint32
 	myNets []*net.IPNet
-	ifNames *IFNameCache
+	ifNames *enrich.IFNameCache
 }
 
 
@@ -33,7 +34,7 @@ func NewInsertFlowBatcher(
     ranger cidranger.Ranger,
     myASN uint32,
     myNets []*net.IPNet,
-    ifNames *IFNameCache,
+    ifNames *enrich.IFNameCache,
 ) *InsertFlowBatcher {
     ctx, cancel := context.WithCancel(context.Background())
     b := &InsertFlowBatcher{
@@ -108,7 +109,7 @@ func (b *InsertFlowBatcher) flush() {
         return
     }
 
-    // ✅ GeoIP enrichment (ανεξάρτητα από BGP)
+    // ✅ enrich.GeoIP enrichment (ανεξάρτητα από BGP)
     for _, rec := range batch {
         if geo != nil {
             rec.SrcHostCountry = geo.GetCountry(rec.SrcHost)

@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 	"os"
+	"flowenricher/enrich"
 )
 
 
@@ -61,11 +62,13 @@ type Engine struct {
 	myASN     uint32
 	myNets    []*net.IPNet
 	maxWindow time.Duration
+	Geo *enrich.GeoIP
+	DNS *enrich.DNSResolver
 }
 
 // ✅ Δημιουργία του detection engine
 // Removed geo, resolver, ifnames parameters
-func NewEngine(rules []DetectionRule, asn uint32, prefixes []*net.IPNet, maxWin time.Duration) *Engine {
+func NewEngine(rules []DetectionRule, asn uint32, prefixes []*net.IPNet, maxWin time.Duration, geo *enrich.GeoIP, dns *enrich.DNSResolver) *Engine {
 	DlogEngine("NewEngine created with %d rules, maxWindow: %s", len(rules), maxWin.String())
 	return &Engine{
 		rules:     rules,
@@ -73,6 +76,8 @@ func NewEngine(rules []DetectionRule, asn uint32, prefixes []*net.IPNet, maxWin 
 		myNets:    prefixes,
 		flows:     make([]Flow, 0),
 		maxWindow: maxWin,
+		Geo:       geo,
+		DNS:       dns,
 	}
 }
 
@@ -143,7 +148,7 @@ func (e *Engine) runDetection() {
 			switch act {
 			case "alert":
 				// Updated LogDetection call to match new signature
-				LogDetection(rule, flows)
+				LogDetection(rule, flows, e.Geo, e.DNS)
 			case "clickhouse":
 				// TODO: Write to ClickHouse detection table
 			case "slack":

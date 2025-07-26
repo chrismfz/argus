@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"strconv"
 	"time"
+        "flowenricher/enrich"
+
 )
 
-func ParseAndEnrich(line string, geo *GeoIP, dns *DNSResolver, timezone string) (*FlowRecord, error) {
+func ParseAndEnrich(line string, geo *enrich.GeoIP, dns *enrich.DNSResolver, timezone string) (*FlowRecord, error) {
     var j map[string]interface{}
     err := json.Unmarshal([]byte(line), &j)
     if err != nil {
@@ -51,7 +53,7 @@ func ParseAndEnrich(line string, geo *GeoIP, dns *DNSResolver, timezone string) 
 
 
 
-    // GeoIP / ASN
+    // enrich.GeoIP / ASN
     var srcCountry, dstCountry, srcASNName, dstASNName string
     var srcASN, dstASN, dstAS uint32
     if geo != nil {

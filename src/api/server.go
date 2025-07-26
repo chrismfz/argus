@@ -7,6 +7,7 @@ import (
 	"flowenricher/enrich"
         "flowenricher/bgp"
 	"github.com/yl2chen/cidranger"
+	"log"
 )
 
 type GeoIPResponse struct {
@@ -23,11 +24,17 @@ var Geo *enrich.GeoIP
 var Resolver *enrich.DNSResolver
 var Ranger cidranger.Ranger
 
+
 func Start() {
 	http.HandleFunc("/geoip", handleGeoIP)
-	http.ListenAndServe("127.0.0.1:9600", nil)
 	http.HandleFunc("/status", handleStatus)
+
+	log.Println("[API] Listening on 127.0.0.1:9600")
+	if err := http.ListenAndServe("127.0.0.1:9600", nil); err != nil {
+		log.Fatalf("[API] ListenAndServe error: %v", err)
+	}
 }
+
 
 func handleGeoIP(w http.ResponseWriter, r *http.Request) {
 	ipStr := r.URL.Query().Get("ip")

@@ -72,4 +72,4 @@ detection:
   enable_detection_engine: true
   rules_config: /opt/flowenricher/etc/detection.yml
   flow_cache_max_window: 60s
-  debug_detection: true
+  debug_detection: false

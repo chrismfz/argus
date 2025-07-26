@@ -108,36 +108,3 @@ rules:
     min_flows: 70
     time_window: 60s
     action: alert
-
-  - name: ddos_generic_lab
-    proto: any
-    same_dst_ip: true
-    min_flows: 50
-    min_unique_src_ips: 5
-    time_window: 35s
-    action: alert
-
-  - name: syn_flood_lab
-    proto: tcp
-    tcp_flags: SYN
-    same_dst_ip: true
-    min_flows: 30
-    min_avg_pps: 100
-    time_window: 35s
-    action: alert
-
-  - name: vertical_scan_lab
-    proto: tcp
-    same_dst_ip: true
-    unique_dst_ports: 12
-    min_flows: 15
-    time_window: 30s
-    action: alert
-
-  - name: horizontal_scan_lab
-    proto: tcp
-    same_dst_port: true
-    unique_dst_ips: 12
-    min_flows: 15
-    time_window: 30s
-    action: alert

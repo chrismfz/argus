@@ -348,6 +348,11 @@ if cfg.Detection.Enabled {
 
 // START API - make sure it's the last one
 // εκκίνηση REST API
+if resolver == nil && cfg.DNS.Nameserver != "" {
+	resolver = enrich.NewDNSResolver(cfg.DNS.Nameserver)
+}
+
+
 go func() {
         api.Geo = geo
         api.Resolver = resolver

@@ -109,14 +109,6 @@ rules:
     time_window: 60s
     action: alert
 
-  - name: udp_port_scan
-    proto: udp
-    same_dst_ip: true
-    unique_dst_ports: 50
-    min_flows: 100
-    time_window: 20s
-    action: alert
-
   - name: ddos_generic_lab
     proto: any
     same_dst_ip: true
@@ -137,15 +129,15 @@ rules:
   - name: vertical_scan_lab
     proto: tcp
     same_dst_ip: true
-    unique_dst_ports: 10
+    unique_dst_ports: 12
     min_flows: 15
-    time_window: 35s
+    time_window: 30s
     action: alert
 
   - name: horizontal_scan_lab
     proto: tcp
     same_dst_port: true
-    unique_dst_ips: 10
+    unique_dst_ips: 12
     min_flows: 15
-    time_window: 35s
+    time_window: 30s
     action: alert

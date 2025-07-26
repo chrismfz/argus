@@ -216,38 +216,53 @@ func (b *BGPListener) watchUpdates() {
 				}
 				//debugLog.Printf("[BGP] Successfully parsed prefix: %s", prefix.String())
 
-				// Decode attributes
-				var asPath []string
-				var localPref uint32
-				if attrs, err := apiutil.UnmarshalPathAttributes(path.Pattrs); err == nil {
-					//debugLog.Printf("[BGP] Unmarshaled %d path attributes.", len(attrs))
-					for _, attr := range attrs {
-						//debugLog.Printf("[BGP] Processing attribute type: %T", attr)
-						switch v := attr.(type) {
-						case *bgp.PathAttributeAsPath:
-							for _, seg := range v.Value {
-								switch p := seg.(type) {
-								case *bgp.AsPathParam:
-									for _, asn := range p.AS {
-										asPath = append(asPath, fmt.Sprintf("%d", asn))
-									}
-								case *bgp.As4PathParam:
-									for _, asn := range p.AS {
-										asPath = append(asPath, fmt.Sprintf("%d", asn))
-									}
-								}
-							}
-							//debugLog.Printf("[BGP] Parsed ASPath: %v", asPath)
-						case *bgp.PathAttributeLocalPref:
-							localPref = v.Value
-							//debugLog.Printf("[BGP] Parsed LocalPref: %d", localPref)
-						default:
-							//debugLog.Printf("[BGP] Skipping unknown BGP attribute type: %T", v)
-						}
+
+
+// Decode attributes
+var asPath []string
+var localPref uint32
+var communities []uint32
+
+attrs, err := apiutil.UnmarshalPathAttributes(path.Pattrs)
+if err != nil {
+	// log.Printf("[BGP] Failed to unmarshal path attributes: %v", err)
+} else {
+	for _, attr := range attrs {
+		switch v := attr.(type) {
+
+		case *bgp.PathAttributeAsPath:
+			for _, seg := range v.Value {
+				switch p := seg.(type) {
+				case *bgp.AsPathParam:
+					for _, asn := range p.AS {
+						asPath = append(asPath, fmt.Sprintf("%d", asn))
 					}
-				} else {
-					//debugLog.Printf("[BGP] Error unmarshaling path attributes: %v", err)
+				case *bgp.As4PathParam:
+					for _, asn := range p.AS {
+						asPath = append(asPath, fmt.Sprintf("%d", asn))
+					}
 				}
+			}
+
+		case *bgp.PathAttributeLocalPref:
+			localPref = v.Value
+
+		case *bgp.PathAttributeCommunities:
+			for _, com := range v.Value {
+				communities = append(communities, com)
+			}
+
+		default:
+			// Ignore other attribute types
+		}
+	}
+}
+
+
+
+
+
+
 
 				// The 'rawPattrs' part is for debugging raw attribute bytes, good for seeing what's there
 				rawPattrs := make([]string, len(path.Pattrs))

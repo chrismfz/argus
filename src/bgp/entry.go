@@ -9,6 +9,7 @@ type BGPEnrichedEntry struct {
     ASPath    []string
     LocalPref uint32
     ASN       uint32
+    Communities []uint32
 }
 
 // ✅ Χρειάζεται για να ικανοποιεί το cidranger.RangerEntry

@@ -204,6 +204,7 @@ if enrichEnabled(cfg, "bgp") && cfg.BGP.Listener.Enabled {
             Net:    *n,
             ASN:    cfg.MyASN,
             ASPath: []string{fmt.Sprintf("%d", cfg.MyASN)},
+	    //Communities: communities,
         }
         if err := listener.Ranger.Insert(entry); err != nil {
             log.Printf("[WARN] Failed to insert local prefix %s: %v", n.String(), err)

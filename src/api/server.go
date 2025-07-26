@@ -8,6 +8,7 @@ import (
         "flowenricher/bgp"
 	"github.com/yl2chen/cidranger"
 	"log"
+	"fmt"
 )
 
 type GeoIPResponse struct {
@@ -17,6 +18,7 @@ type GeoIPResponse struct {
 	ASNName  string   `json:"asn_name,omitempty"`
 	Country  string   `json:"country,omitempty"`
 	ASPath   []string `json:"as_path,omitempty"`
+	Communities []string `json:"communities,omitempty"` // ✅ νέο
 }
 
 // Πρέπει να τους κάνεις pass απ’ το main
@@ -52,11 +54,12 @@ func handleGeoIP(w http.ResponseWriter, r *http.Request) {
 		Country: Geo.GetCountry(ipStr),
 	}
 
+
+
 	// Lookup σε BGP Ranger για AS Path
 
 if Ranger != nil {
 	if entries, err := Ranger.ContainingNetworks(ip); err == nil && len(entries) > 0 {
-		// πάρε την πιο "μακριά" καταχώρηση (π.χ. /32 είναι πιο specific από /24)
 		longest := entries[0]
 		for _, e := range entries {
 			if lenMask(e.Network().Mask) > lenMask(longest.Network().Mask) {
@@ -65,9 +68,14 @@ if Ranger != nil {
 		}
 		if bgpEntry, ok := longest.(bgp.BGPEnrichedEntry); ok {
 			res.ASPath = bgpEntry.ASPath
+			for _, c := range bgpEntry.Communities {
+				comStr := fmt.Sprintf("%d:%d", c>>16, c&0xFFFF)
+				res.Communities = append(res.Communities, comStr)
+			}
 		}
 	}
 }
+
 
 
 

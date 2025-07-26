@@ -34,7 +34,7 @@ func openDetectionLog() (*os.File, error) {
 // Enrichment (GeoIP, PTR, IFName) should be handled upstream (e.g., in main)
 // before passing flows to the detection engine, or by a separate enrichment service.
 
-func LogDetection(rule DetectionRule, flows []Flow, geo *enrich.GeoIP, dns *enrich.DNSResolver) {
+func LogDetection(rule DetectionRule, flows []Flow, geo *enrich.GeoIP, dns *enrich.DNSResolver, count int) {
 	once.Do(initLogger)
 
 	if len(flows) == 0 {
@@ -49,7 +49,7 @@ func LogDetection(rule DetectionRule, flows []Flow, geo *enrich.GeoIP, dns *enri
 
 	detectionLogger.Printf("         Reason: %s", buildReason(rule))
 
-	// Collect and log source IPs with enrichment
+	// Group by unique SrcIP
 	srcCount := make(map[string]int)
 	for _, f := range flows {
 		srcCount[f.SrcIP]++
@@ -71,8 +71,8 @@ func LogDetection(rule DetectionRule, flows []Flow, geo *enrich.GeoIP, dns *enri
 			country = "--"
 		}
 
-		detectionLogger.Printf("         SRC: %-15s | PTR: %-30s | ASN: AS%d (%s) | Country: %s",
-			ip, ptr, asn, asnName, country)
+		detectionLogger.Printf("         SRC: %-15s | PTR: %-30s | ASN: AS%d (%s) | Country: %s | Count: %d",
+			ip, ptr, asn, asnName, country, count)
 	}
 
 	detectionLogger.Println("---")

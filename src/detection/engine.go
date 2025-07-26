@@ -64,6 +64,7 @@ type Engine struct {
 	maxWindow time.Duration
 	Geo *enrich.GeoIP
 	DNS *enrich.DNSResolver
+	alertCount map[string]map[string]int // rule → srcIP → count
 }
 
 // ✅ Δημιουργία του detection engine
@@ -78,6 +79,7 @@ func NewEngine(rules []DetectionRule, asn uint32, prefixes []*net.IPNet, maxWin 
 		maxWindow: maxWin,
 		Geo:       geo,
 		DNS:       dns,
+		alertCount: make(map[string]map[string]int),
 	}
 }
 
@@ -111,12 +113,12 @@ func (e *Engine) Run(ctx context.Context) {
 // ✅ Εφαρμογή detection rules κάθε 1s
 func (e *Engine) runDetection() {
 	e.mu.Lock()
-	defer e.mu.Unlock() // Ensure mutex is unlocked even if there's an early return or panic
+	defer e.mu.Unlock()
 
-	now := time.Now().UTC() // CHANGED: Use UTC for consistent time comparison
+	now := time.Now().UTC()
 	DlogEngine("runDetection started. Current raw flow cache size: %d", len(e.flows))
 
-	// Διατήρηση flows μέσα στο maxWindow
+	// Κρατάμε μόνο τα πρόσφατα flows εντός του window
 	cutoff := now.Add(-e.maxWindow)
 	var recent []Flow
 	for _, f := range e.flows {
@@ -134,7 +136,6 @@ func (e *Engine) runDetection() {
 		return
 	}
 
-	// Εφαρμογή detection rules
 	for _, rule := range e.rules {
 		DlogEngine("Evaluating rule: %s", rule.Name)
 		matched, flows := evaluateRule(rule, recent, e.myNets)
@@ -144,23 +145,39 @@ func (e *Engine) runDetection() {
 		}
 
 		DlogEngine("Rule '%s' matched with %d flows. Actions: %s", rule.Name, len(flows), rule.Action)
+
+		// Πάρε srcIP (χρησιμοποιούμε το πρώτο flow ως δείγμα)
+		srcIP := flows[0].SrcIP
+		if e.alertCount[rule.Name] == nil {
+			e.alertCount[rule.Name] = make(map[string]int)
+		}
+		e.alertCount[rule.Name][srcIP]++
+		count := e.alertCount[rule.Name][srcIP]
+
+		// ➕ Ενημέρωση log
+		DlogEngine("IP %s triggered rule '%s' %d time(s)", srcIP, rule.Name, count)
+
+		// Εκτέλεση actions
 		for _, act := range parseActions(rule.Action) {
 			switch act {
 			case "alert":
-				// Updated LogDetection call to match new signature
-				LogDetection(rule, flows, e.Geo, e.DNS)
+				LogDetection(rule, flows, e.Geo, e.DNS, count) // 🆕 περνάμε count
 			case "clickhouse":
-				// TODO: Write to ClickHouse detection table
+				// TODO
 			case "slack":
-				// TODO: Post to Slack webhook
+				// TODO
 			case "blackhole":
-				// TODO: Send to BGP or firewall API
+				// TODO
 			default:
 				log.Printf("[WARN] Unknown action: %s for rule %s", act, rule.Name)
 			}
 		}
 	}
 }
+
+
+
+
 
 // ✅ Helper: διαχωρισμός action list (π.χ. "alert, clickhouse")
 func parseActions(s string) []string {

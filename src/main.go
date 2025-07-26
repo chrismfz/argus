@@ -280,7 +280,7 @@ dlog("Extracted timestamp for flow: %s", flowToAdd.Timestamp.Format(time.RFC3339
                                         }
 
                                         counter++
-                                        if counter%1000 == 0 { // Changed to 1000 for more frequent updates during debug
+                                        if counter%10000 == 0 { // Changed to 1000 for more frequent updates during debug
                                                 log.Printf("[NETFLOW] Processed %d flows", counter)
                                         }
                                 }

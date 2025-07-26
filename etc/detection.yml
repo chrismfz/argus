@@ -7,7 +7,7 @@ rules:
     same_dst_ip: true
     min_flows: 10000
     min_unique_src_ips: 100
-    time_window: 5s
+    time_window: 20s
     action: alert
 
   - name: syn_flood
@@ -16,7 +16,7 @@ rules:
     same_dst_ip: true
     min_flows: 5000
     min_avg_pps: 1000
-    time_window: 5s
+    time_window: 20s
     action: alert
 
   - name: udp_flood
@@ -24,7 +24,7 @@ rules:
     same_dst_ip: true
     min_flows: 5000
     min_avg_pps: 2000
-    time_window: 5s
+    time_window: 20s
     action: alert
 
   - name: icmp_flood
@@ -32,7 +32,7 @@ rules:
     same_dst_ip: true
     min_flows: 1000
     min_avg_pps: 1000
-    time_window: 5s
+    time_window: 20s
     action: alert
 
   # ──────────────── Brute Force Attacks ────────────────
@@ -41,7 +41,7 @@ rules:
     dst_port: 22
     same_dst_ip: true
     min_flows: 50
-    time_window: 10s
+    time_window: 20s
     action: alert
 
   - name: smtp_brute
@@ -49,7 +49,7 @@ rules:
     dst_port: 25
     same_dst_ip: true
     min_flows: 40
-    time_window: 10s
+    time_window: 20s
     action: alert
 
   - name: imap_brute
@@ -57,7 +57,7 @@ rules:
     dst_port: 143
     same_dst_ip: true
     min_flows: 40
-    time_window: 10s
+    time_window: 20s
     action: alert
 
   - name: rdp_brute
@@ -65,7 +65,7 @@ rules:
     dst_port: 3389
     same_dst_ip: true
     min_flows: 40
-    time_window: 10s
+    time_window: 20s
     action: alert
 
   # ──────────────── Port Scanning ────────────────
@@ -74,7 +74,7 @@ rules:
     same_dst_ip: true
     unique_dst_ports: 100
     min_flows: 150
-    time_window: 10s
+    time_window: 20s
     action: alert
 
   - name: horizontal_scan
@@ -82,14 +82,14 @@ rules:
     same_dst_port: true
     unique_dst_ips: 100
     min_flows: 150
-    time_window: 10s
+    time_window: 20s
     action: alert
 
   - name: generic_scanner
     proto: any
     unique_dst_ports: 200
     min_flows: 300
-    time_window: 10s
+    time_window: 20s
     action: alert
 
   - name: dns_flood
@@ -98,7 +98,7 @@ rules:
     same_dst_ip: true
     min_flows: 3000
     min_unique_src_ips: 50
-    time_window: 5s
+    time_window: 15s
     action: alert
 
   - name: slow_horizontal_scan
@@ -114,7 +114,7 @@ rules:
     same_dst_ip: true
     unique_dst_ports: 50
     min_flows: 100
-    time_window: 10s
+    time_window: 20s
     action: alert
 
   - name: ddos_generic_lab
@@ -122,7 +122,7 @@ rules:
     same_dst_ip: true
     min_flows: 50
     min_unique_src_ips: 5
-    time_window: 30s
+    time_window: 35s
     action: alert
 
   - name: syn_flood_lab
@@ -131,7 +131,7 @@ rules:
     same_dst_ip: true
     min_flows: 30
     min_avg_pps: 100
-    time_window: 30s
+    time_window: 35s
     action: alert
 
   - name: vertical_scan_lab
@@ -139,7 +139,7 @@ rules:
     same_dst_ip: true
     unique_dst_ports: 10
     min_flows: 15
-    time_window: 30s
+    time_window: 35s
     action: alert
 
   - name: horizontal_scan_lab
@@ -147,5 +147,5 @@ rules:
     same_dst_port: true
     unique_dst_ips: 10
     min_flows: 15
-    time_window: 30s
+    time_window: 35s
     action: alert

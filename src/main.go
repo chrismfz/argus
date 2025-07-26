@@ -15,12 +15,16 @@ import (
         "flowenricher/collectors"
         "flowenricher/detection"
         "flowenricher/enrich"
+        "flowenricher/api"
+        "flowenricher/bgp"
+
+
 
 )
 
 var debug bool
 var geo *enrich.GeoIP
-var listener *BGPListener
+var listener *bgp.BGPListener
 var resolver *enrich.DNSResolver
 var myNets []*net.IPNet
 var Version   = "dev" // fallback version
@@ -163,6 +167,16 @@ for _, n := range myNets {
         }
 
 
+// START API 
+// εκκίνηση REST API
+if geo != nil && resolver != nil && listener != nil {
+	go func() {
+		api.Geo = geo
+		api.Resolver = resolver
+		api.Ranger = listener.Ranger
+		api.Start()
+	}()
+}
 
 // Start SNMP
 
@@ -185,7 +199,7 @@ if enrichEnabled(cfg, "snmp") && cfg.SNMP.Enabled {
 
 // BGP Listener
 if enrichEnabled(cfg, "bgp") && cfg.BGP.Listener.Enabled {
-    listener = NewBGPListener(cfg.BGP.Listener)
+    listener = bgp.NewBGPListener(cfg.BGP.Listener)
     if err := listener.Start(); err != nil {
         log.Fatalf("Failed to start BGP listener: %v", err)
     }
@@ -196,7 +210,7 @@ if enrichEnabled(cfg, "bgp") && cfg.BGP.Listener.Enabled {
 
     // 👉 Inject manually your own prefixes into the Ranger
     for _, n := range myNets {
-        entry := BGPEnrichedEntry{
+        entry := bgp.BGPEnrichedEntry{
             Net:    *n,
             ASN:    cfg.MyASN,
             ASPath: []string{fmt.Sprintf("%d", cfg.MyASN)},
@@ -304,7 +318,7 @@ dlog("Extracted timestamp for flow: %s", flowToAdd.Timestamp.Format(time.RFC3339
 if cfg.Detection.Enabled {
 	// ✅ Ενεργοποίησε detection debugging αν ζητήθηκε
 	detection.InitDebugDetection(cfg.Detection.DebugDetection)
-	debugLog.Println("== Detection debug log initialized ==")
+	dlog("== Detection debug log initialized ==")
 
                 fmt.Println("[INFO] Detection engine is ENABLED")
                 detectionRules, err = detection.LoadDetectionRules(cfg.Detection.RulesConfig)

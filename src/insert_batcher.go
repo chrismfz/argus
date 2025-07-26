@@ -8,6 +8,8 @@ import (
 	"time"
 	"github.com/yl2chen/cidranger"
 	"flowenricher/enrich"
+        "flowenricher/bgp"
+
 )
 
 type InsertFlowBatcher struct {
@@ -151,7 +153,7 @@ for _, rec := range batch {
         }
     }
 
-    enriched, ok := bestEntry.(BGPEnrichedEntry)
+    enriched, ok := bestEntry.(bgp.BGPEnrichedEntry)
     if !ok {
         continue
     }
@@ -190,7 +192,7 @@ for _, rec := range batch {
         }
     }
 
-    enriched, ok := bestEntry.(BGPEnrichedEntry)
+    enriched, ok := bestEntry.(bgp.BGPEnrichedEntry)
     if !ok {
         continue
     }

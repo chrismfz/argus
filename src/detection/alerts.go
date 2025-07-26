@@ -33,12 +33,12 @@ func openDetectionLog() (*os.File, error) {
 // 🔔 Εγγραφή σε log όταν ταιριάζει κάποιο rule (χωρίς enrichment εδώ)
 // Enrichment (GeoIP, PTR, IFName) should be handled upstream (e.g., in main)
 // before passing flows to the detection engine, or by a separate enrichment service.
+
 func LogDetection(rule DetectionRule, flows []Flow, geo *enrich.GeoIP, dns *enrich.DNSResolver) {
 	once.Do(initLogger)
 
 	if len(flows) == 0 {
-		// Corrected from fmt.Println to DlogEngine for formatted debug output
-		DlogEngine("LogDetection called with empty flows for rule: %s", rule.Name) // CHANGED: Call DlogEngine
+		DlogEngine("LogDetection called with empty flows for rule: %s", rule.Name)
 		return
 	}
 
@@ -49,17 +49,32 @@ func LogDetection(rule DetectionRule, flows []Flow, geo *enrich.GeoIP, dns *enri
 
 	detectionLogger.Printf("         Reason: %s", buildReason(rule))
 
+	// Collect and log source IPs with enrichment
 	srcCount := make(map[string]int)
 	for _, f := range flows {
 		srcCount[f.SrcIP]++
 	}
 
-	// Log source IPs without enrichment details
 	for ip := range srcCount {
-		detectionLogger.Printf("         SRC: %-15s", ip)
-	}
-	detectionLogger.Println("---")
-	// Corrected from fmt.Println to DlogEngine for formatted debug output
-	DlogEngine("Alert logged for rule '%s'", rule.Name) // CHANGED: Call DlogEngine
-}
+		ptr := dns.LookupPTR(ip)
+		asn := geo.GetASNNumber(ip)
+		asnName := geo.GetASNName(ip)
+		country := geo.GetCountry(ip)
 
+		if ptr == "" {
+			ptr = "-"
+		}
+		if asnName == "" {
+			asnName = "Unknown"
+		}
+		if country == "" {
+			country = "--"
+		}
+
+		detectionLogger.Printf("         SRC: %-15s | PTR: %-30s | ASN: AS%d (%s) | Country: %s",
+			ip, ptr, asn, asnName, country)
+	}
+
+	detectionLogger.Println("---")
+	DlogEngine("Alert logged for rule '%s'", rule.Name)
+}

@@ -32,6 +32,7 @@ type BGPListener struct {
 	Cfg       config.BGPListenerConfig
 	Ranger    cidranger.Ranger
 	PathCount int
+	LocalAddress string
 }
 
 func NewBGPListener(cfg config.BGPListenerConfig) *BGPListener {
@@ -327,6 +328,8 @@ func (b *BGPListener) watchPeers() {
             if p.State.SessionState == api.PeerState_ESTABLISHED {
                 log.Printf("[BGP] Peer %s ESTABLISHED. Logging detailed info...", p.Conf.NeighborAddress)
                 b.logEstablishedPeerDetails(p.Conf.NeighborAddress)
+		b.LocalAddress = p.Transport.LocalAddress
+	        log.Printf("[BGP]   Local Address (our IP): %s", b.LocalAddress)
             }
 		}
 	}); err != nil {
@@ -398,6 +401,12 @@ func (b *BGPListener) logEstablishedPeerDetails(peerAddress string) {
 			log.Printf("[BGP]   Timers State information not available.")
 		}
 
+
+
+if p.Transport != nil {
+    LocalBGPAddress = p.Transport.LocalAddress
+    log.Printf("[BGP]   Local Address (our IP): %s", LocalBGPAddress)
+}
 
 		// Capabilities are in p.State.RemoteCap and p.State.LocalCap
 		remoteCaps := make([]string, 0)

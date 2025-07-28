@@ -17,6 +17,7 @@ import (
 var AnnounceServer *gobgpserver.BgpServer
 var announcedPrefixes = make(map[string]AnnouncedPrefix)
 var announceMu sync.RWMutex
+var LocalBGPAddress string
 
 type AnnouncedPrefix struct {
 	Prefix      string     `json:"prefix"`
@@ -62,11 +63,18 @@ func AnnouncePrefix(prefix, nextHop string, communities []string) error {
     }
     nlriAny, _ := anypb.New(nlri)
 
-    // Automatically detect nextHop if empty
-    if nextHop == "" {
-        // iBGP allows 0.0.0.0 as next hop (use local)
-        nextHop = "0.0.0.0"
+
+if nextHop == "" {
+    if LocalBGPAddress != "" {
+        nextHop = LocalBGPAddress
+    } else {
+        nextHop = "127.0.0.1"
     }
+}
+
+
+
+
 
     attrs := []bgp.PathAttributeInterface{
         bgp.NewPathAttributeOrigin(0),

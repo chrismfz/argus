@@ -235,7 +235,7 @@ if err != nil {
 case *bgp.PathAttributeCommunities:
     for _, c := range v.Value {
         communities = append(communities, c)
-        log.Printf("[BGP] Community received: %d:%d", c>>16, c&0xFFFF)
+        //log.Printf("[BGP] Community received: %d:%d", c>>16, c&0xFFFF)
     }
 
 

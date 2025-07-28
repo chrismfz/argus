@@ -194,6 +194,7 @@ if enrichEnabled(cfg, "bgp") && cfg.BGP.Listener.Enabled {
         log.Fatalf("Failed to start BGP listener: %v", err)
     }
 
+bgp.SetAnnounceServer(listener.Server)
     fmt.Println("[INFO] Warming up BGP session to collect prefixes...")
     time.Sleep(30 * time.Second)
     fmt.Printf("[INFO] BGP warm-up done. Known prefixes: %d\n", listener.PathCount)

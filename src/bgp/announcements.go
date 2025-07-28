@@ -78,6 +78,7 @@ if nextHop == "" {
 
     attrs := []bgp.PathAttributeInterface{
         bgp.NewPathAttributeOrigin(0),
+	bgp.NewPathAttributeAsPath([]bgp.AsPathParamInterface{}),
         bgp.NewPathAttributeNextHop(nextHop),
     }
 

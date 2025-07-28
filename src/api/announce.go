@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
+//	"strings"
 	"time"
-
+	"net"
 	"flowenricher/bgp"
 )
 
@@ -19,35 +19,45 @@ type AnnouncedPrefix struct {
 
 var activeAnnouncements = make(map[string]AnnouncedPrefix)
 
+
 func handleAnnounce(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+    if r.Method != http.MethodPost {
+        http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+        return
+    }
 
-	var req AnnouncedPrefix
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request", http.StatusBadRequest)
-		return
-	}
+    var req AnnouncedPrefix
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        http.Error(w, "Invalid request", http.StatusBadRequest)
+        return
+    }
 
-	attrs := []string{}
-	if len(req.Communities) > 0 {
-		attrs = append(attrs, fmt.Sprintf("community %s", strings.Join(req.Communities, ",")))
-	}
+    // Validate prefix
+    if req.Prefix == "" {
+        http.Error(w, "Prefix is required", http.StatusBadRequest)
+        return
+    }
 
-	err := bgp.AnnouncePrefix(req.Prefix, req.NextHop, req.Communities)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to announce: %v", err), http.StatusInternalServerError)
-		return
-	}
+    // Optional: validate nextHop if set
+    if req.NextHop != "" && net.ParseIP(req.NextHop) == nil {
+        http.Error(w, "Invalid next_hop IP", http.StatusBadRequest)
+        return
+    }
 
-	req.Timestamp = time.Now()
-	activeAnnouncements[req.Prefix] = req
+    err := bgp.AnnouncePrefix(req.Prefix, req.NextHop, req.Communities)
+    if err != nil {
+        http.Error(w, fmt.Sprintf("Failed to announce: %v", err), http.StatusInternalServerError)
+        return
+    }
 
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, "Announced %s\n", req.Prefix)
+    req.Timestamp = time.Now()
+    activeAnnouncements[req.Prefix] = req
+
+    w.WriteHeader(http.StatusOK)
+    fmt.Fprintf(w, "Announced %s\n", req.Prefix)
 }
+
+
 
 func handleWithdraw(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {

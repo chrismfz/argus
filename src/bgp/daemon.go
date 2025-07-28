@@ -230,27 +230,32 @@ if err != nil {
 	for _, attr := range attrs {
 		switch v := attr.(type) {
 
-		case *bgp.PathAttributeAsPath:
-			for _, seg := range v.Value {
-				switch p := seg.(type) {
-				case *bgp.AsPathParam:
-					for _, asn := range p.AS {
-						asPath = append(asPath, fmt.Sprintf("%d", asn))
-					}
-				case *bgp.As4PathParam:
-					for _, asn := range p.AS {
-						asPath = append(asPath, fmt.Sprintf("%d", asn))
-					}
+
+
+case *bgp.PathAttributeCommunities:
+    for _, c := range v.Value {
+        communities = append(communities, c)
+        log.Printf("[BGP] Community received: %d:%d", c>>16, c&0xFFFF)
+    }
+
+
+case *bgp.PathAttributeAsPath:
+	for _, seg := range v.Value {
+		switch p := seg.(type) {
+		case *bgp.AsPathParam:
+			for _, asn := range p.AS {
+				asPath = append(asPath, fmt.Sprintf("%d", asn))
+			}
+case *bgp.As4PathParam:
+		for _, asn := range p.AS {
+			asPath = append(asPath, fmt.Sprintf("%d", asn))
 				}
 			}
+		}
 
 		case *bgp.PathAttributeLocalPref:
 			localPref = v.Value
 
-		case *bgp.PathAttributeCommunities:
-			for _, com := range v.Value {
-				communities = append(communities, com)
-			}
 
 		default:
 			// Ignore other attribute types

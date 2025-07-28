@@ -30,80 +30,83 @@ func SetAnnounceServer(s *gobgpserver.BgpServer) {
 }
 
 func AnnouncePrefix(prefix, nextHop string, communities []string) error {
-	if AnnounceServer == nil {
-		return fmt.Errorf("BGP server not set")
-	}
+    if AnnounceServer == nil {
+        return fmt.Errorf("BGP server not set")
+    }
 
-	// Convert communities to uint32 format
-	coms := []uint32{}
-	for _, c := range communities {
-		parts := strings.Split(c, ":")
-		if len(parts) != 2 {
-			return fmt.Errorf("invalid community: %s", c)
-		}
-		var high, low uint32
-		fmt.Sscanf(parts[0], "%d", &high)
-		fmt.Sscanf(parts[1], "%d", &low)
-		coms = append(coms, (high<<16)|low)
-	}
-
-	// NLRI
-	prefixParts := strings.Split(prefix, "/")
-	if len(prefixParts) != 2 {
-		return fmt.Errorf("invalid prefix format: %s", prefix)
-	}
-	ipPrefix := prefixParts[0]
-	maskLen := 0
-	fmt.Sscanf(prefixParts[1], "%d", &maskLen)
-
-	nlri := &api.IPAddressPrefix{
-		Prefix:    ipPrefix,
-		PrefixLen: uint32(maskLen),
-	}
-	nlriAny, _ := anypb.New(nlri)
-
-	// Attributes
-	attrs := []bgp.PathAttributeInterface{
-		bgp.NewPathAttributeOrigin(0),
-		bgp.NewPathAttributeNextHop(nextHop),
-	}
-
-	if len(coms) > 0 {
-		attrs = append(attrs, bgp.NewPathAttributeCommunities(coms))
-	}
-
-   // 🔽 DEBUG OUTPUT before marshal
-        log.Println("[BGP] Communities (uint32):", coms)
-        for _, attr := range attrs {
-                log.Printf("[BGP] Attribute: %T = %+v", attr, attr)
+    // Convert communities to uint32 format
+    coms := []uint32{}
+    for _, c := range communities {
+        parts := strings.Split(c, ":")
+        if len(parts) != 2 {
+            return fmt.Errorf("invalid community: %s", c)
         }
+        var high, low uint32
+        fmt.Sscanf(parts[0], "%d", &high)
+        fmt.Sscanf(parts[1], "%d", &low)
+        coms = append(coms, (high<<16)|low)
+    }
 
-	attrsAny, _ := apiutil.MarshalPathAttributes(attrs)
+    // NLRI
+    prefixParts := strings.Split(prefix, "/")
+    if len(prefixParts) != 2 {
+        return fmt.Errorf("invalid prefix format: %s", prefix)
+    }
+    ipPrefix := prefixParts[0]
+    maskLen := 0
+    fmt.Sscanf(prefixParts[1], "%d", &maskLen)
 
-	// Send
-	_, err := AnnounceServer.AddPath(context.Background(), &api.AddPathRequest{
-		Path: &api.Path{
-			Family: &api.Family{Afi: api.Family_AFI_IP, Safi: api.Family_SAFI_UNICAST},
-			Nlri:   nlriAny,
-			Pattrs: attrsAny,
-		},
-	})
-	if err != nil {
-		return err
-	}
+    nlri := &api.IPAddressPrefix{
+        Prefix:    ipPrefix,
+        PrefixLen: uint32(maskLen),
+    }
+    nlriAny, _ := anypb.New(nlri)
 
-	// Save to map
-	announceMu.Lock()
-	announcedPrefixes[prefix] = AnnouncedPrefix{
-		Prefix:      prefix,
-		NextHop:     nextHop,
-		Communities: communities,
-		Timestamp:   time.Now(),
-	}
-	announceMu.Unlock()
+    // Automatically detect nextHop if empty
+    if nextHop == "" {
+        // iBGP allows 0.0.0.0 as next hop (use local)
+        nextHop = "0.0.0.0"
+    }
 
-	return nil
+    attrs := []bgp.PathAttributeInterface{
+        bgp.NewPathAttributeOrigin(0),
+        bgp.NewPathAttributeNextHop(nextHop),
+    }
+
+    if len(coms) > 0 {
+        attrs = append(attrs, bgp.NewPathAttributeCommunities(coms))
+    }
+
+    log.Println("[BGP] Communities (uint32):", coms)
+    for _, attr := range attrs {
+        log.Printf("[BGP] Attribute: %T = %+v", attr, attr)
+    }
+
+    attrsAny, _ := apiutil.MarshalPathAttributes(attrs)
+
+    _, err := AnnounceServer.AddPath(context.Background(), &api.AddPathRequest{
+        Path: &api.Path{
+            Family: &api.Family{Afi: api.Family_AFI_IP, Safi: api.Family_SAFI_UNICAST},
+            Nlri:   nlriAny,
+            Pattrs: attrsAny,
+        },
+    })
+    if err != nil {
+        return err
+    }
+
+    announceMu.Lock()
+    announcedPrefixes[prefix] = AnnouncedPrefix{
+        Prefix:      prefix,
+        NextHop:     nextHop,
+        Communities: communities,
+        Timestamp:   time.Now(),
+    }
+    announceMu.Unlock()
+
+    return nil
 }
+
 
 func WithdrawPrefix(prefix string) error {
 	if AnnounceServer == nil {

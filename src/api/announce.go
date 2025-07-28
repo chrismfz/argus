@@ -44,6 +44,14 @@ func handleAnnounce(w http.ResponseWriter, r *http.Request) {
         return
     }
 
+if req.NextHop == "" {
+    if bgp.LocalBGPAddress != "" {
+        req.NextHop = bgp.LocalBGPAddress
+    } else {
+        req.NextHop = "127.0.0.1"
+    }
+}
+
     err := bgp.AnnouncePrefix(req.Prefix, req.NextHop, req.Communities)
     if err != nil {
         http.Error(w, fmt.Sprintf("Failed to announce: %v", err), http.StatusInternalServerError)

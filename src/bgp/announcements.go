@@ -76,11 +76,22 @@ if nextHop == "" {
 
 
 
-    attrs := []bgp.PathAttributeInterface{
-        bgp.NewPathAttributeOrigin(0),
-	bgp.NewPathAttributeAsPath([]bgp.AsPathParamInterface{}),
-        bgp.NewPathAttributeNextHop(nextHop),
-    }
+attrs := []bgp.PathAttributeInterface{
+    bgp.NewPathAttributeOrigin(0),
+    bgp.NewPathAttributeAsPath([]bgp.AsPathParamInterface{
+        &bgp.As4PathParam{
+            Num:  1,
+            AS:   []uint32{216285},
+            Type: bgp.BGP_ASPATH_ATTR_TYPE_SEQ,
+        },
+    }),
+    bgp.NewPathAttributeNextHop(nextHop),
+}
+
+
+
+
+
 
     if len(coms) > 0 {
         attrs = append(attrs, bgp.NewPathAttributeCommunities(coms))

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 
 	api "github.com/osrg/gobgp/v3/api"
 	"github.com/osrg/gobgp/v3/pkg/apiutil"
@@ -13,6 +15,15 @@ import (
 )
 
 var AnnounceServer *gobgpserver.BgpServer
+var announcedPrefixes = make(map[string]AnnouncedPrefix)
+var announceMu sync.RWMutex
+
+type AnnouncedPrefix struct {
+	Prefix      string     `json:"prefix"`
+	NextHop     string     `json:"next_hop"`
+	Communities []string   `json:"communities"`
+	Timestamp   time.Time  `json:"timestamp"`
+}
 
 func SetAnnounceServer(s *gobgpserver.BgpServer) {
 	AnnounceServer = s
@@ -45,7 +56,6 @@ func AnnouncePrefix(prefix, nextHop string, communities []string) error {
 	maskLen := 0
 	fmt.Sscanf(prefixParts[1], "%d", &maskLen)
 
-	// Use gobgp api NLRI
 	nlri := &api.IPAddressPrefix{
 		Prefix:    ipPrefix,
 		PrefixLen: uint32(maskLen),
@@ -70,12 +80,33 @@ func AnnouncePrefix(prefix, nextHop string, communities []string) error {
 			Pattrs: attrsAny,
 		},
 	})
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Save to map
+	announceMu.Lock()
+	announcedPrefixes[prefix] = AnnouncedPrefix{
+		Prefix:      prefix,
+		NextHop:     nextHop,
+		Communities: communities,
+		Timestamp:   time.Now(),
+	}
+	announceMu.Unlock()
+
+	return nil
 }
 
 func WithdrawPrefix(prefix string) error {
 	if AnnounceServer == nil {
 		return fmt.Errorf("BGP server not set")
+	}
+
+	announceMu.RLock()
+	entry, ok := announcedPrefixes[prefix]
+	announceMu.RUnlock()
+	if !ok {
+		return fmt.Errorf("prefix not announced: %s", prefix)
 	}
 
 	prefixParts := strings.Split(prefix, "/")
@@ -92,11 +123,33 @@ func WithdrawPrefix(prefix string) error {
 	}
 	nlriAny, _ := anypb.New(nlri)
 
+	attrs := []bgp.PathAttributeInterface{
+		bgp.NewPathAttributeOrigin(0),
+		bgp.NewPathAttributeNextHop(entry.NextHop),
+	}
+	attrsAny, _ := apiutil.MarshalPathAttributes(attrs)
+
 	err := AnnounceServer.DeletePath(context.Background(), &api.DeletePathRequest{
 		Path: &api.Path{
 			Family: &api.Family{Afi: api.Family_AFI_IP, Safi: api.Family_SAFI_UNICAST},
 			Nlri:   nlriAny,
+			Pattrs: attrsAny,
 		},
 	})
+	if err == nil {
+		announceMu.Lock()
+		delete(announcedPrefixes, prefix)
+		announceMu.Unlock()
+	}
 	return err
+}
+
+func ListAnnouncements() map[string]AnnouncedPrefix {
+	announceMu.RLock()
+	defer announceMu.RUnlock()
+	copy := make(map[string]AnnouncedPrefix, len(announcedPrefixes))
+	for k, v := range announcedPrefixes {
+		copy[k] = v
+	}
+	return copy
 }

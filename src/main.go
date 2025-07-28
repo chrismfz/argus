@@ -190,6 +190,7 @@ if enrichEnabled(cfg, "snmp") && cfg.SNMP.Enabled {
 // BGP Listener
 if enrichEnabled(cfg, "bgp") && cfg.BGP.Listener.Enabled {
     listener = bgp.NewBGPListener(cfg.BGP.Listener)
+bgp.SetMyASN(cfg.MyASN)
     if err := listener.Start(); err != nil {
         log.Fatalf("Failed to start BGP listener: %v", err)
     }

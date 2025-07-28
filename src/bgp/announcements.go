@@ -18,6 +18,12 @@ var AnnounceServer *gobgpserver.BgpServer
 var announcedPrefixes = make(map[string]AnnouncedPrefix)
 var announceMu sync.RWMutex
 var LocalBGPAddress string
+var MyASN uint32
+
+func SetMyASN(asn uint32) {
+    MyASN = asn
+}
+
 
 type AnnouncedPrefix struct {
 	Prefix      string     `json:"prefix"`
@@ -78,10 +84,11 @@ if nextHop == "" {
 
 attrs := []bgp.PathAttributeInterface{
     bgp.NewPathAttributeOrigin(0),
-    bgp.NewPathAttributeAsPath([]bgp.AsPathParamInterface{
+
+bgp.NewPathAttributeAsPath([]bgp.AsPathParamInterface{
         &bgp.As4PathParam{
             Num:  1,
-            AS:   []uint32{216285},
+            AS:   []uint32{MyASN}, // Δυναμικό από config
             Type: bgp.BGP_ASPATH_ATTR_TYPE_SEQ,
         },
     }),
@@ -97,7 +104,27 @@ attrs := []bgp.PathAttributeInterface{
         attrs = append(attrs, bgp.NewPathAttributeCommunities(coms))
     }
 
+
+var communityStrings []string
+for _, c := range coms {
+    high := c >> 16
+    low := c & 0xFFFF
+    communityStrings = append(communityStrings, fmt.Sprintf("%d:%d", high, low))
+}
+
+log.Printf("[BGP] Announcing prefix: %s via %s with communities: %s", prefix, nextHop, strings.Join(communityStrings, ", "))
+
+
     log.Println("[BGP] Communities (uint32):", coms)
+// 👇 Ανθρώπινη μορφή
+var strComms []string
+for _, c := range coms {
+    high := c >> 16
+    low := c & 0xFFFF
+    strComms = append(strComms, fmt.Sprintf("%d:%d", high, low))
+}
+log.Println("[BGP] Communities (string):", strings.Join(strComms, ", "))
+
     for _, attr := range attrs {
         log.Printf("[BGP] Attribute: %T = %+v", attr, attr)
     }

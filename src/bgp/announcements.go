@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 	"time"
-
+	"log"
 	api "github.com/osrg/gobgp/v3/api"
 	"github.com/osrg/gobgp/v3/pkg/apiutil"
 	"github.com/osrg/gobgp/v3/pkg/packet/bgp"
@@ -67,9 +67,17 @@ func AnnouncePrefix(prefix, nextHop string, communities []string) error {
 		bgp.NewPathAttributeOrigin(0),
 		bgp.NewPathAttributeNextHop(nextHop),
 	}
+
 	if len(coms) > 0 {
 		attrs = append(attrs, bgp.NewPathAttributeCommunities(coms))
 	}
+
+   // 🔽 DEBUG OUTPUT before marshal
+        log.Println("[BGP] Communities (uint32):", coms)
+        for _, attr := range attrs {
+                log.Printf("[BGP] Attribute: %T = %+v", attr, attr)
+        }
+
 	attrsAny, _ := apiutil.MarshalPathAttributes(attrs)
 
 	// Send

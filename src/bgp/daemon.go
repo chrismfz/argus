@@ -55,40 +55,41 @@ func NewBGPListener(cfg config.BGPListenerConfig) *BGPListener {
 func (b *BGPListener) Start() error {
     log.Println("[BGP] Starting embedded BGP listener")
 
-    // ✅ Start GoBGP with LOCAL ASN (the ASN we declare)
-    // When using 4-byte ASNs, the 'Asn' in the Global config for StartBgp
-    // should be the ACTUAL 4-byte ASN (b.Cfg.LocalASN, e.g., 65001).
-    // GoBGP will then automatically handle the AS_TRANS (23456) in the 2-byte BGP header
-    // and include the correct 4-byte ASN (65001) in the capabilities.
+    // 1) Determine our BGP Identifier: use RouterID if set, otherwise ListenIP
+    routerID := b.Cfg.RouterID
+    if routerID == "" {
+        routerID = b.Cfg.ListenIP
+    }
+
+    // 2) Start GoBGP itself
     if err := b.Server.StartBgp(b.Ctx, &api.StartBgpRequest{
         Global: &api.Global{
-            Asn:        b.Cfg.LocalASN,         // 👈 CHANGE THIS: Use your ACTUAL Local ASN (e.g., 65001)
-            RouterId:   b.Cfg.RouterID,
+            Asn:        b.Cfg.LocalASN,  // your 4-byte ASN
+            RouterId:   routerID,        // BGP Identifier
             ListenPort: 179,
         },
     }); err != nil {
         return fmt.Errorf("failed to start BGP: %w", err)
     }
+    log.Printf("[BGP] Listening for peers at %s (ASN: %d, Router-ID: %s)",
+        b.Cfg.ListenIP, b.Cfg.LocalASN, routerID)
 
-    log.Printf("[BGP] Listening for peers at %s (local ASN: %d, announced as %d by GoBGP)", b.Cfg.ListenIP, b.Cfg.LocalASN, b.Cfg.LocalASN)
-
-    // ✅ Configure remote peer (MikroTik)
-    // LocalAsn in AddPeerRequest should also be the actual local ASN (b.Cfg.LocalASN, e.g., 65001).
-    // GoBGP will handle the 2-byte AS_TRANS and 4-byte capability based on this.
+    // 3) Add the MikroTik as an eBGP peer
     if err := b.Server.AddPeer(b.Ctx, &api.AddPeerRequest{
         Peer: &api.Peer{
             Conf: &api.PeerConf{
-                NeighborAddress: b.Cfg.RouterID,  // 👈 peer IP (116.203.217.190)
-                PeerAsn:         b.Cfg.RemoteASN, // 👈 MikroTik ASN (216285)
-                LocalAsn:        b.Cfg.LocalASN,  // 👈 CHANGE THIS: Use your ACTUAL Local ASN (e.g., 65001)
+                NeighborAddress: b.Cfg.PeerIP,   // MikroTik’s IP from config
+                PeerAsn:         b.Cfg.RemoteASN,// MikroTik’s ASN
+                LocalAsn:        b.Cfg.LocalASN, // your ASN
             },
             Transport: &api.Transport{
-                PassiveMode: true,
+                PassiveMode:  false,            // GoBGP will actively dial out
+                LocalAddress: b.Cfg.ListenIP,   // bind from your VM’s IP
             },
-    EbgpMultihop: &api.EbgpMultihop{
-        Enabled: true,
-        MultihopTtl: 26, // max 255
-},
+            EbgpMultihop: &api.EbgpMultihop{
+                Enabled:     true,
+                MultihopTtl: 26,
+            },
             AfiSafis: []*api.AfiSafi{
                 {
                     Config: &api.AfiSafiConfig{
@@ -111,16 +112,13 @@ func (b *BGPListener) Start() error {
     }); err != nil {
         return fmt.Errorf("failed to add BGP peer: %w", err)
     }
-
-    log.Printf("[BGP] Added peer %s (remote ASN: %d) from local ASN %d", b.Cfg.RouterID, b.Cfg.RemoteASN, b.Cfg.LocalASN)
+    log.Printf("[BGP] Added eBGP peer %s (remote ASN: %d) from local ASN %d",
+        b.Cfg.PeerIP, b.Cfg.RemoteASN, b.Cfg.LocalASN)
 
     go b.watchUpdates()
     go b.watchPeers()
-
     return nil
 }
-
-
 
 
 

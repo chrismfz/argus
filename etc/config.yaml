@@ -9,14 +9,14 @@ collectors:
 
 bgp:
   bgp_listener:
-    enabled: true
-    listen_ip: "0.0.0.0"
-    asn: 65001
-    local_asn: 65001
-    remote_asn: 216285
-    router_id: "84.54.49.1"
-    max_peers: 2
-
+    enabled:    true
+    listen_ip:  "116.203.217.190"   # your VM’s IP (used for binding & source of TCP)
+    router_id:  "116.203.217.190"   # optional: leave empty to default to listen_ip
+    peer_ip:    "84.54.49.1"        # MikroTik’s IP
+    asn:        65001               # your 4-byte ASN
+    local_asn:  65001
+    remote_asn: 216285              # MikroTik’s ASN
+    max_peers:  2
 
 clickhouse:
   host: "localhost"

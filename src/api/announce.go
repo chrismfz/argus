@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-//	"strings"
 	"time"
 	"net"
 	"flowenricher/bgp"
@@ -17,55 +16,50 @@ type AnnouncedPrefix struct {
 	Timestamp   time.Time `json:"timestamp"`
 }
 
-var activeAnnouncements = make(map[string]AnnouncedPrefix)
-
+// ❌ Δεν χρειάζεται πια
+// var activeAnnouncements = make(map[string]AnnouncedPrefix)
 
 func handleAnnounce(w http.ResponseWriter, r *http.Request) {
-    if r.Method != http.MethodPost {
-        http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-        return
-    }
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 
-    var req AnnouncedPrefix
-    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-        http.Error(w, "Invalid request", http.StatusBadRequest)
-        return
-    }
+	var req AnnouncedPrefix
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
 
-    // Validate prefix
-    if req.Prefix == "" {
-        http.Error(w, "Prefix is required", http.StatusBadRequest)
-        return
-    }
+	// Validate prefix
+	if req.Prefix == "" {
+		http.Error(w, "Prefix is required", http.StatusBadRequest)
+		return
+	}
 
-    // Optional: validate nextHop if set
-    if req.NextHop != "" && net.ParseIP(req.NextHop) == nil {
-        http.Error(w, "Invalid next_hop IP", http.StatusBadRequest)
-        return
-    }
+	// Optional: validate nextHop if set
+	if req.NextHop != "" && net.ParseIP(req.NextHop) == nil {
+		http.Error(w, "Invalid next_hop IP", http.StatusBadRequest)
+		return
+	}
 
-if req.NextHop == "" {
-    if bgp.LocalBGPAddress != "" {
-        req.NextHop = bgp.LocalBGPAddress
-    } else {
-        req.NextHop = "127.0.0.1"
-    }
+	if req.NextHop == "" {
+		if bgp.LocalBGPAddress != "" {
+			req.NextHop = bgp.LocalBGPAddress
+		} else {
+			req.NextHop = "127.0.0.1"
+		}
+	}
+
+	err := bgp.AnnouncePrefix(req.Prefix, req.NextHop, req.Communities)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to announce: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "Announced %s\n", req.Prefix)
 }
-
-    err := bgp.AnnouncePrefix(req.Prefix, req.NextHop, req.Communities)
-    if err != nil {
-        http.Error(w, fmt.Sprintf("Failed to announce: %v", err), http.StatusInternalServerError)
-        return
-    }
-
-    req.Timestamp = time.Now()
-    activeAnnouncements[req.Prefix] = req
-
-    w.WriteHeader(http.StatusOK)
-    fmt.Fprintf(w, "Announced %s\n", req.Prefix)
-}
-
-
 
 func handleWithdraw(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -87,12 +81,39 @@ func handleWithdraw(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	delete(activeAnnouncements, req.Prefix)
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, "Withdrawn %s\n", req.Prefix)
 }
 
+
+
+
 func handleListAnnouncements(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(activeAnnouncements)
+
+	ipQuery := r.URL.Query().Get("ip")
+	all := bgp.ListAnnouncements()
+
+	// Αν δόθηκε IP ως query param
+	if ipQuery != "" {
+		ip := net.ParseIP(ipQuery)
+		if ip == nil {
+			http.Error(w, "Invalid IP", http.StatusBadRequest)
+			return
+		}
+
+		prefix := fmt.Sprintf("%s/32", ip.String())
+		if ann, ok := all[prefix]; ok {
+			json.NewEncoder(w).Encode(map[string]bgp.AnnouncedPrefix{
+				prefix: ann,
+			})
+		} else {
+			// Δεν βρέθηκε
+			json.NewEncoder(w).Encode(map[string]any{})
+		}
+		return
+	}
+
+	// Κανονικά: επιστρέφει όλα
+	json.NewEncoder(w).Encode(all)
 }

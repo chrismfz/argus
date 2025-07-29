@@ -196,6 +196,10 @@ bgp.SetMyASN(cfg.MyASN)
     }
 
 bgp.SetAnnounceServer(listener.Server)
+//set your next-hop override so handleAnnounce() defaults correctly
+bgp.LocalBGPAddress = cfg.BGP.Listener.ListenIP
+
+
     fmt.Println("[INFO] Warming up BGP session to collect prefixes...")
     time.Sleep(30 * time.Second)
     fmt.Printf("[INFO] BGP warm-up done. Known prefixes: %d\n", listener.PathCount)

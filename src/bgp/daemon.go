@@ -52,17 +52,17 @@ func NewBGPListener(cfg config.BGPListenerConfig) *BGPListener {
 
 
 
-
-
 func (b *BGPListener) Start() error {
     log.Println("[BGP] Starting embedded BGP listener")
 
-    // Define AS_TRANS (23456)
-    const AS_TRANS_ASN uint32 = 23456
-
+    // ✅ Start GoBGP with LOCAL ASN (the ASN we declare)
+    // When using 4-byte ASNs, the 'Asn' in the Global config for StartBgp
+    // should be the ACTUAL 4-byte ASN (b.Cfg.LocalASN, e.g., 65001).
+    // GoBGP will then automatically handle the AS_TRANS (23456) in the 2-byte BGP header
+    // and include the correct 4-byte ASN (65001) in the capabilities.
     if err := b.Server.StartBgp(b.Ctx, &api.StartBgpRequest{
         Global: &api.Global{
-            Asn:        AS_TRANS_ASN,         // This is already correct
+            Asn:        b.Cfg.LocalASN,         // 👈 CHANGE THIS: Use your ACTUAL Local ASN (e.g., 65001)
             RouterId:   b.Cfg.RouterID,
             ListenPort: 179,
         },
@@ -70,16 +70,17 @@ func (b *BGPListener) Start() error {
         return fmt.Errorf("failed to start BGP: %w", err)
     }
 
-    log.Printf("[BGP] Listening for peers at %s (local ASN: %d, announced as %d)", b.Cfg.ListenIP, b.Cfg.LocalASN, AS_TRANS_ASN)
+    log.Printf("[BGP] Listening for peers at %s (local ASN: %d, announced as %d by GoBGP)", b.Cfg.ListenIP, b.Cfg.LocalASN, b.Cfg.LocalASN)
 
     // ✅ Configure remote peer (MikroTik)
-    // The LocalAsn in PeerConf should also be AS_TRANS_ASN for 4-byte ASN negotiation
+    // LocalAsn in AddPeerRequest should also be the actual local ASN (b.Cfg.LocalASN, e.g., 65001).
+    // GoBGP will handle the 2-byte AS_TRANS and 4-byte capability based on this.
     if err := b.Server.AddPeer(b.Ctx, &api.AddPeerRequest{
         Peer: &api.Peer{
             Conf: &api.PeerConf{
-                NeighborAddress: b.Cfg.RouterID,
-                PeerAsn:         b.Cfg.RemoteASN,
-                LocalAsn:        AS_TRANS_ASN,  // 👈 CHANGE THIS LINE from b.Cfg.LocalASN to AS_TRANS_ASN
+                NeighborAddress: b.Cfg.RouterID,  // 👈 peer IP (116.203.217.190)
+                PeerAsn:         b.Cfg.RemoteASN, // 👈 MikroTik ASN (216285)
+                LocalAsn:        b.Cfg.LocalASN,  // 👈 CHANGE THIS: Use your ACTUAL Local ASN (e.g., 65001)
             },
             Transport: &api.Transport{
                 PassiveMode: true,
@@ -114,7 +115,6 @@ func (b *BGPListener) Start() error {
 
     return nil
 }
-
 
 
 

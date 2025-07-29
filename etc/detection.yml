@@ -8,7 +8,11 @@ rules:
     min_flows: 10000
     min_unique_src_ips: 100
     time_window: 20s
-    action: alert
+    action: alert,blackhole
+    blackhole_count: 50
+    blackhole_next_hop: 192.0.2.1
+    blackhole_communities: [ "65001:666" ]
+    blackhole_time: 60  # Seconds
 
   - name: syn_flood
     proto: tcp
@@ -17,7 +21,12 @@ rules:
     min_flows: 5000
     min_avg_pps: 1000
     time_window: 20s
-    action: alert
+    action: alert,blackhole
+    blackhole_count: 50
+    blackhole_next_hop: 192.0.2.1
+    blackhole_communities: [ "65001:666" ]
+    blackhole_time: 60  # Seconds
+
 
   - name: udp_flood
     proto: udp
@@ -25,7 +34,12 @@ rules:
     min_flows: 5000
     min_avg_pps: 2000
     time_window: 20s
-    action: alert
+    action: alert,blackhole
+    blackhole_count: 50
+    blackhole_next_hop: 192.0.2.1
+    blackhole_communities: [ "65001:666" ]
+    blackhole_time: 60  # Seconds
+
 
   - name: icmp_flood
     proto: icmp
@@ -33,7 +47,12 @@ rules:
     min_flows: 1000
     min_avg_pps: 1000
     time_window: 20s
-    action: alert
+    action: alert,blackhole
+    blackhole_count: 50
+    blackhole_next_hop: 192.0.2.1
+    blackhole_communities: [ "65001:666" ]
+    blackhole_time: 60  # Seconds
+
 
   # ──────────────── Brute Force Attacks ────────────────
   - name: ssh_brute
@@ -75,7 +94,12 @@ rules:
     unique_dst_ports: 100
     min_flows: 150
     time_window: 20s
-    action: alert
+    action: alert,blackhole
+    blackhole_count: 50
+    blackhole_next_hop: 192.0.2.1
+    blackhole_communities: [ "65001:666" ]
+    blackhole_time: 60  # Seconds
+
 
   - name: horizontal_scan
     proto: tcp
@@ -83,7 +107,12 @@ rules:
     unique_dst_ips: 100
     min_flows: 150
     time_window: 20s
-    action: alert
+    action: alert,blackhole
+    blackhole_count: 50
+    blackhole_next_hop: 192.0.2.1
+    blackhole_communities: [ "65001:666" ]
+    blackhole_time: 60  # Seconds
+
 
   - name: generic_scanner
     proto: any

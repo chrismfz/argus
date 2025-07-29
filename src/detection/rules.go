@@ -20,6 +20,10 @@ type DetectionRule struct {
 	TCPFlags          string `yaml:"tcp_flags,omitempty"`
 	TimeWindow        string `yaml:"time_window"`
 	Action            string `yaml:"action"`
+	BlackholeCount       int      `yaml:"blackhole_count,omitempty"`
+	BlackholeNextHop     string   `yaml:"blackhole_next_hop,omitempty"`
+	BlackholeCommunities []string `yaml:"blackhole_communities,omitempty"`
+	BlackholeTime        int      `yaml:"blackhole_time,omitempty"` // seconds
 }
 
 type RuleSet struct {

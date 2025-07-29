@@ -167,7 +167,9 @@ func (e *Engine) runDetection() {
 			case "slack":
 				// TODO
 			case "blackhole":
-				// TODO
+				if rule.BlackholeCount > 0 && count >= rule.BlackholeCount {
+				e.HandleBlackhole(rule, flows, count)
+				}
 			default:
 				log.Printf("[WARN] Unknown action: %s for rule %s", act, rule.Name)
 			}

@@ -9,22 +9,30 @@ import (
 	"flowenricher/enrich"
 )
 
-// NOTE: IFNameCache, GeoRecord, GeoIP, and DNSResolver interfaces
-// are removed from here. They should be defined in 'main' or a separate
-// 'enrich' package if needed for enrichment outside of 'detection'.
 
 var (
 	detectionLogger *log.Logger
+	blackholeLogger  *log.Logger
 	once            sync.Once
 )
 
-func initLogger() {
-	f, err := openDetectionLog()
+
+func initLoggers() {
+	// detection.log
+	df, err := os.OpenFile("detections.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		log.Fatalf("Failed to open detections.log: %v", err)
 	}
-	detectionLogger = log.New(f, "", log.Ldate|log.Ltime)
+	detectionLogger = log.New(df, "", log.Ldate|log.Ltime)
+
+	// blackholes.txt
+	bf, err := os.OpenFile("blackholes.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Fatalf("Failed to open blackholes.txt: %v", err)
+	}
+	blackholeLogger = log.New(bf, "", log.Ldate|log.Ltime)
 }
+
 
 func openDetectionLog() (*os.File, error) {
 	return os.OpenFile("detections.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -35,7 +43,7 @@ func openDetectionLog() (*os.File, error) {
 // before passing flows to the detection engine, or by a separate enrichment service.
 
 func LogDetection(rule DetectionRule, flows []Flow, geo *enrich.GeoIP, dns *enrich.DNSResolver, count int) {
-	once.Do(initLogger)
+	once.Do(initLoggers)
 
 	if len(flows) == 0 {
 		DlogEngine("LogDetection called with empty flows for rule: %s", rule.Name)
@@ -77,4 +85,9 @@ func LogDetection(rule DetectionRule, flows []Flow, geo *enrich.GeoIP, dns *enri
 
 	detectionLogger.Println("---")
 	DlogEngine("Alert logged for rule '%s'", rule.Name)
+}
+
+func LogBlackhole(entry string) {
+    once.Do(initLoggers)
+    blackholeLogger.Println(entry)
 }

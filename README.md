@@ -226,3 +226,31 @@ CREATE TABLE IF NOT EXISTS ptr_cache (
     updated_at DateTime DEFAULT now()
 ) ENGINE = MergeTree
 ORDER BY ip;
+
+
+
+
+```
+New Blackhole API: 
+
+
+curl -X POST http://127.0.0.1:9600/withdraw   -H "Content-Type: application/json"   -d '{
+    "prefix": "149.202.68.236/32"
+}'
+
+Withdrawn 149.202.68.236/32
+
+
+curl -X  POST http://127.0.0.1:9600/announce   -H 'Content-Type: application/json'   -d '{
+    "prefix":      "149.202.68.236/32",
+    "next_hop":    "192.0.2.1",
+    "communities": ["216285:666"]
+  }'
+Announced 149.202.68.236/32
+
+
+curl http://127.0.0.1:9600/announcements
+{"149.202.68.236/32":{"prefix":"149.202.68.236/32","next_hop":"192.0.2.1","communities":["216285:666"],"timestamp":"2025-07-29T19:04:56.624057128+03:00"},"203.0.113.45/32":{"prefix":"203.0.113.45/32","next_hop":"192.0.2.1","communities":["65001:666"],"timestamp":"2025-07-29T18:05:20.406844621+03:00"}}
+```
+
+

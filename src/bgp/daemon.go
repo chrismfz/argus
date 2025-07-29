@@ -80,11 +80,15 @@ func (b *BGPListener) Start() error {
             Conf: &api.PeerConf{
                 NeighborAddress: b.Cfg.RouterID,  // 👈 peer IP (116.203.217.190)
                 PeerAsn:         b.Cfg.RemoteASN, // 👈 MikroTik ASN (216285)
-                //LocalAsn:        b.Cfg.LocalASN,  // 👈 CHANGE THIS: Use your ACTUAL Local ASN (e.g., 65001)
+                LocalAsn:        b.Cfg.LocalASN,  // 👈 CHANGE THIS: Use your ACTUAL Local ASN (e.g., 65001)
             },
             Transport: &api.Transport{
                 PassiveMode: true,
             },
+    EbgpMultihop: &api.EbgpMultihop{
+        Enabled: true,
+        MultihopTtl: 10, // max 255
+},
             AfiSafis: []*api.AfiSafi{
                 {
                     Config: &api.AfiSafiConfig{

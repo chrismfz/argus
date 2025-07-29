@@ -87,7 +87,7 @@ func (b *BGPListener) Start() error {
             },
     EbgpMultihop: &api.EbgpMultihop{
         Enabled: true,
-        MultihopTtl: 10, // max 255
+        MultihopTtl: 26, // max 255
 },
             AfiSafis: []*api.AfiSafi{
                 {

@@ -47,63 +47,82 @@ func NewBGPListener(cfg config.BGPListenerConfig) *BGPListener {
 	}
 }
 
+
+
+
+
+
+
+
 func (b *BGPListener) Start() error {
-	log.Println("[BGP] Starting embedded BGP listener")
+    log.Println("[BGP] Starting embedded BGP listener")
 
-	// Global BGP server settings (ASN, RouterID, ListenPort)
-	if err := b.Server.StartBgp(b.Ctx, &api.StartBgpRequest{
-		Global: &api.Global{
-			Asn:        b.Cfg.ASN,
-			RouterId:   b.Cfg.RouterID,
-			ListenPort: 179,
-		},
-	}); err != nil {
-		return fmt.Errorf("failed to start BGP: %w", err)
-	}
+    // Start GoBGP with our local ASN
+    if err := b.Server.StartBgp(b.Ctx, &api.StartBgpRequest{
+        Global: &api.Global{
+            Asn:        b.Cfg.ASN,         // 👈 Τοπικό ASN (GoBGP)
+            RouterId:   b.Cfg.RouterID,
+            ListenPort: 179,
+        },
+    }); err != nil {
+        return fmt.Errorf("failed to start BGP: %w", err)
+    }
 
-	log.Printf("[BGP] Listening for peers at %s (ASN %d)", b.Cfg.ListenIP, b.Cfg.ASN)
+    log.Printf("[BGP] Listening for peers at %s (local ASN: %d)", b.Cfg.ListenIP, b.Cfg.ASN)
 
-	// Peer-specific configuration, INCLUDING AfiSafis
-	if err := b.Server.AddPeer(b.Ctx, &api.AddPeerRequest{
-		Peer: &api.Peer{
-			Conf: &api.PeerConf{
-				NeighborAddress: b.Cfg.RouterID, // This should be the MikroTik's IP or a wildcard for passive listening
-				PeerAsn:         b.Cfg.ASN,
-			},
-			Transport: &api.Transport{
-				PassiveMode: true,
-			},
-			// THIS IS THE CORRECTED AFI/SAFI CONFIGURATION FOR gobgp/v3
-			AfiSafis: []*api.AfiSafi{
-				{
-					Config: &api.AfiSafiConfig{
-						Family: &api.Family{
-							Afi:  api.Family_AFI_IP,   // For IPv4
-							Safi: api.Family_SAFI_UNICAST,
-						},
-					},
-				},
-				{
-					Config: &api.AfiSafiConfig{
-						Family: &api.Family{
-							Afi:  api.Family_AFI_IP6,   // For IPv6
-							Safi: api.Family_SAFI_UNICAST,
-						},
-					},
-				},
-			},
-		},
-	}); err != nil {
-		return fmt.Errorf("failed to add BGP peer: %w", err)
-	}
+    // Setup remote peer (e.g., MikroTik)
+    if err := b.Server.AddPeer(b.Ctx, &api.AddPeerRequest{
+        Peer: &api.Peer{
+            Conf: &api.PeerConf{
+                NeighborAddress: b.Cfg.RouterID,  // 👈 διεύθυνση peer (ή πρόσθεσε PeerAddr)
+                PeerAsn:         b.Cfg.RemoteASN, // 👈 ASN του MikroTik
+            },
+            Transport: &api.Transport{
+                PassiveMode: true,
+            },
+            AfiSafis: []*api.AfiSafi{
+                {
+                    Config: &api.AfiSafiConfig{
+                        Family: &api.Family{
+                            Afi:  api.Family_AFI_IP,
+                            Safi: api.Family_SAFI_UNICAST,
+                        },
+                    },
+                },
+                {
+                    Config: &api.AfiSafiConfig{
+                        Family: &api.Family{
+                            Afi:  api.Family_AFI_IP6,
+                            Safi: api.Family_SAFI_UNICAST,
+                        },
+                    },
+                },
+            },
+        },
+    }); err != nil {
+        return fmt.Errorf("failed to add BGP peer: %w", err)
+    }
 
-	log.Printf("[BGP] Peer added: %s (ASN %d)", b.Cfg.RouterID, b.Cfg.ASN)
+    log.Printf("[BGP] Added peer %s (remote ASN: %d) from local ASN %d", b.Cfg.RouterID, b.Cfg.RemoteASN, b.Cfg.ASN)
 
-	go b.watchUpdates()
-	go b.watchPeers()
+    go b.watchUpdates()
+    go b.watchPeers()
 
-	return nil
+    return nil
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // getPrefixFromNlri now uses proto.Unmarshal for API Any with extensive debugging
 func getPrefixFromNlri(nlri *anypb.Any) (*net.IPNet, error) {

@@ -11,7 +11,8 @@ bgp:
   bgp_listener:
     enabled: true
     listen_ip: "0.0.0.0"
-    asn: 216285
+    asn: 65001
+    remote_asn: 216285
     router_id: "84.54.49.1"
     max_peers: 2
 

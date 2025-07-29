@@ -57,10 +57,10 @@ func NewBGPListener(cfg config.BGPListenerConfig) *BGPListener {
 func (b *BGPListener) Start() error {
     log.Println("[BGP] Starting embedded BGP listener")
 
-    // Start GoBGP with our local ASN
+    // ✅ Start GoBGP με LOCAL ASN (το ASN που δηλώνουμε εμείς)
     if err := b.Server.StartBgp(b.Ctx, &api.StartBgpRequest{
         Global: &api.Global{
-            Asn:        b.Cfg.ASN,         // 👈 Τοπικό ASN (GoBGP)
+            Asn:        b.Cfg.LocalASN,         // 👈 σωστό local
             RouterId:   b.Cfg.RouterID,
             ListenPort: 179,
         },
@@ -68,14 +68,14 @@ func (b *BGPListener) Start() error {
         return fmt.Errorf("failed to start BGP: %w", err)
     }
 
-    log.Printf("[BGP] Listening for peers at %s (local ASN: %d)", b.Cfg.ListenIP, b.Cfg.ASN)
+    log.Printf("[BGP] Listening for peers at %s (local ASN: %d)", b.Cfg.ListenIP, b.Cfg.LocalASN)
 
-    // Setup remote peer (e.g., MikroTik)
+    // ✅ Configure remote peer (MikroTik)
     if err := b.Server.AddPeer(b.Ctx, &api.AddPeerRequest{
         Peer: &api.Peer{
             Conf: &api.PeerConf{
-                NeighborAddress: b.Cfg.RouterID,  // 👈 διεύθυνση peer (ή πρόσθεσε PeerAddr)
-                PeerAsn:         b.Cfg.RemoteASN, // 👈 ASN του MikroTik
+                NeighborAddress: b.Cfg.RouterID,  // 👈 peer IP
+                PeerAsn:         b.Cfg.RemoteASN, // 👈 MikroTik ASN
             },
             Transport: &api.Transport{
                 PassiveMode: true,
@@ -103,7 +103,7 @@ func (b *BGPListener) Start() error {
         return fmt.Errorf("failed to add BGP peer: %w", err)
     }
 
-    log.Printf("[BGP] Added peer %s (remote ASN: %d) from local ASN %d", b.Cfg.RouterID, b.Cfg.RemoteASN, b.Cfg.ASN)
+    log.Printf("[BGP] Added peer %s (remote ASN: %d) from local ASN %d", b.Cfg.RouterID, b.Cfg.RemoteASN, b.Cfg.LocalASN)
 
     go b.watchUpdates()
     go b.watchPeers()

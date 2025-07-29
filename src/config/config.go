@@ -15,6 +15,7 @@ type BGPListenerConfig struct {
     ListenIP   string `yaml:"listen_ip"`
     ASN        uint32 `yaml:"asn"`
     RemoteASN   uint32 `yaml:"remote_asn"`   // Το ASN του peer (π.χ. MikroTik)
+    LocalASN   uint32 `yaml:"local_asn"`
     RouterID   string `yaml:"router_id"`
     MaxPeers   int    `yaml:"max_peers"`
 }

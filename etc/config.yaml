@@ -75,3 +75,6 @@ detection:
   rules_config: /opt/flowenricher/etc/detection.yml
   flow_cache_max_window: 60s
   debug_detection: false
+
+
+# /ip route add dst-address=192.0.2.1/32 blackhole comment="BGP Blackhole Nexthop"

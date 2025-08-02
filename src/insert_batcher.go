@@ -139,6 +139,7 @@ for _, rec := range batch {
     if ip == nil {
         continue
     }
+
     entries, err := b.ranger.ContainingNetworks(ip)
     if err != nil || len(entries) == 0 {
         continue
@@ -159,15 +160,15 @@ for _, rec := range batch {
         continue
     }
 
-    // ✅ Allow overwrite if the new ASPath is longer or inbound
-if rec.PeerDstAS == b.myASN &&
-   len(enriched.ASPath) > len(rec.ASPath) &&
-   (len(rec.ASPath) == 0 || (len(rec.ASPath) == 1 && rec.ASPath[0] == fmt.Sprintf("%d", b.myASN))) {
+    // ✅ Only overwrite ASPath for inbound flows with weak paths
+    if rec.PeerDstAS == b.myASN &&
+        len(enriched.ASPath) > len(rec.ASPath) &&
+        (len(rec.ASPath) == 0 || (len(rec.ASPath) == 1 && rec.ASPath[0] == fmt.Sprintf("%d", b.myASN))) {
         rec.ASPath = enriched.ASPath
-    }
+        rec.LocalPref = enriched.LocalPref
+        rec.PeerSrcAS = enriched.ASN
 
-    rec.LocalPref = enriched.LocalPref
-    rec.PeerSrcAS = enriched.ASN
+    }
 }
 
 

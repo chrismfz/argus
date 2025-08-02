@@ -6,6 +6,7 @@ import (
 	"net"
 	"sync"
 	"time"
+	"fmt"
 	"github.com/yl2chen/cidranger"
 	"flowenricher/enrich"
         "flowenricher/bgp"
@@ -158,11 +159,15 @@ for _, rec := range batch {
         continue
     }
 
-    if rec.ASPath == nil || len(rec.ASPath) == 0 {
+    // ✅ Allow overwrite if the new ASPath is longer or inbound
+if rec.PeerDstAS == b.myASN &&
+   len(enriched.ASPath) > len(rec.ASPath) &&
+   (len(rec.ASPath) == 0 || (len(rec.ASPath) == 1 && rec.ASPath[0] == fmt.Sprintf("%d", b.myASN))) {
         rec.ASPath = enriched.ASPath
     }
-	rec.LocalPref = enriched.LocalPref
-	rec.PeerSrcAS = enriched.ASN
+
+    rec.LocalPref = enriched.LocalPref
+    rec.PeerSrcAS = enriched.ASN
 }
 
 

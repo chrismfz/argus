@@ -6,7 +6,7 @@ import (
 	"net"
 	"sync"
 	"time"
-	"fmt"
+//	"fmt"
 	"github.com/yl2chen/cidranger"
 	"flowenricher/enrich"
         "flowenricher/bgp"
@@ -133,6 +133,7 @@ for _, rec := range batch {
 }
 
 
+
 // ✅ BGP enrichment - για SrcHost
 for _, rec := range batch {
     ip := net.ParseIP(rec.SrcHost)
@@ -145,7 +146,6 @@ for _, rec := range batch {
         continue
     }
 
-    // Find the most specific matching prefix
     var bestEntry cidranger.RangerEntry
     bestMask := -1
     for _, entry := range entries {
@@ -161,24 +161,11 @@ for _, rec := range batch {
         continue
     }
 
-    // ✅ Overwrite ASPath if it's an inbound flow with a weak or missing path
-    if rec.PeerDstAS == b.myASN &&
-        len(enriched.ASPath) > len(rec.ASPath) &&
-        (len(rec.ASPath) == 0 || (len(rec.ASPath) == 1 && rec.ASPath[0] == fmt.Sprintf("%d", b.myASN))) {
-        rec.ASPath = enriched.ASPath
-        rec.LocalPref = enriched.LocalPref
-        rec.PeerSrcAS = enriched.ASN
-    }
-
-    // Always update LocalPref and PeerSrcAS if they were missing or 0
-    if rec.PeerSrcAS == 0 {
-        rec.PeerSrcAS = enriched.ASN
-    }
-    if rec.LocalPref == 0 {
-        rec.LocalPref = enriched.LocalPref
-    }
+    // ✅ Always trust the enriched SrcHost path
+    rec.ASPath = enriched.ASPath
+    rec.PeerSrcAS = enriched.ASN
+    rec.LocalPref = enriched.LocalPref
 }
-
 
 
 

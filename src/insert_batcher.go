@@ -197,13 +197,22 @@ for _, rec := range batch {
         continue
     }
 
-    if rec.ASPath == nil || len(rec.ASPath) == 0 {
+    if rec.PeerSrcAS == b.myASN {
+        // ✅ Outbound flow → trust DstHost enrichment
         rec.ASPath = enriched.ASPath
-    }
-    rec.LocalPref = enriched.LocalPref
+        rec.LocalPref = enriched.LocalPref
         rec.DstAS = enriched.ASN
-	rec.PeerDstAS = enriched.ASN
+        rec.PeerDstAS = enriched.ASN
+    } else if rec.ASPath == nil || len(rec.ASPath) == 0 {
+        // Fallback for inbound flows or unassigned
+        rec.ASPath = enriched.ASPath
+        rec.LocalPref = enriched.LocalPref
+        rec.DstAS = enriched.ASN
+        rec.PeerDstAS = enriched.ASN
+    }
 }
+
+
 
 
 

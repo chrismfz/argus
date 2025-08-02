@@ -135,47 +135,57 @@ for _, rec := range batch {
 
 
 // ✅ Unified BGP enrichment
+
 for _, rec := range batch {
-    isInbound := rec.PeerDstAS == b.myASN
-
-    var ip net.IP
-    if isInbound {
-        ip = net.ParseIP(rec.SrcHost)
-    } else {
-        ip = net.ParseIP(rec.DstHost)
-    }
-    if ip == nil {
-        continue
-    }
-
-    entries, err := b.ranger.ContainingNetworks(ip)
-    if err != nil || len(entries) == 0 {
-        continue
-    }
-
-    var bestEntry cidranger.RangerEntry
-    bestMask := -1
-    for _, entry := range entries {
-        if mask, _ := entry.Network().Mask.Size(); mask > bestMask {
-            bestMask = mask
-            bestEntry = entry
+    // ✅ First: BGP enrichment from DstHost (main path info)
+    dstIP := net.ParseIP(rec.DstHost)
+    if dstIP != nil {
+        entries, err := b.ranger.ContainingNetworks(dstIP)
+        if err == nil && len(entries) > 0 {
+            var bestEntry cidranger.RangerEntry
+            bestMask := -1
+            for _, entry := range entries {
+                if mask, _ := entry.Network().Mask.Size(); mask > bestMask {
+                    bestMask = mask
+                    bestEntry = entry
+                }
+            }
+            if enriched, ok := bestEntry.(bgp.BGPEnrichedEntry); ok {
+                if len(rec.ASPath) == 0 || len(enriched.ASPath) > len(rec.ASPath) {
+                    rec.ASPath = enriched.ASPath
+                }
+                if rec.LocalPref == 0 {
+                    rec.LocalPref = enriched.LocalPref
+                }
+                if rec.DstAS == 0 {
+                    rec.DstAS = enriched.ASN
+                }
+                if rec.PeerDstAS == 0 {
+                    rec.PeerDstAS = enriched.ASN
+                }
+            }
         }
     }
 
-    enriched, ok := bestEntry.(bgp.BGPEnrichedEntry)
-    if !ok {
-        continue
-    }
-
-    // ✅ Enrich based on direction
-    rec.ASPath = enriched.ASPath
-    rec.LocalPref = enriched.LocalPref
-
-    if isInbound {
-        rec.PeerSrcAS = enriched.ASN
-    } else {
-        rec.DstAS = enriched.ASN
-        rec.PeerDstAS = enriched.ASN
+    // ✅ Then: enrich PeerSrcAS from SrcHost (only ASN, not path!)
+    srcIP := net.ParseIP(rec.SrcHost)
+    if srcIP != nil {
+        entries, err := b.ranger.ContainingNetworks(srcIP)
+        if err == nil && len(entries) > 0 {
+            var bestEntry cidranger.RangerEntry
+            bestMask := -1
+            for _, entry := range entries {
+                if mask, _ := entry.Network().Mask.Size(); mask > bestMask {
+                    bestMask = mask
+                    bestEntry = entry
+                }
+            }
+            if enriched, ok := bestEntry.(bgp.BGPEnrichedEntry); ok {
+                if rec.PeerSrcAS == 0 {
+                    rec.PeerSrcAS = enriched.ASN
+                }
+            }
+        }
     }
 }
 

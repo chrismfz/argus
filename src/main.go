@@ -202,7 +202,7 @@ bgp.LocalBGPAddress = cfg.BGP.Listener.ListenIP
 
 
     fmt.Println("[INFO] Warming up BGP session to collect prefixes...")
-    time.Sleep(30 * time.Second)
+    time.Sleep(45 * time.Second)
     fmt.Printf("[INFO] BGP warm-up done. Known prefixes: %d\n", listener.PathCount)
 
     // 👉 Inject manually your own prefixes into the Ranger

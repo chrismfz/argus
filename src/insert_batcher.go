@@ -198,13 +198,13 @@ for _, rec := range batch {
     }
 
     if rec.PeerSrcAS == b.myASN {
-        // ✅ Outbound flow → trust DstHost enrichment
+        // ✅ Outbound flow → trust DstHost enrichment (overwrite any ASPath)
         rec.ASPath = enriched.ASPath
         rec.LocalPref = enriched.LocalPref
         rec.DstAS = enriched.ASN
         rec.PeerDstAS = enriched.ASN
-    } else if rec.ASPath == nil || len(rec.ASPath) == 0 {
-        // Fallback for inbound flows or unassigned
+    } else if rec.ASPath == nil || len(rec.ASPath) == 0 || rec.PeerDstAS == 0 {
+        // ✅ Inbound or incomplete flow → fallback if still missing
         rec.ASPath = enriched.ASPath
         rec.LocalPref = enriched.LocalPref
         rec.DstAS = enriched.ASN

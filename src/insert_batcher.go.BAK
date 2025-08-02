@@ -134,16 +134,9 @@ for _, rec := range batch {
 
 
 
-// ✅ Unified BGP enrichment
+// ✅ BGP enrichment - για SrcHost
 for _, rec := range batch {
-    isInbound := rec.PeerDstAS == b.myASN
-
-    var ip net.IP
-    if isInbound {
-        ip = net.ParseIP(rec.SrcHost)
-    } else {
-        ip = net.ParseIP(rec.DstHost)
-    }
+    ip := net.ParseIP(rec.SrcHost)
     if ip == nil {
         continue
     }
@@ -156,7 +149,8 @@ for _, rec := range batch {
     var bestEntry cidranger.RangerEntry
     bestMask := -1
     for _, entry := range entries {
-        if mask, _ := entry.Network().Mask.Size(); mask > bestMask {
+        mask, _ := entry.Network().Mask.Size()
+        if mask > bestMask {
             bestMask = mask
             bestEntry = entry
         }
@@ -167,17 +161,57 @@ for _, rec := range batch {
         continue
     }
 
-    // ✅ Enrich based on direction
+    // ✅ Always trust the enriched SrcHost path
     rec.ASPath = enriched.ASPath
+    rec.PeerSrcAS = enriched.ASN
     rec.LocalPref = enriched.LocalPref
+}
 
-    if isInbound {
-        rec.PeerSrcAS = enriched.ASN
-    } else {
+
+
+// ✅ BGP enrichment - για DstHost
+for _, rec := range batch {
+    ip := net.ParseIP(rec.DstHost)
+    if ip == nil {
+        continue
+    }
+
+    entries, err := b.ranger.ContainingNetworks(ip)
+    if err != nil || len(entries) == 0 {
+        continue
+    }
+
+    var bestEntry cidranger.RangerEntry
+    bestMask := -1
+    for _, entry := range entries {
+        mask, _ := entry.Network().Mask.Size()
+        if mask > bestMask {
+            bestMask = mask
+            bestEntry = entry
+        }
+    }
+
+    enriched, ok := bestEntry.(bgp.BGPEnrichedEntry)
+    if !ok {
+        continue
+    }
+
+    if rec.PeerSrcAS == b.myASN {
+        // ✅ Outbound flow → trust DstHost enrichment (overwrite any ASPath)
+        rec.ASPath = enriched.ASPath
+        rec.LocalPref = enriched.LocalPref
+        rec.DstAS = enriched.ASN
+        rec.PeerDstAS = enriched.ASN
+    } else if rec.ASPath == nil || len(rec.ASPath) == 0 || rec.PeerDstAS == 0 {
+        // ✅ Inbound or incomplete flow → fallback if still missing
+        rec.ASPath = enriched.ASPath
+        rec.LocalPref = enriched.LocalPref
         rec.DstAS = enriched.ASN
         rec.PeerDstAS = enriched.ASN
     }
 }
+
+
 
 
 

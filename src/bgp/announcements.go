@@ -30,6 +30,7 @@ type AnnouncedPrefix struct {
 	NextHop     string     `json:"next_hop"`
 	Communities []string   `json:"communities"`
 	Timestamp   time.Time  `json:"timestamp"`
+	ASPath      []uint32   `json:"as_path,omitempty"` // ✅ NEW
 }
 
 func SetAnnounceServer(s *gobgpserver.BgpServer) {
@@ -148,6 +149,7 @@ log.Println("[BGP] Communities (string):", strings.Join(strComms, ", "))
         NextHop:     nextHop,
         Communities: communities,
         Timestamp:   time.Now(),
+	ASPath:      []uint32{MyASN}, //  Ή req.ASPath
     }
     announceMu.Unlock()
 

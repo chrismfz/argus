@@ -155,3 +155,12 @@ func (gc Config) GetCollectors() []collectors.Frontend {
         }
         return r
 }
+
+var AppConfig *Config
+
+func GetMyASN() uint32 {
+    if AppConfig != nil {
+        return AppConfig.MyASN
+    }
+    return 0
+}

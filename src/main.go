@@ -122,7 +122,8 @@ fmt.Printf("Starting flowenricher %s (built at %s)\n", Version, BuildTime)
         if err != nil {
                 log.Fatalf("Error loading config: %v", err)
         }
-        debug = debug || cfg.Debug
+config.AppConfig = cfg
+debug = debug || cfg.Debug
 
 enrichers, err := enrich.Init(cfg)
 if err != nil {
@@ -138,6 +139,8 @@ for _, s := range cfg.MyPrefixes {
         log.Printf("[WARN] Invalid CIDR in my_prefixes: %s", s)
     }
 }
+
+
 
 
 fmt.Printf("[INFO] Loaded MyASN = %d\n", cfg.MyASN)

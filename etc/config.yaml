@@ -54,7 +54,7 @@ insert:
   batch_size: 200
   flush_interval_ms: 1000
 
-
+# my_asn is your real ASN. Useful to enrich your own prefixes, AS_PATH for blackholes prefixes.
 my_asn: 216285
 my_prefixes:
   - 84.54.49.0/24

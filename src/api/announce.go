@@ -7,6 +7,7 @@ import (
 	"time"
 	"net"
 	"flowenricher/bgp"
+	"flowenricher/config"
 )
 
 type AnnouncedPrefix struct {
@@ -14,6 +15,8 @@ type AnnouncedPrefix struct {
 	NextHop     string   `json:"next_hop"`
 	Communities []string `json:"communities"`
 	Timestamp   time.Time `json:"timestamp"`
+	ASPath []uint32 `json:"as_path,omitempty"`
+	IsBlackhole bool `json:"blackhole"`
 }
 
 // ❌ Δεν χρειάζεται πια
@@ -50,6 +53,11 @@ func handleAnnounce(w http.ResponseWriter, r *http.Request) {
 			req.NextHop = "127.0.0.1"
 		}
 	}
+
+
+req.ASPath = []uint32{config.GetMyASN()} // ✅
+
+
 
 	err := bgp.AnnouncePrefix(req.Prefix, req.NextHop, req.Communities)
 	if err != nil {

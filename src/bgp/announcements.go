@@ -37,12 +37,15 @@ func SetAnnounceServer(s *gobgpserver.BgpServer) {
 	AnnounceServer = s
 }
 
-func AnnouncePrefix(prefix, nextHop string, communities []string) error {
+
+
+
+func AnnouncePrefix(prefix, nextHop string, communities []string, asPath []uint32) error {
     if AnnounceServer == nil {
         return fmt.Errorf("BGP server not set")
     }
 
-    // Convert communities to uint32 format
+    // Convert communities
     coms := []uint32{}
     for _, c := range communities {
         parts := strings.Split(c, ":")
@@ -53,6 +56,11 @@ func AnnouncePrefix(prefix, nextHop string, communities []string) error {
         fmt.Sscanf(parts[0], "%d", &high)
         fmt.Sscanf(parts[1], "%d", &low)
         coms = append(coms, (high<<16)|low)
+    }
+
+    // Default AS path if empty
+    if len(asPath) == 0 {
+        asPath = []uint32{MyASN}
     }
 
     // NLRI
@@ -70,68 +78,39 @@ func AnnouncePrefix(prefix, nextHop string, communities []string) error {
     }
     nlriAny, _ := anypb.New(nlri)
 
-
-if nextHop == "" {
-    if LocalBGPAddress != "" {
-        nextHop = LocalBGPAddress
-    } else {
-        nextHop = "127.0.0.1"
+    if nextHop == "" {
+        if LocalBGPAddress != "" {
+            nextHop = LocalBGPAddress
+        } else {
+            nextHop = "127.0.0.1"
+        }
     }
-}
 
-
-
-
-
-attrs := []bgp.PathAttributeInterface{
-    bgp.NewPathAttributeOrigin(0),
-
-bgp.NewPathAttributeAsPath([]bgp.AsPathParamInterface{
-        &bgp.As4PathParam{
-            Num:  1,
-            AS:   []uint32{MyASN}, // Δυναμικό από config
-            Type: bgp.BGP_ASPATH_ATTR_TYPE_SEQ,
-        },
-    }),
-    bgp.NewPathAttributeNextHop(nextHop),
-}
-
-
-
-
-
+    attrs := []bgp.PathAttributeInterface{
+        bgp.NewPathAttributeOrigin(0),
+        bgp.NewPathAttributeAsPath([]bgp.AsPathParamInterface{
+            &bgp.As4PathParam{
+                Num:  uint8(len(asPath)),
+                AS:   asPath,
+                Type: bgp.BGP_ASPATH_ATTR_TYPE_SEQ,
+            },
+        }),
+        bgp.NewPathAttributeNextHop(nextHop),
+    }
 
     if len(coms) > 0 {
         attrs = append(attrs, bgp.NewPathAttributeCommunities(coms))
     }
 
-
-var communityStrings []string
-for _, c := range coms {
-    high := c >> 16
-    low := c & 0xFFFF
-    communityStrings = append(communityStrings, fmt.Sprintf("%d:%d", high, low))
-}
-
-log.Printf("[BGP] Announcing prefix: %s via %s with communities: %s", prefix, nextHop, strings.Join(communityStrings, ", "))
-
-
-    log.Println("[BGP] Communities (uint32):", coms)
-// 👇 Ανθρώπινη μορφή
-var strComms []string
-for _, c := range coms {
-    high := c >> 16
-    low := c & 0xFFFF
-    strComms = append(strComms, fmt.Sprintf("%d:%d", high, low))
-}
-log.Println("[BGP] Communities (string):", strings.Join(strComms, ", "))
-
+    // Logging
+    log.Printf("[BGP] Announcing prefix: %s via %s with communities: %s", prefix, nextHop, strings.Join(communities, ", "))
+    log.Printf("[BGP] Communities (uint32): %v", coms)
     for _, attr := range attrs {
         log.Printf("[BGP] Attribute: %T = %+v", attr, attr)
     }
 
+    // Marshal and send
     attrsAny, _ := apiutil.MarshalPathAttributes(attrs)
-
     _, err := AnnounceServer.AddPath(context.Background(), &api.AddPathRequest{
         Path: &api.Path{
             Family: &api.Family{Afi: api.Family_AFI_IP, Safi: api.Family_SAFI_UNICAST},
@@ -143,18 +122,23 @@ log.Println("[BGP] Communities (string):", strings.Join(strComms, ", "))
         return err
     }
 
+    // Store
     announceMu.Lock()
     announcedPrefixes[prefix] = AnnouncedPrefix{
         Prefix:      prefix,
         NextHop:     nextHop,
         Communities: communities,
         Timestamp:   time.Now(),
-	ASPath:      []uint32{MyASN}, //  Ή req.ASPath
+        ASPath:      asPath, // ✅ Χρήση πραγματικού path
     }
     announceMu.Unlock()
 
     return nil
 }
+
+
+
+
 
 
 func WithdrawPrefix(prefix string) error {

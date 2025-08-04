@@ -30,7 +30,7 @@ func (e *Engine) HandleBlackhole(rule DetectionRule, flows []Flow, count int) {
 		communities = []string{"65001:666"} // default fallback
 	}
 
-	err := bgp.AnnouncePrefix(prefix, nextHop, communities)
+	err := bgp.AnnouncePrefix(prefix, nextHop, communities, []uint32{e.myASN})
 	if err != nil {
 		log.Printf("[BLACKHOLE] Failed to announce %s: %v", prefix, err)
 		return

@@ -59,7 +59,8 @@ req.ASPath = []uint32{config.GetMyASN()} // ✅
 
 
 
-	err := bgp.AnnouncePrefix(req.Prefix, req.NextHop, req.Communities)
+
+	err := bgp.AnnouncePrefix(req.Prefix, req.NextHop, req.Communities, req.ASPath)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to announce: %v", err), http.StatusInternalServerError)
 		return

@@ -12,6 +12,7 @@ import (
 	"github.com/osrg/gobgp/v3/pkg/packet/bgp"
 	gobgpserver "github.com/osrg/gobgp/v3/pkg/server"
 	"google.golang.org/protobuf/types/known/anypb"
+	"flowenricher/config"
 )
 
 var AnnounceServer *gobgpserver.BgpServer
@@ -60,7 +61,7 @@ func AnnouncePrefix(prefix, nextHop string, communities []string, asPath []uint3
 
     // Default AS path if empty
     if len(asPath) == 0 {
-        asPath = []uint32{MyASN}
+        asPath = []uint32{config.GetLocalASN()}
     }
 
     // NLRI

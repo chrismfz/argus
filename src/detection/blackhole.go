@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 	"time"
-
+	"flowenricher/config"
 	"flowenricher/bgp"
 )
 
@@ -30,7 +30,7 @@ func (e *Engine) HandleBlackhole(rule DetectionRule, flows []Flow, count int) {
 		communities = []string{"65001:666"} // default fallback
 	}
 
-	err := bgp.AnnouncePrefix(prefix, nextHop, communities, []uint32{e.myASN})
+	err := bgp.AnnouncePrefix(prefix, nextHop, communities, []uint32{config.GetLocalASN()})
 	if err != nil {
 		log.Printf("[BLACKHOLE] Failed to announce %s: %v", prefix, err)
 		return

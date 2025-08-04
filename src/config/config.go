@@ -164,3 +164,10 @@ func GetMyASN() uint32 {
     }
     return 0
 }
+
+func GetLocalASN() uint32 {
+    if AppConfig != nil {
+        return AppConfig.BGP.Listener.LocalASN
+    }
+    return 0
+}

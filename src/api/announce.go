@@ -19,8 +19,6 @@ type AnnouncedPrefix struct {
 	IsBlackhole bool `json:"blackhole"`
 }
 
-// ❌ Δεν χρειάζεται πια
-// var activeAnnouncements = make(map[string]AnnouncedPrefix)
 
 func handleAnnounce(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -54,9 +52,8 @@ func handleAnnounce(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-
-req.ASPath = []uint32{config.GetMyASN()} // ✅
-
+asn := config.GetLocalASN()
+req.ASPath = []uint32{asn}
 
 
 

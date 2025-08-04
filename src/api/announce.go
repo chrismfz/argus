@@ -8,6 +8,10 @@ import (
 	"net"
 	"flowenricher/bgp"
 	"flowenricher/config"
+	"context"
+	apipb "github.com/osrg/gobgp/v3/api"
+	"github.com/osrg/gobgp/v3/pkg/apiutil"
+	bgppkt "github.com/osrg/gobgp/v3/pkg/packet/bgp"
 )
 
 type AnnouncedPrefix struct {
@@ -122,4 +126,85 @@ func handleListAnnouncements(w http.ResponseWriter, r *http.Request) {
 
 	// Κανονικά: επιστρέφει όλα
 	json.NewEncoder(w).Encode(all)
+}
+
+
+
+
+
+type AdjInEntry struct {
+    Prefix      string   `json:"prefix"`
+    ASPath      []uint32 `json:"as_path,omitempty"`
+    Communities []string `json:"communities,omitempty"`
+}
+
+func handleAdjIn(w http.ResponseWriter, r *http.Request) {
+    results := make(map[string][]AdjInEntry)
+
+    err := bgp.AnnounceServer.ListPeer(context.Background(), &apipb.ListPeerRequest{}, func(peer *apipb.Peer) {
+        rf := bgppkt.RF_IPv4_UC
+
+        _ = bgp.AnnounceServer.ListPath(context.Background(), &apipb.ListPathRequest{
+            Family: &apipb.Family{
+                Afi:  apipb.Family_AFI_IP,
+                Safi: apipb.Family_SAFI_UNICAST,
+            },
+            Name:      peer.Conf.NeighborAddress,
+            TableType: apipb.TableType_ADJ_IN,
+        }, func(dest *apipb.Destination) {
+            for _, p := range dest.Paths {
+                nlri, _ := apiutil.UnmarshalNLRI(rf, p.Nlri)
+                prefix, ok := nlri.(bgppkt.AddrPrefixInterface)
+                if !ok {
+                    continue
+                }
+
+                var asPath []uint32
+                var comms []string
+
+                attrs, err := apiutil.UnmarshalPathAttributes(p.Pattrs)
+                if err != nil {
+                    continue
+                }
+
+                for _, attr := range attrs {
+                    switch a := attr.(type) {
+                    case *bgppkt.PathAttributeAsPath:
+
+for _, seg := range a.Value {
+    switch s := seg.(type) {
+    case *bgppkt.As4PathParam:
+        asPath = append(asPath, s.AS...)
+    case *bgppkt.AsPathParam:
+        // fallback if As4PathParam not used
+        for _, asn := range s.AS {
+            asPath = append(asPath, uint32(asn))
+        }
+    }
+}
+                    case *bgppkt.PathAttributeCommunities:
+                        for _, c := range a.Value {
+                            high := c >> 16
+                            low := c & 0xFFFF
+                            comms = append(comms, fmt.Sprintf("%d:%d", high, low))
+                        }
+                    }
+                }
+
+                results[peer.Conf.NeighborAddress] = append(results[peer.Conf.NeighborAddress], AdjInEntry{
+                    Prefix:      prefix.String(),
+                    ASPath:      asPath,
+                    Communities: comms,
+                })
+            }
+        })
+    })
+
+    if err != nil {
+        http.Error(w, "Failed to list adj-in paths", http.StatusInternalServerError)
+        return
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    _ = json.NewEncoder(w).Encode(results)
 }

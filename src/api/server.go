@@ -36,6 +36,7 @@ func Start() {
 http.HandleFunc("/announce", handleAnnounce)
 http.HandleFunc("/withdraw", handleWithdraw)
 http.HandleFunc("/announcements", handleListAnnouncements)
+http.HandleFunc("/bgpannouncements", handleAdjIn)
 
 	log.Println("[API] Listening on 127.0.0.1:9600")
 	if err := http.ListenAndServe("127.0.0.1:9600", nil); err != nil {

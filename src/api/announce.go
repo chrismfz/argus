@@ -138,66 +138,63 @@ type AdjInEntry struct {
     Communities []string `json:"communities,omitempty"`
 }
 
+
 func handleAdjIn(w http.ResponseWriter, r *http.Request) {
-    results := make(map[string][]AdjInEntry)
+    results := make(map[string][]map[string]interface{})
 
     err := bgp.AnnounceServer.ListPeer(context.Background(), &apipb.ListPeerRequest{}, func(peer *apipb.Peer) {
-        rf := bgppkt.RF_IPv4_UC
+        for _, rf := range []bgppkt.RouteFamily{bgppkt.RF_IPv4_UC, bgppkt.RF_IPv6_UC} {
+            afi, safi := bgppkt.RouteFamilyToAfiSafi(rf)
+            family := &apipb.Family{
+                Afi:  apipb.Family_Afi(afi),
+                Safi: apipb.Family_Safi(safi),
+            }
 
-        _ = bgp.AnnounceServer.ListPath(context.Background(), &apipb.ListPathRequest{
-            Family: &apipb.Family{
-                Afi:  apipb.Family_AFI_IP,
-                Safi: apipb.Family_SAFI_UNICAST,
-            },
-            Name:      peer.Conf.NeighborAddress,
-            TableType: apipb.TableType_ADJ_IN,
-        }, func(dest *apipb.Destination) {
-            for _, p := range dest.Paths {
-                nlri, _ := apiutil.UnmarshalNLRI(rf, p.Nlri)
-                prefix, ok := nlri.(bgppkt.AddrPrefixInterface)
-                if !ok {
-                    continue
-                }
+            _ = bgp.AnnounceServer.ListPath(context.Background(), &apipb.ListPathRequest{
+                Family:    family,
+                Name:      peer.Conf.NeighborAddress,
+                TableType: apipb.TableType_ADJ_IN,
+            }, func(dest *apipb.Destination) {
+                for _, p := range dest.Paths {
+                    entry := map[string]interface{}{}
 
-                var asPath []uint32
-                var comms []string
+                    nlri, _ := apiutil.UnmarshalNLRI(rf, p.Nlri)
+                    if prefix, ok := nlri.(bgppkt.AddrPrefixInterface); ok {
+                        entry["prefix"] = prefix.String()
+                    }
 
-                attrs, err := apiutil.UnmarshalPathAttributes(p.Pattrs)
-                if err != nil {
-                    continue
-                }
+                    // Parse attributes
+                    if attrs, err := apiutil.UnmarshalPathAttributes(p.Pattrs); err == nil {
+                        for _, attr := range attrs {
+                            switch v := attr.(type) {
+                            case *bgppkt.PathAttributeAsPath:
+                                var asns []uint32
+                                for _, seg := range v.Value {
+                                    switch s := seg.(type) {
+                                    case *bgppkt.As4PathParam:
+                                        asns = append(asns, s.AS...)
+                                    case *bgppkt.AsPathParam:
+                                        for _, asn := range s.AS {
+                                            asns = append(asns, uint32(asn))
+                                        }
+                                    }
+                                }
+                                entry["as_path"] = asns
 
-                for _, attr := range attrs {
-                    switch a := attr.(type) {
-                    case *bgppkt.PathAttributeAsPath:
-
-for _, seg := range a.Value {
-    switch s := seg.(type) {
-    case *bgppkt.As4PathParam:
-        asPath = append(asPath, s.AS...)
-    case *bgppkt.AsPathParam:
-        // fallback if As4PathParam not used
-        for _, asn := range s.AS {
-            asPath = append(asPath, uint32(asn))
-        }
-    }
-}
-                    case *bgppkt.PathAttributeCommunities:
-                        for _, c := range a.Value {
-                            high := c >> 16
-                            low := c & 0xFFFF
-                            comms = append(comms, fmt.Sprintf("%d:%d", high, low))
+                            case *bgppkt.PathAttributeCommunities:
+                                var comms []string
+                                for _, c := range v.Value {
+                                    comms = append(comms, fmt.Sprintf("%d:%d", c>>16, c&0xFFFF))
+                                }
+                                entry["communities"] = comms
+                            }
                         }
                     }
-                }
 
-                results[peer.Conf.NeighborAddress] = append(results[peer.Conf.NeighborAddress], AdjInEntry{
-                    Prefix:      prefix.String(),
-                    ASPath:      asPath,
-                    Communities: comms,
-                })
-            }
-        })
+                    results[peer.Conf.NeighborAddress] = append(results[peer.Conf.NeighborAddress], entry)
+                }
+            })
+        }
     })
 
     if err != nil {

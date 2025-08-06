@@ -24,6 +24,7 @@ import (
 
 // Optional: debug logging toggle
 var debugLog = log.New(os.Stdout, "[DEBUG] ", log.LstdFlags)
+var PathCount int
 
 // BGPListener handles the embedded BGP server
 type BGPListener struct {
@@ -478,4 +479,10 @@ if p.Transport != nil {
 	if err != nil {
 		log.Printf("[BGP] Error listing peer %s details: %v", peerAddress, err)
 	}
+}
+
+
+
+func GetPathCount() int {
+	return PathCount
 }

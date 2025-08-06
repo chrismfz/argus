@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"                               // ✅ Add this
 	"encoding/json"
 	"net"
 	"net/http"
@@ -10,6 +11,8 @@ import (
 	"log"
 	"fmt"
 	"sort"
+	"time"                                   // ✅ Add this
+	apipb "github.com/osrg/gobgp/v3/api"     // ✅ Add this
 )
 
 type GeoIPResponse struct {
@@ -38,6 +41,7 @@ http.HandleFunc("/withdraw", handleWithdraw)
 http.HandleFunc("/announcements", handleListAnnouncements)
 http.HandleFunc("/bgpannouncements", handleAdjIn)
 http.HandleFunc("/aspathviz", handleASPathViz)
+http.HandleFunc("/bgpstatus", handleBGPStatus)
 
 
 	log.Println("[API] Listening on 127.0.0.1:9600")
@@ -158,4 +162,103 @@ func handleCommunities(w http.ResponseWriter, r *http.Request) {
 	sort.Strings(result)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+func handleBGPStatus(w http.ResponseWriter, r *http.Request) {
+	if bgp.AnnounceServer == nil {
+		http.Error(w, "BGP server not initialized", http.StatusServiceUnavailable)
+		return
+	}
+
+	type PeerStatus struct {
+		IP         string `json:"ip"`
+		RemoteASN  uint32 `json:"remote_as"`
+		State      string `json:"state"`
+		Uptime     string `json:"uptime,omitempty"`
+		LastDown   string `json:"last_downtime,omitempty"`
+		MessagesIn  uint64 `json:"messages_received"`
+		MessagesOut uint64 `json:"messages_sent"`
+		AFISAFI    []string `json:"afi_safi"`
+	}
+
+	var peers []PeerStatus
+	var totalPeers, establishedPeers int
+
+	err := bgp.AnnounceServer.ListPeer(context.Background(), &apipb.ListPeerRequest{}, func(peer *apipb.Peer) {
+		totalPeers++
+
+		state := peer.State.SessionState.String()
+		if peer.State.SessionState == apipb.PeerState_ESTABLISHED {
+			establishedPeers++
+		}
+
+		uptime := ""
+		if peer.Timers != nil && peer.Timers.State != nil && peer.Timers.State.Uptime != nil {
+			uptime = time.Since(peer.Timers.State.Uptime.AsTime()).Round(time.Second).String()
+		}
+
+		lastDown := ""
+		if peer.Timers != nil && peer.Timers.State != nil && peer.Timers.State.Downtime != nil {
+			lastDown = peer.Timers.State.Downtime.AsTime().Local().Format("2006-01-02 15:04:05")
+		}
+
+		afiSafi := []string{}
+		for _, afi := range peer.AfiSafis {
+			if afi.Config != nil && afi.Config.Family != nil {
+				afiSafi = append(afiSafi, fmt.Sprintf("%s/%s", afi.Config.Family.Afi, afi.Config.Family.Safi))
+			}
+		}
+
+		msgIn, msgOut := uint64(0), uint64(0)
+		if peer.State.Messages != nil {
+			if peer.State.Messages.Received != nil {
+				msgIn = peer.State.Messages.Received.Total
+			}
+			if peer.State.Messages.Sent != nil {
+				msgOut = peer.State.Messages.Sent.Total
+			}
+		}
+
+		peers = append(peers, PeerStatus{
+			IP:         peer.Conf.NeighborAddress,
+			RemoteASN:  peer.Conf.PeerAsn,
+			State:      state,
+			Uptime:     uptime,
+			LastDown:   lastDown,
+			MessagesIn: msgIn,
+			MessagesOut: msgOut,
+			AFISAFI:    afiSafi,
+		})
+	})
+
+	if err != nil {
+		http.Error(w, "Failed to get peer status", http.StatusInternalServerError)
+		return
+	}
+
+	summary := map[string]interface{}{
+		"total_peers":          totalPeers,
+		"established_peers":    establishedPeers,
+		"prefixes_announced":   len(bgp.ListAnnouncements()),
+		"prefixes_received":    bgp.GetPathCount(), // ✅ We'll add this next
+		"peers":                peers,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(summary)
 }

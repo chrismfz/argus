@@ -205,3 +205,72 @@ func handleAdjIn(w http.ResponseWriter, r *http.Request) {
     w.Header().Set("Content-Type", "application/json")
     _ = json.NewEncoder(w).Encode(results)
 }
+
+
+
+
+
+
+
+
+func handleASPathViz(w http.ResponseWriter, r *http.Request) {
+	ipStr := r.URL.Query().Get("ip")
+	if ipStr == "" {
+		http.Error(w, "Missing ?ip= query param", http.StatusBadRequest)
+		return
+	}
+
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		http.Error(w, "Invalid IP", http.StatusBadRequest)
+		return
+	}
+
+	if Ranger == nil {
+		http.Error(w, "BGP data not loaded", http.StatusServiceUnavailable)
+		return
+	}
+
+	entries, err := Ranger.ContainingNetworks(ip)
+	if err != nil || len(entries) == 0 {
+		http.Error(w, "Prefix not found", http.StatusNotFound)
+		return
+	}
+
+	// Πάρε το πιο μακρύ match
+	longest := entries[0]
+	for _, e := range entries {
+		if lenMask(e.Network().Mask) > lenMask(longest.Network().Mask) {
+			longest = e
+		}
+	}
+
+	bgpEntry, ok := longest.(bgp.BGPEnrichedEntry)
+	if !ok {
+		http.Error(w, "Invalid entry format", http.StatusInternalServerError)
+		return
+	}
+
+	// Δημιούργησε απλή JSON απεικόνιση path
+	type Hop struct {
+		ASN      string `json:"asn"`
+		ASNName  string `json:"asn_name,omitempty"`
+		Country  string `json:"country,omitempty"`
+	}
+
+	var hops []Hop
+	for _, asn := range bgpEntry.ASPath {
+		hops = append(hops, Hop{
+			ASN:     asn,
+			ASNName: Geo.GetASNName(asn),
+			Country: Geo.GetCountry(asn),
+		})
+	}
+
+netCopy := longest.Network()
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ip":      ipStr,
+		"prefix":  (&netCopy).String(), // ✅
+		"as_path": hops,
+	})
+}

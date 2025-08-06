@@ -29,7 +29,7 @@ var Ranger cidranger.Ranger
 
 
 func Start() {
-	http.HandleFunc("/geoip", handleGeoIP)
+	http.HandleFunc("/infoip", handleInfoIP)
 	http.HandleFunc("/status", handleStatus)
 	http.HandleFunc("/communities", handleCommunities)
 
@@ -47,7 +47,9 @@ http.HandleFunc("/aspathviz", handleASPathViz)
 }
 
 
-func handleGeoIP(w http.ResponseWriter, r *http.Request) {
+
+
+func handleInfoIP(w http.ResponseWriter, r *http.Request) {
 	ipStr := r.URL.Query().Get("ip")
 	ip := net.ParseIP(ipStr)
 	if ip == nil {
@@ -55,42 +57,57 @@ func handleGeoIP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res := GeoIPResponse{
-		IP:      ipStr,
-		PTR:     Resolver.LookupPTR(ipStr),
-		ASN:     Geo.GetASNNumber(ipStr),
-		ASNName: Geo.GetASNName(ipStr),
-		Country: Geo.GetCountry(ipStr),
+	res := map[string]interface{}{
+		"ip":      ipStr,
+		"ptr":     Resolver.LookupPTR(ipStr),
+		"asn":     Geo.GetASNNumber(ipStr),
+		"asn_name": Geo.GetASNName(ipStr),
+		"country": Geo.GetCountry(ipStr),
 	}
 
-
-
-	// Lookup σε BGP Ranger για AS Path
-
-if Ranger != nil {
-	if entries, err := Ranger.ContainingNetworks(ip); err == nil && len(entries) > 0 {
-		longest := entries[0]
-		for _, e := range entries {
-			if lenMask(e.Network().Mask) > lenMask(longest.Network().Mask) {
-				longest = e
+	if Ranger != nil {
+		if entries, err := Ranger.ContainingNetworks(ip); err == nil && len(entries) > 0 {
+			longest := entries[0]
+			for _, e := range entries {
+				if lenMask(e.Network().Mask) > lenMask(longest.Network().Mask) {
+					longest = e
+				}
 			}
-		}
-		if bgpEntry, ok := longest.(bgp.BGPEnrichedEntry); ok {
-			res.ASPath = bgpEntry.ASPath
-			for _, c := range bgpEntry.Communities {
-				comStr := fmt.Sprintf("%d:%d", c>>16, c&0xFFFF)
-				res.Communities = append(res.Communities, comStr)
-			}
-		}
+
+if bgpEntry, ok := longest.(bgp.BGPEnrichedEntry); ok {
+	netCopy := longest.Network()                      // ✅ Add this
+	res["prefix"] = netCopy.String()                  // ✅ Fix this line
+
+	var hops []map[string]string
+	for _, asn := range bgpEntry.ASPath {
+		hops = append(hops, map[string]string{
+			"asn":      asn,
+			"asn_name": Geo.GetASNName(asn),
+			"country":  Geo.GetCountry(asn),
+		})
 	}
+	res["as_path"] = hops
+
+	var comms []string
+	for _, c := range bgpEntry.Communities {
+		comms = append(comms, fmt.Sprintf("%d:%d", c>>16, c&0xFFFF))
+	}
+	res["communities"] = comms
 }
-
-
-
+		}
+	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(res)
+	_ = json.NewEncoder(w).Encode(res)
 }
+
+
+
+
+
+
+
+
 
 
 
@@ -104,7 +121,7 @@ func lenMask(mask net.IPMask) int {
 
 func handleStatus(w http.ResponseWriter, r *http.Request) {
 	status := map[string]bool{
-		"geoip":    Geo != nil,
+		"infoip":    Geo != nil,
 		"resolver": Resolver != nil,
 		"bgp":      Ranger != nil,
 	}

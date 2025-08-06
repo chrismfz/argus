@@ -309,6 +309,7 @@ case *bgp.As4PathParam:
 				} else {
 					totalPaths++
 					b.PathCount = totalPaths
+					PathCount = totalPaths
 					//if totalPaths%1000 == 0 { // Changed to 1000 for more frequent updates if many routes
 					//	fmt.Printf("\r[BGP] Progress: %d prefixes...", totalPaths)
 					//}

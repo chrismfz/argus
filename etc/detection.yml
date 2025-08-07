@@ -9,7 +9,7 @@ rules:
     min_unique_src_ips: 100
     time_window: 20s
     action: alert,blackhole
-    blackhole_count: 50
+    blackhole_count: 30
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
     blackhole_time: 14400  # Seconds
@@ -22,7 +22,7 @@ rules:
     min_avg_pps: 1000
     time_window: 20s
     action: alert,blackhole
-    blackhole_count: 50
+    blackhole_count: 30
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
     blackhole_time: 14400  # Seconds
@@ -35,7 +35,7 @@ rules:
     min_avg_pps: 2000
     time_window: 20s
     action: alert,blackhole
-    blackhole_count: 50
+    blackhole_count: 30
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
     blackhole_time: 14400  # Seconds
@@ -48,7 +48,7 @@ rules:
     min_avg_pps: 1000
     time_window: 20s
     action: alert,blackhole
-    blackhole_count: 50
+    blackhole_count: 30
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
     blackhole_time: 14400  # Seconds
@@ -61,7 +61,12 @@ rules:
     same_dst_ip: true
     min_flows: 50
     time_window: 20s
-    action: alert
+    action: alert,blackhole
+    blackhole_count: 50
+    blackhole_next_hop: 192.0.2.1
+    blackhole_communities: [ "65001:666" ]
+    blackhole_time: 14400  # Seconds
+
 
   - name: ssh_brute_custom_port1
     proto: tcp
@@ -95,7 +100,12 @@ rules:
     same_dst_ip: true
     min_flows: 40
     time_window: 20s
-    action: alert
+    action: alert,blackhole
+    blackhole_count: 50
+    blackhole_next_hop: 192.0.2.1
+    blackhole_communities: [ "65001:666" ]
+    blackhole_time: 14400  # Seconds
+
 
   # ──────────────── Port Scanning ────────────────
   - name: vertical_scan
@@ -129,7 +139,12 @@ rules:
     unique_dst_ports: 200
     min_flows: 300
     time_window: 20s
-    action: alert
+    action: alert,blackhole
+    blackhole_count: 30
+    blackhole_next_hop: 192.0.2.1
+    blackhole_communities: [ "65001:666" ]
+    blackhole_time: 14400  # Seconds
+
 
   - name: dns_flood
     proto: udp
@@ -138,13 +153,61 @@ rules:
     min_flows: 3000
     min_unique_src_ips: 50
     time_window: 15s
-    action: alert
+    action: alert,blackhole
+    blackhole_count: 30
+    blackhole_next_hop: 192.0.2.1
+    blackhole_communities: [ "65001:666" ]
+    blackhole_time: 14400  # Seconds
+
 
   - name: slow_horizontal_scan
     proto: tcp
     same_dst_port: true
     unique_dst_ips: 50
     min_flows: 70
+    time_window: 60s
+    action: alert,blackhole
+    blackhole_count: 30
+    blackhole_next_hop: 192.0.2.1
+    blackhole_communities: [ "65001:666" ]
+    blackhole_time: 14400  # Seconds
+
+
+  # ──────────────── Slow SYN Attacks ────────────────
+  - name: slow_syn_scan_ssh
+    proto: tcp
+    dst_port: 22
+    tcp_flags: SYN
+    same_dst_ip: true
+    min_flows: 8
+    time_window: 60s
+    action: alert,blackhole
+    blackhole_count: 30
+    blackhole_next_hop: 192.0.2.1
+    blackhole_communities: [ "65001:666" ]
+    blackhole_time: 14400  # Seconds
+
+
+  - name: slow_syn_scan_rdp
+    proto: tcp
+    dst_port: 3389
+    tcp_flags: SYN
+    same_dst_ip: true
+    min_flows: 8
+    time_window: 60s
+    action: alert,blackhole
+    blackhole_count: 50
+    blackhole_next_hop: 192.0.2.1
+    blackhole_communities: [ "65001:666" ]
+    blackhole_time: 14400  # Seconds
+
+
+  - name: slow_syn_scan_custom65535
+    proto: tcp
+    dst_port: 65535
+    tcp_flags: SYN
+    same_dst_ip: true
+    min_flows: 8
     time_window: 60s
     action: alert,blackhole
     blackhole_count: 50

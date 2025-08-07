@@ -422,3 +422,63 @@ func handleBlackholeList(w http.ResponseWriter, r *http.Request) {
 
     _ = json.NewEncoder(w).Encode(result)
 }
+
+
+
+
+
+
+
+// handleFlush clears the database and BGP announcements for a fresh start.
+func handleFlush(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if DB == nil {
+		http.Error(w, "DB not initialized", http.StatusInternalServerError)
+		return
+	}
+
+	// 1. Get all currently announced prefixes from the BGP server
+	allAnnouncements := bgp.ListAnnouncements()
+	var announcedPrefixes []string
+	for prefix := range allAnnouncements {
+		announcedPrefixes = append(announcedPrefixes, prefix)
+	}
+
+	announcedCount := len(announcedPrefixes)
+
+	// 2. Withdraw each announced prefix using your existing bgp.WithdrawPrefix logic
+	for _, prefix := range announcedPrefixes {
+		if err := bgp.WithdrawPrefix(prefix); err != nil {
+			log.Printf("[WARN] Failed to withdraw BGP prefix %s: %v", prefix, err)
+		}
+	}
+	log.Printf("[INFO] Withdrawn all %d prefixes from BGP.", announcedCount)
+
+	// 3. Clear the database tables and capture the number of rows affected
+	detectionsResult, err := DB.Exec(`DELETE FROM detections`)
+	if err != nil {
+		log.Printf("[ERROR] DB error deleting detections: %v", err)
+		http.Error(w, "Failed to flush detections", http.StatusInternalServerError)
+		return
+	}
+	detectionsCount, _ := detectionsResult.RowsAffected()
+
+	blackholesResult, err := DB.Exec(`DELETE FROM blackholes`)
+	if err != nil {
+		log.Printf("[ERROR] DB error deleting blackholes: %v", err)
+		http.Error(w, "Failed to flush blackholes", http.StatusInternalServerError)
+		return
+	}
+	blackholesCount, _ := blackholesResult.RowsAffected()
+
+	// 4. Respond with a detailed success message
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"status": "success",
+		"message": "All data flushed successfully.",
+		"rib_announcements_cleared": announcedCount,
+		"db_blackholes_cleared": blackholesCount,
+		"db_detections_cleared": detectionsCount,
+	})
+}

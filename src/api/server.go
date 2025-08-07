@@ -44,6 +44,7 @@ http.HandleFunc("/bgpannouncements", handleAdjIn)
 http.HandleFunc("/aspathviz", handleASPathViz)
 http.HandleFunc("/bgpstatus", handleBGPStatus)
 http.HandleFunc("/blackhole-list", handleBlackholeList)
+http.HandleFunc("/flush", handleFlush)
 
 
 	log.Println("[API] Listening on 127.0.0.1:9600")

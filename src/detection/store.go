@@ -133,3 +133,15 @@ if err != nil {
 	}
 	return nil
 }
+
+
+
+func (s *SQLiteStore) InsertBlackhole(
+	prefix, timestamp, expires, rule, reason, asn, asnName, country, ptr string,
+) error {
+	_, err := s.db.Exec(`
+		INSERT INTO blackholes (prefix, timestamp, expires_at, rule, reason, asn, asn_name, country, ptr)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, prefix, timestamp, expires, rule, reason, asn, asnName, country, ptr)
+	return err
+}

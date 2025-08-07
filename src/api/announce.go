@@ -29,19 +29,19 @@ type AnnouncedPrefix struct {
 
 
 type BlackholeList struct {
-	Prefix      string    `json:"prefix"`
-	NextHop     string    `json:"next_hop"`
-	Communities []string  `json:"communities"`
-	Timestamp   time.Time `json:"timestamp"`
-	ExpiresAt   *time.Time `json:"expires_at,omitempty"` // 🆕
-	ASPath      []uint32  `json:"as_path"`
+	Prefix      string     `json:"prefix"`
+	NextHop     string     `json:"next_hop,omitempty"`
+	Communities []string   `json:"communities,omitempty"`
+	Timestamp   time.Time  `json:"timestamp"`
+	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
+	ASPath      []uint32   `json:"as_path,omitempty"`
 
-	ASN      uint32 `json:"asn,omitempty"`
-	ASNName  string `json:"asn_name,omitempty"`
-	Country  string `json:"country,omitempty"`
-	PTR      string `json:"ptr,omitempty"`
-	Rule     string `json:"rule,omitempty"`
-	Reason   string `json:"reason,omitempty"`
+	ASN     uint32 `json:"asn,omitempty"`
+	ASNName string `json:"asn_name,omitempty"`
+	Country string `json:"country,omitempty"`
+	PTR     string `json:"ptr,omitempty"`
+	Rule    string `json:"rule,omitempty"`
+	Reason  string `json:"reason,omitempty"`
 }
 
 

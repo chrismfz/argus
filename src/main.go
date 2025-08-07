@@ -399,17 +399,8 @@ if cfg.Detection.Enabled {
                         }
                 }
 
-//                engine = detection.NewEngine(
-//                        detectionRules,
-//                        cfg.MyASN,
-//                        myNets,
-//                        maxWin,
-//			enrichers.Geo,
-//			enrichers.DNS,
-//              )
 
-
-// 🆕 DetectionStore logic
+//  DetectionStore logic
 var store detection.DetectionStore
 if db != nil {
 	store = detection.NewSQLiteStore(db)
@@ -419,7 +410,7 @@ if db != nil {
 	log.Println("[WARN] Falling back to in-memory detection store")
 }
 
-// ✅ Start detection engine with store
+// Start detection engine with store
 engine = detection.NewEngine(
 	detectionRules,
 	cfg.MyASN,
@@ -430,14 +421,11 @@ engine = detection.NewEngine(
 	store,
 )
 
-
-
                 go engine.Run(ctx)
                 dlog("Detection engine started with maxWindow: %s", maxWin.String())
         } else {
                 fmt.Println("[INFO] Detection engine is DISABLED")
         }
-
 
 
 
@@ -461,21 +449,6 @@ go func() {
 }()
 
 
-
-
-
-
-// Kafka
-if cfg.Kafka.Enabled {
-    go func() {
-        err := StartKafkaConsumer(ctx, cfg, geo, listener.Ranger, resolver, batcher)
-        if err != nil {
-            log.Fatalf("Kafka consumer error: %v", err)
-        }
-    }()
-} else {
-    log.Println("[INFO] Kafka is disabled in config.yaml, skipping consumer.")
-}
 
 
 

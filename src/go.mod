@@ -8,7 +8,6 @@ require (
 	github.com/miekg/dns v1.1.67
 	github.com/oschwald/geoip2-golang v1.13.0
 	github.com/osrg/gobgp/v3 v3.37.0
-	github.com/segmentio/kafka-go v0.4.48
 	github.com/yl2chen/cidranger v1.0.2
 	golang.org/x/sync v0.16.0
 	google.golang.org/protobuf v1.36.6

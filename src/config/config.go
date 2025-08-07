@@ -58,12 +58,6 @@ type Config struct {
         CityDB string `yaml:"city_db"`
     } `yaml:"geoip"`
 
-    Kafka struct {
-	Enabled bool     `yaml:"enabled"`  //We got netflow now mofos
-        Brokers []string `yaml:"brokers"`
-        Topic   string   `yaml:"topic"`
-        GroupID string   `yaml:"group_id"`
-    } `yaml:"kafka"`
 
     DNS struct {
         Nameserver string `yaml:"nameserver"`

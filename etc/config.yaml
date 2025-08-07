@@ -31,13 +31,6 @@ geoip:
   city_db: "/etc/pmacct/GeoLite2-City.mmdb"
 
 
-kafka:
-  enabled: false
-  brokers:
-    - "localhost:9092"
-  topic: "netflow"
-  group_id: "flowenricher-group"
-
 dns:
   nameserver: "1.1.1.1"
 

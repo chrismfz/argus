@@ -342,44 +342,52 @@ netCopy := longest.Network()
 
 
 func handleBlackholeList(w http.ResponseWriter, r *http.Request) {
-        w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/json")
 
-        if DB == nil {
-                http.Error(w, "DB not initialized", http.StatusInternalServerError)
-                return
-        }
+	if DB == nil {
+		http.Error(w, "DB not initialized", http.StatusInternalServerError)
+		return
+	}
 
-        rows, err := DB.Query(`
-                SELECT prefix, timestamp, expires_at, rule, reason, asn, asn_name, country, ptr
-                FROM blackholes
-        `)
-        if err != nil {
-                http.Error(w, fmt.Sprintf("DB error: %v", err), http.StatusInternalServerError)
-                return
-        }
-        defer rows.Close()
+	//now := time.Now().Format(time.RFC3339)
 
-        result := make(map[string]BlackholeList)
+	rows, err := DB.Query(`
+		SELECT prefix, timestamp, expires_at, rule, reason, asn, asn_name, country, ptr
+		FROM blackholes
+		`)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("DB error: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
 
-        for rows.Next() {
-                var b BlackholeList
-                var ts, expires string
+	result := make(map[string]BlackholeList)
 
-                err := rows.Scan(&b.Prefix, &ts, &expires, &b.Rule, &b.Reason, &b.ASN, &b.ASNName, &b.Country, &b.PTR)
-                if err != nil {
-                        continue
-                }
+	for rows.Next() {
+		var b BlackholeList
+		var ts, expires string
 
-                // Parse timestamps
-                b.Timestamp, _ = time.Parse(time.RFC3339, ts)
-                if exp, err := time.Parse(time.RFC3339, expires); err == nil {
-                        b.ExpiresAt = &exp
-                } else {
-                        b.ExpiresAt = nil
-                }
+		err := rows.Scan(&b.Prefix, &ts, &expires, &b.Rule, &b.Reason, &b.ASN, &b.ASNName, &b.Country, &b.PTR)
+		if err != nil {
+			continue
+		}
 
-                result[b.Prefix] = b
-        }
+		if t, err := time.Parse(time.RFC3339, ts); err == nil {
+			b.Timestamp = t
+		}
 
-        json.NewEncoder(w).Encode(result)
+		if exp, err := time.Parse(time.RFC3339, expires); err == nil {
+			b.ExpiresAt = &exp
+		}
+
+		result[b.Prefix] = b
+	}
+
+	if err := rows.Err(); err != nil {
+		log.Printf("[ERROR] Rows error: %v", err)
+		http.Error(w, "Failed to read blackholes", http.StatusInternalServerError)
+		return
+	}
+
+	_ = json.NewEncoder(w).Encode(result)
 }

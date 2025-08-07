@@ -341,42 +341,45 @@ netCopy := longest.Network()
 
 
 
-
 func handleBlackholeList(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+        w.Header().Set("Content-Type", "application/json")
 
-	if DB == nil {
-		http.Error(w, "DB not initialized", http.StatusInternalServerError)
-		return
-	}
-
-	rows, err := DB.Query(`
-		SELECT prefix, timestamp, expires_at, rule, reason, asn, asn_name, country, ptr
-		FROM blackholes
-	`)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("DB error: %v", err), http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
-
-	result := make(map[string]BlackholeList)
-
-for rows.Next() {
-        var b BlackholeList
-        var ts, expires string
-
-        err := rows.Scan(&b.Prefix, &ts, &expires, &b.Rule, &b.Reason, &b.ASN, &b.ASNName, &b.Country, &b.PTR)
-        if err != nil {
-                continue
+        if DB == nil {
+                http.Error(w, "DB not initialized", http.StatusInternalServerError)
+                return
         }
 
-        b.Timestamp, _ = time.Parse(time.RFC3339, ts)
-        t, _ := time.Parse(time.RFC3339, expires)
-        b.ExpiresAt = &t
+        rows, err := DB.Query(`
+                SELECT prefix, timestamp, expires_at, rule, reason, asn, asn_name, country, ptr
+                FROM blackholes
+        `)
+        if err != nil {
+                http.Error(w, fmt.Sprintf("DB error: %v", err), http.StatusInternalServerError)
+                return
+        }
+        defer rows.Close()
 
-        result[b.Prefix] = b
-}
+        result := make(map[string]BlackholeList)
 
-	json.NewEncoder(w).Encode(result)
+        for rows.Next() {
+                var b BlackholeList
+                var ts, expires string
+
+                err := rows.Scan(&b.Prefix, &ts, &expires, &b.Rule, &b.Reason, &b.ASN, &b.ASNName, &b.Country, &b.PTR)
+                if err != nil {
+                        continue
+                }
+
+                // Parse timestamps
+                b.Timestamp, _ = time.Parse(time.RFC3339, ts)
+                if exp, err := time.Parse(time.RFC3339, expires); err == nil {
+                        b.ExpiresAt = &exp
+                } else {
+                        b.ExpiresAt = nil
+                }
+
+                result[b.Prefix] = b
+        }
+
+        json.NewEncoder(w).Encode(result)
 }

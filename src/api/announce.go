@@ -6,8 +6,10 @@ import (
 	"net/http"
 	"time"
 	"net"
+	"strings"
 	"flowenricher/bgp"
 	"flowenricher/config"
+	"flowenricher/detection"
 	"context"
 	apipb "github.com/osrg/gobgp/v3/api"
 	"github.com/osrg/gobgp/v3/pkg/apiutil"
@@ -22,6 +24,24 @@ type AnnouncedPrefix struct {
 	ASPath []uint32 `json:"as_path,omitempty"`
 	IsBlackhole bool `json:"blackhole"`
 }
+
+
+type BlackholeList struct {
+	Prefix      string    `json:"prefix"`
+	NextHop     string    `json:"next_hop"`
+	Communities []string  `json:"communities"`
+	Timestamp   time.Time `json:"timestamp"`
+	ASPath      []uint32  `json:"as_path"`
+
+	ASN      uint32 `json:"asn,omitempty"`
+	ASNName  string `json:"asn_name,omitempty"`
+	Country  string `json:"country,omitempty"`
+	PTR      string `json:"ptr,omitempty"`
+	Rule     string `json:"rule,omitempty"`
+	Reason   string `json:"reason,omitempty"`
+}
+
+
 
 
 func handleAnnounce(w http.ResponseWriter, r *http.Request) {
@@ -273,4 +293,35 @@ netCopy := longest.Network()
 		"prefix":  (&netCopy).String(), // ✅
 		"as_path": hops,
 	})
+}
+
+
+
+
+
+func handleBlackholeList(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	all := bgp.ListAnnouncements()
+	result := make(map[string]BlackholeList)
+
+	for prefix, a := range all {
+		ip := strings.Split(prefix, "/")[0]
+
+		result[prefix] = BlackholeList{
+			Prefix:      a.Prefix,
+			NextHop:     a.NextHop,
+			Communities: a.Communities,
+			Timestamp:   a.Timestamp,
+			ASPath:      a.ASPath,
+			ASN:         detection.GetASN(ip),
+			ASNName:     detection.GetASNName(ip),
+			Country:     detection.GetCountry(ip),
+			PTR:         detection.GetPTR(ip),
+			Rule:        detection.GetRuleName(prefix),
+			Reason:      detection.GetRuleReason(prefix),
+		}
+	}
+
+	json.NewEncoder(w).Encode(result)
 }

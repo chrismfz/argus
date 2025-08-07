@@ -6,6 +6,9 @@ import (
 	"time"
 	"flowenricher/config"
 	"flowenricher/bgp"
+        "flowenricher/enrich"
+	"sync"
+
 )
 
 func (e *Engine) HandleBlackhole(rule DetectionRule, flows []Flow, count int) {
@@ -31,6 +34,9 @@ func (e *Engine) HandleBlackhole(rule DetectionRule, flows []Flow, count int) {
 	}
 
 	err := bgp.AnnouncePrefix(prefix, nextHop, communities, []uint32{config.GetLocalASN()})
+reason := buildReason(rule)
+RegisterBlackholeReason(prefix, rule.Name, reason)
+
 	if err != nil {
 		log.Printf("[BLACKHOLE] Failed to announce %s: %v", prefix, err)
 		return
@@ -39,6 +45,28 @@ func (e *Engine) HandleBlackhole(rule DetectionRule, flows []Flow, count int) {
 	timestamp := time.Now().Format(time.RFC3339)
 	log.Printf("[BLACKHOLE] Announced %s (rule: %s)", prefix, rule.Name)
 	LogBlackhole(fmt.Sprintf("[%s] BLACKHOLE: Rule='%s' | SRC: %s", timestamp, rule.Name, srcIP))
+
+
+ptr := e.DNS.LookupPTR(srcIP)
+asn := e.Geo.GetASNNumber(srcIP)
+asnName := e.Geo.GetASNName(srcIP)
+country := e.Geo.GetCountry(srcIP)
+
+if ptr == "" {
+	ptr = "-"
+}
+if asnName == "" {
+	asnName = "Unknown"
+}
+if country == "" {
+	country = "--"
+}
+
+LogBlackhole(fmt.Sprintf("         SRC: %-15s | PTR: %-30s | ASN: AS%d (%s) | Country: %s",
+	srcIP, ptr, asn, asnName, country))
+
+
+
 
 	// Optional auto-withdraw
 	if rule.BlackholeTime > 0 {
@@ -55,4 +83,49 @@ func (e *Engine) HandleBlackhole(rule DetectionRule, flows []Flow, count int) {
 			}
 		}(prefix, duration, rule.Name, srcIP)
 	}
+}
+
+
+
+
+
+var (
+	ruleNameMap   = make(map[string]string)
+	ruleReasonMap = make(map[string]string)
+	mu            sync.RWMutex
+)
+
+func RegisterBlackholeReason(prefix, ruleName, reason string) {
+	mu.Lock()
+	defer mu.Unlock()
+	ruleNameMap[prefix] = ruleName
+	ruleReasonMap[prefix] = reason
+}
+
+func GetRuleName(prefix string) string {
+	mu.RLock()
+	defer mu.RUnlock()
+	return ruleNameMap[prefix]
+}
+
+func GetRuleReason(prefix string) string {
+	mu.RLock()
+	defer mu.RUnlock()
+	return ruleReasonMap[prefix]
+}
+
+func GetASN(ip string) uint32 {
+	return enrich.Global.Geo.GetASNNumber(ip)
+}
+
+func GetASNName(ip string) string {
+	return enrich.Global.Geo.GetASNName(ip)
+}
+
+func GetCountry(ip string) string {
+	return enrich.Global.Geo.GetCountry(ip)
+}
+
+func GetPTR(ip string) string {
+	return enrich.Global.DNS.LookupPTR(ip)
 }

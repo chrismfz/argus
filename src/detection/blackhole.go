@@ -51,13 +51,13 @@ func (e *Engine) HandleBlackhole(rule DetectionRule, flows []Flow, count int) {
 	country := e.Geo.GetCountry(srcIP)
 
 	if ptr == "" {
-		ptr = "-"
+		ptr = "NoPTR"
 	}
 	if asnName == "" {
 		asnName = "Unknown"
 	}
 	if country == "" {
-		country = "--"
+		country = "Unknown"
 	}
 
 	LogBlackhole(fmt.Sprintf("         SRC: %-15s | PTR: %-30s | ASN: AS%d (%s) | Country: %s",

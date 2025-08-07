@@ -15,6 +15,8 @@ import (
 	"github.com/osrg/gobgp/v3/pkg/apiutil"
 	bgppkt "github.com/osrg/gobgp/v3/pkg/packet/bgp"
 	"log"
+	"database/sql"
+ "strconv" // <- Make sure this is imported
 )
 
 type AnnouncedPrefix struct {
@@ -342,52 +344,81 @@ netCopy := longest.Network()
 
 
 func handleBlackholeList(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+    w.Header().Set("Content-Type", "application/json")
 
-	if DB == nil {
-		http.Error(w, "DB not initialized", http.StatusInternalServerError)
-		return
-	}
+    if DB == nil {
+        http.Error(w, "DB not initialized", http.StatusInternalServerError)
+        return
+    }
 
-	//now := time.Now().Format(time.RFC3339)
+    rows, err := DB.Query(`
+        SELECT prefix, timestamp, expires_at, rule, reason, asn, asn_name, country, ptr
+        FROM blackholes
+    `)
+    if err != nil {
+        http.Error(w, fmt.Sprintf("DB error: %v", err), http.StatusInternalServerError)
+        return
+    }
+    defer rows.Close()
 
-	rows, err := DB.Query(`
-		SELECT prefix, timestamp, expires_at, rule, reason, asn, asn_name, country, ptr
-		FROM blackholes
-		`)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("DB error: %v", err), http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
+    result := make(map[string]BlackholeList)
 
-	result := make(map[string]BlackholeList)
+    for rows.Next() {
+        var b BlackholeList
+        var ts, expires sql.NullString
+        var rule, reason, asn, asnName, country, ptr sql.NullString
 
-	for rows.Next() {
-		var b BlackholeList
-		var ts, expires string
+        err := rows.Scan(&b.Prefix, &ts, &expires, &rule, &reason, &asn, &asnName, &country, &ptr)
+        if err != nil {
+            log.Printf("[ERROR] Failed to scan row: %v", err)
+            continue
+        }
 
-		err := rows.Scan(&b.Prefix, &ts, &expires, &b.Rule, &b.Reason, &b.ASN, &b.ASNName, &b.Country, &b.PTR)
-		if err != nil {
-			continue
-		}
+        if ts.Valid {
+            if t, err := time.Parse(time.RFC3339, ts.String); err == nil {
+                b.Timestamp = t
+            }
+        }
+        if expires.Valid {
+            if exp, err := time.Parse(time.RFC3339, expires.String); err == nil {
+                b.ExpiresAt = &exp
+            }
+        }
+        if rule.Valid {
+            b.Rule = rule.String
+        }
+        if reason.Valid {
+            b.Reason = reason.String
+        }
+        
+        // Corrected ASN parsing and assignment
+        if asn.Valid {
+            asnStr := strings.TrimPrefix(asn.String, "AS")
+            if val, err := strconv.ParseUint(asnStr, 10, 32); err == nil {
+                b.ASN = uint32(val)
+            } else {
+                log.Printf("[ERROR] Failed to parse ASN: %v", err)
+            }
+        }
 
-		if t, err := time.Parse(time.RFC3339, ts); err == nil {
-			b.Timestamp = t
-		}
+        if asnName.Valid {
+            b.ASNName = asnName.String
+        }
+        if country.Valid {
+            b.Country = country.String
+        }
+        if ptr.Valid {
+            b.PTR = ptr.String
+        }
 
-		if exp, err := time.Parse(time.RFC3339, expires); err == nil {
-			b.ExpiresAt = &exp
-		}
+        result[b.Prefix] = b
+    }
 
-		result[b.Prefix] = b
-	}
+    if err := rows.Err(); err != nil {
+        log.Printf("[ERROR] Rows error: %v", err)
+        http.Error(w, "Failed to read blackholes", http.StatusInternalServerError)
+        return
+    }
 
-	if err := rows.Err(); err != nil {
-		log.Printf("[ERROR] Rows error: %v", err)
-		http.Error(w, "Failed to read blackholes", http.StatusInternalServerError)
-		return
-	}
-
-	_ = json.NewEncoder(w).Encode(result)
+    _ = json.NewEncoder(w).Encode(result)
 }

@@ -13,6 +13,7 @@ import (
 	"sort"
 	"time"                                   // ✅ Add this
 	apipb "github.com/osrg/gobgp/v3/api"     // ✅ Add this
+	"database/sql"
 )
 
 type GeoIPResponse struct {
@@ -29,7 +30,7 @@ type GeoIPResponse struct {
 var Geo *enrich.GeoIP
 var Resolver *enrich.DNSResolver
 var Ranger cidranger.Ranger
-
+var DB *sql.DB // για SQLite access
 
 func Start() {
 	http.HandleFunc("/infoip", handleInfoIP)

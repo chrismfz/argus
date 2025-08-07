@@ -9,11 +9,12 @@ import (
 	"strings"
 	"flowenricher/bgp"
 	"flowenricher/config"
-	"flowenricher/detection"
+//	"flowenricher/detection"
 	"context"
 	apipb "github.com/osrg/gobgp/v3/api"
 	"github.com/osrg/gobgp/v3/pkg/apiutil"
 	bgppkt "github.com/osrg/gobgp/v3/pkg/packet/bgp"
+	"log"
 )
 
 type AnnouncedPrefix struct {
@@ -23,6 +24,7 @@ type AnnouncedPrefix struct {
 	Timestamp   time.Time `json:"timestamp"`
 	ASPath []uint32 `json:"as_path,omitempty"`
 	IsBlackhole bool `json:"blackhole"`
+	DurationSeconds int `json:"duration_seconds,omitempty"` // 
 }
 
 
@@ -31,6 +33,7 @@ type BlackholeList struct {
 	NextHop     string    `json:"next_hop"`
 	Communities []string  `json:"communities"`
 	Timestamp   time.Time `json:"timestamp"`
+	ExpiresAt   *time.Time `json:"expires_at,omitempty"` // 🆕
 	ASPath      []uint32  `json:"as_path"`
 
 	ASN      uint32 `json:"asn,omitempty"`
@@ -87,6 +90,35 @@ req.ASPath = []uint32{asn}
 		return
 	}
 
+
+// SQLite logging (αν DB υπάρχει)
+if DB != nil {
+	ip := strings.Split(req.Prefix, "/")[0]
+	ptr := Resolver.LookupPTR(ip)
+	asn := Geo.GetASNNumber(ip)
+	asnName := Geo.GetASNName(ip)
+	country := Geo.GetCountry(ip)
+
+	ttl := time.Duration(req.DurationSeconds) * time.Second
+	if ttl == 0 {
+		ttl = 1 * time.Hour // default TTL
+	}
+	now := time.Now()
+	expires := now.Add(ttl)
+
+	_, err := DB.Exec(`
+		INSERT OR REPLACE INTO blackholes
+		(prefix, timestamp, expires_at, rule, reason, asn, asn_name, country, ptr)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, req.Prefix, now.Format(time.RFC3339), expires.Format(time.RFC3339), "(api)", "(manual)", asn, asnName, country, ptr)
+
+	if err != nil {
+		log.Printf("[WARN] Failed to insert into blackholes DB: %v", err)
+	}
+}
+
+
+
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, "Announced %s\n", req.Prefix)
 }
@@ -110,6 +142,17 @@ func handleWithdraw(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to withdraw: %v", err), http.StatusInternalServerError)
 		return
 	}
+
+
+if DB != nil {
+	_, err := DB.Exec(`DELETE FROM blackholes WHERE prefix = ?`, req.Prefix)
+	if err != nil {
+		log.Printf("[WARN] Failed to delete from blackholes DB: %v", err)
+	}
+}
+
+
+
 
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, "Withdrawn %s\n", req.Prefix)
@@ -302,25 +345,41 @@ netCopy := longest.Network()
 func handleBlackholeList(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	all := bgp.ListAnnouncements()
+	if DB == nil {
+		http.Error(w, "DB not initialized", http.StatusInternalServerError)
+		return
+	}
+
+	rows, err := DB.Query(`
+		SELECT prefix, timestamp, expires_at, rule, reason, asn, asn_name, country, ptr
+		FROM blackholes
+	`)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("DB error: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
 	result := make(map[string]BlackholeList)
 
-	for prefix, a := range all {
-		ip := strings.Split(prefix, "/")[0]
+	for rows.Next() {
+		var b BlackholeList
+		var ts, exp string // ⬅️ timestamp + expires_at as strings
 
-		result[prefix] = BlackholeList{
-			Prefix:      a.Prefix,
-			NextHop:     a.NextHop,
-			Communities: a.Communities,
-			Timestamp:   a.Timestamp,
-			ASPath:      a.ASPath,
-			ASN:         detection.GetASN(ip),
-			ASNName:     detection.GetASNName(ip),
-			Country:     detection.GetCountry(ip),
-			PTR:         detection.GetPTR(ip),
-			Rule:        detection.GetRuleName(prefix),
-			Reason:      detection.GetRuleReason(prefix),
+		err := rows.Scan(&b.Prefix, &ts, &exp, &b.Rule, &b.Reason, &b.ASN, &b.ASNName, &b.Country, &b.PTR)
+		if err != nil {
+			continue
 		}
+
+		// Parse timestamp
+		b.Timestamp, _ = time.Parse(time.RFC3339, ts)
+
+		// Parse expires_at (as pointer)
+		if t, err := time.Parse(time.RFC3339, exp); err == nil {
+			b.ExpiresAt = &t
+		}
+
+		result[b.Prefix] = b
 	}
 
 	json.NewEncoder(w).Encode(result)

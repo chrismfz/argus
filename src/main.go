@@ -17,7 +17,10 @@ import (
         "flowenricher/enrich"
         "flowenricher/api"
         "flowenricher/bgp"
-
+	
+	"database/sql"
+	_ "modernc.org/sqlite"
+	"flowenricher/internal/sqlite"
 
 
 )
@@ -80,6 +83,11 @@ func enrichEnabled(cfg *config.Config, name string) bool {
 /////////////////// MAIN //////////////////
 func main() {
         var configPath string
+// 🔧 Δημιουργία context για graceful shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go handleSignals(cancel)
 
         // Επεξεργασία παραμέτρων
         for i := 1; i < len(os.Args); i++ {
@@ -125,6 +133,55 @@ fmt.Printf("Starting flowenricher %s (built at %s)\n", Version, BuildTime)
 config.AppConfig = cfg
 debug = debug || cfg.Debug
 
+
+
+// sqlite load
+db, err := sql.Open("sqlite", "detections.sqlite")
+if err != nil {
+	log.Fatal("Failed to open DB:", err)
+}
+defer db.Close()
+
+if err := sqlite.InitSQLiteSchema(db); err != nil {
+	log.Fatal("Failed to init schema:", err)
+}
+
+log.Println("✅ SQLite schema initialized")
+
+// ♻️ Restore active blackholes from SQLite into BGP
+if enrichEnabled(cfg, "bgp") {
+	if err := detection.RestoreActiveBlackholes(db); err != nil {
+		log.Printf("[WARN] Failed to restore active blackholes: %v", err)
+	}
+}
+
+// 🧹 Auto-clean expired blackholes on startup
+if err := detection.CleanupExpiredBlackholes(db); err != nil {
+	log.Printf("[WARN] Failed to cleanup expired blackholes: %v", err)
+}
+
+// 🕒 Periodic auto-clean every 1 minute
+go func() {
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := detection.CleanupExpiredBlackholes(db); err != nil {
+				log.Printf("[WARN] Periodic blackhole cleanup error: %v", err)
+			}
+		}
+	}
+}()
+// sqlite end
+
+
+
+
+
 enrichers, err := enrich.Init(cfg)
 if err != nil {
 	log.Fatalf("Failed to initialize enrichment modules: %v", err)
@@ -139,6 +196,7 @@ for _, s := range cfg.MyPrefixes {
         log.Printf("[WARN] Invalid CIDR in my_prefixes: %s", s)
     }
 }
+
 
 
 
@@ -239,7 +297,7 @@ bgp.LocalBGPAddress = cfg.BGP.Listener.ListenIP
         }
         dlog("ClickHouse connection established.")
 
-        ctx, cancel := context.WithCancel(context.Background())
+//        ctx, cancel := context.WithCancel(context.Background())
         go handleSignals(cancel)
         batcher := NewInsertFlowBatcher(
         inserter,
@@ -337,14 +395,38 @@ if cfg.Detection.Enabled {
                         }
                 }
 
-                engine = detection.NewEngine(
-                        detectionRules,
-                        cfg.MyASN,
-                        myNets,
-                        maxWin,
-			enrichers.Geo,
-			enrichers.DNS,
-                )
+//                engine = detection.NewEngine(
+//                        detectionRules,
+//                        cfg.MyASN,
+//                        myNets,
+//                        maxWin,
+//			enrichers.Geo,
+//			enrichers.DNS,
+//              )
+
+
+// 🆕 DetectionStore logic
+var store detection.DetectionStore
+if db != nil {
+	store = detection.NewSQLiteStore(db)
+	log.Println("[INFO] Using SQLite-based detection store")
+} else {
+	store = detection.NewMemoryStore()
+	log.Println("[WARN] Falling back to in-memory detection store")
+}
+
+// ✅ Start detection engine with store
+engine = detection.NewEngine(
+	detectionRules,
+	cfg.MyASN,
+	myNets,
+	maxWin,
+	enrichers.Geo,
+	enrichers.DNS,
+	store,
+)
+
+
 
                 go engine.Run(ctx)
                 dlog("Detection engine started with maxWindow: %s", maxWin.String())
@@ -366,6 +448,7 @@ if resolver == nil && cfg.DNS.Nameserver != "" {
 
 go func() {
         api.Geo = geo
+	api.DB = db
         api.Resolver = resolver
         if listener != nil {
                 api.Ranger = listener.Ranger

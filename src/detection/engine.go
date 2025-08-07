@@ -64,12 +64,13 @@ type Engine struct {
 	maxWindow time.Duration
 	Geo *enrich.GeoIP
 	DNS *enrich.DNSResolver
-	alertCount map[string]map[string]int // rule → srcIP → count
+//	alertCount map[string]map[string]int // rule → srcIP → count // Old way store in RAM memory map
+	store DetectionStore
 }
 
 // ✅ Δημιουργία του detection engine
 // Removed geo, resolver, ifnames parameters
-func NewEngine(rules []DetectionRule, asn uint32, prefixes []*net.IPNet, maxWin time.Duration, geo *enrich.GeoIP, dns *enrich.DNSResolver) *Engine {
+func NewEngine(rules []DetectionRule, asn uint32, prefixes []*net.IPNet, maxWin time.Duration, geo *enrich.GeoIP, dns *enrich.DNSResolver, store DetectionStore ) *Engine {
 	DlogEngine("NewEngine created with %d rules, maxWindow: %s", len(rules), maxWin.String())
 	return &Engine{
 		rules:     rules,
@@ -79,7 +80,8 @@ func NewEngine(rules []DetectionRule, asn uint32, prefixes []*net.IPNet, maxWin 
 		maxWindow: maxWin,
 		Geo:       geo,
 		DNS:       dns,
-		alertCount: make(map[string]map[string]int),
+		store:     store,
+//		alertCount: make(map[string]map[string]int), //old RAM
 	}
 }
 
@@ -148,13 +150,20 @@ func (e *Engine) runDetection() {
 
 		// Πάρε srcIP (χρησιμοποιούμε το πρώτο flow ως δείγμα)
 		srcIP := flows[0].SrcIP
-		if e.alertCount[rule.Name] == nil {
-			e.alertCount[rule.Name] = make(map[string]int)
-		}
-		e.alertCount[rule.Name][srcIP]++
-		count := e.alertCount[rule.Name][srcIP]
 
-		// ➕ Ενημέρωση log
+// OLD fallback logic (in-memory):
+//if e.alertCount[rule.Name] == nil {
+//e.alertCount[rule.Name] = make(map[string]int)
+//}
+//e.alertCount[rule.Name][srcIP]++
+//count := e.alertCount[rule.Name][srcIP]
+count, err := e.store.IncrementCount(rule.Name, srcIP)
+if err != nil {
+	log.Printf("[ERROR] Failed to increment detection count for %s/%s: %v", rule.Name, srcIP, err)
+	continue
+}
+
+	// ➕ Ενημέρωση log
 		DlogEngine("IP %s triggered rule '%s' %d time(s)", srcIP, rule.Name, count)
 
 		// Εκτέλεση actions

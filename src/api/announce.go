@@ -362,25 +362,21 @@ func handleBlackholeList(w http.ResponseWriter, r *http.Request) {
 
 	result := make(map[string]BlackholeList)
 
-	for rows.Next() {
-		var b BlackholeList
-		var ts, exp string // ⬅️ timestamp + expires_at as strings
+for rows.Next() {
+        var b BlackholeList
+        var ts, expires string
 
-		err := rows.Scan(&b.Prefix, &ts, &exp, &b.Rule, &b.Reason, &b.ASN, &b.ASNName, &b.Country, &b.PTR)
-		if err != nil {
-			continue
-		}
+        err := rows.Scan(&b.Prefix, &ts, &expires, &b.Rule, &b.Reason, &b.ASN, &b.ASNName, &b.Country, &b.PTR)
+        if err != nil {
+                continue
+        }
 
-		// Parse timestamp
-		b.Timestamp, _ = time.Parse(time.RFC3339, ts)
+        b.Timestamp, _ = time.Parse(time.RFC3339, ts)
+        t, _ := time.Parse(time.RFC3339, expires)
+        b.ExpiresAt = &t
 
-		// Parse expires_at (as pointer)
-		if t, err := time.Parse(time.RFC3339, exp); err == nil {
-			b.ExpiresAt = &t
-		}
-
-		result[b.Prefix] = b
-	}
+        result[b.Prefix] = b
+}
 
 	json.NewEncoder(w).Encode(result)
 }

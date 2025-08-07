@@ -148,12 +148,6 @@ if err := sqlite.InitSQLiteSchema(db); err != nil {
 
 log.Println("✅ SQLite schema initialized")
 
-// ♻️ Restore active blackholes from SQLite into BGP
-if enrichEnabled(cfg, "bgp") {
-	if err := detection.RestoreActiveBlackholes(db); err != nil {
-		log.Printf("[WARN] Failed to restore active blackholes: %v", err)
-	}
-}
 
 // 🧹 Auto-clean expired blackholes on startup
 if err := detection.CleanupExpiredBlackholes(db); err != nil {
@@ -266,6 +260,15 @@ bgp.LocalBGPAddress = cfg.BGP.Listener.ListenIP
     time.Sleep(45 * time.Second)
     fmt.Printf("[INFO] BGP warm-up done. Known prefixes: %d\n", listener.PathCount)
 
+
+//  Restore active blackholes from SQLite into BGP -- AFTER BGP
+if enrichEnabled(cfg, "bgp") {
+	if err := detection.RestoreActiveBlackholes(db); err != nil {
+		log.Printf("[WARN] Failed to restore active blackholes: %v", err)
+	}
+}
+
+
     // 👉 Inject manually your own prefixes into the Ranger
     for _, n := range myNets {
         entry := bgp.BGPEnrichedEntry{
@@ -281,6 +284,7 @@ bgp.LocalBGPAddress = cfg.BGP.Listener.ListenIP
         }
     }
 }
+
 
 
 

@@ -21,7 +21,7 @@ import (
 	"database/sql"
 	_ "modernc.org/sqlite"
 	"flowenricher/internal/sqlite"
-
+	"flowenricher/clickhouse"
 
 )
 
@@ -291,11 +291,25 @@ if enrichEnabled(cfg, "bgp") {
 
 
 
-        // PTR Resolver
-        if enrichEnabled(cfg, "ptr") {
-                //resolver = enrich.NewDNSResolver(cfg.DNS.Nameserver) // old slow way
-                StartPTRResolver(cfg) // async clickhouse queries
-        }
+// PTR Resolver
+if enrichEnabled(cfg, "ptr") {
+	log.Println("[INFO] PTR enrichment is ENABLED")
+
+	// Init ClickHouse first
+	if err := clickhouse.Init(*cfg); err != nil {
+		log.Fatalf("[FATAL] ClickHouse init failed: %v", err)
+	}
+
+	if err := clickhouse.EnsureTables(); err != nil {
+		log.Fatalf("[FATAL] EnsureTables failed: %v", err)
+	}
+
+	// Now start the async PTR resolver
+	StartPTRResolver(cfg)
+}
+
+
+
 
         // ClickHouse Inserter
         inserter, err := NewClickHouseInserter(cfg)

@@ -8,6 +8,7 @@ import (
     "time"
     "flowenricher/config"
     "github.com/gosnmp/gosnmp"
+    "flowenricher/clickhouse"
 )
 
 type IFNameCache struct {
@@ -126,3 +127,92 @@ func GetInterfaceTraffic(snmp *gosnmp.GoSNMP, cache *IFNameCache) ([]InterfaceSt
 var SNMPClient *gosnmp.GoSNMP
 var IFNames *IFNameCache
 
+
+func CollectSNMPStats() ([]clickhouse.SNMPStat, error) {
+    cache := IFNames
+    snmp := SNMPClient
+
+    if cache == nil || snmp == nil {
+        return nil, fmt.Errorf("SNMP not initialized")
+    }
+
+    cache.RLock()
+    defer cache.RUnlock()
+
+    var stats []clickhouse.SNMPStat
+    now := time.Now()
+
+    for index, name := range cache.names {
+        oids := []string{
+            ".1.3.6.1.2.1.2.2.1.10." + strconv.Itoa(int(index)), // ifInOctets
+            ".1.3.6.1.2.1.2.2.1.16." + strconv.Itoa(int(index)), // ifOutOctets
+            ".1.3.6.1.2.1.2.2.1.11." + strconv.Itoa(int(index)), // ifInUcastPkts
+            ".1.3.6.1.2.1.2.2.1.17." + strconv.Itoa(int(index)), // ifOutUcastPkts
+            ".1.3.6.1.2.1.2.2.1.7." + strconv.Itoa(int(index)),  // ifAdminStatus
+            ".1.3.6.1.2.1.2.2.1.8." + strconv.Itoa(int(index)),  // ifOperStatus
+            ".1.3.6.1.2.1.2.2.1.3." + strconv.Itoa(int(index)),  // ifType
+        }
+
+        result, err := snmp.Get(oids)
+        if err != nil {
+            continue
+        }
+
+        var rxBytes, txBytes, rxPkts, txPkts, ifType uint64
+        var admin, oper uint8
+
+        for _, v := range result.Variables {
+            oid := v.Name
+            val := gosnmp.ToBigInt(v.Value).Uint64()
+
+            switch {
+            case strings.Contains(oid, ".10."): rxBytes = val
+            case strings.Contains(oid, ".16."): txBytes = val
+            case strings.Contains(oid, ".11."): rxPkts = val
+            case strings.Contains(oid, ".17."): txPkts = val
+            case strings.Contains(oid, ".7."):  admin = uint8(val)
+            case strings.Contains(oid, ".8."):  oper = uint8(val)
+            case strings.Contains(oid, ".3."):  ifType = val
+            }
+        }
+
+        stats = append(stats, clickhouse.SNMPStat{
+            Timestamp:    now,
+            IfIndex:      index,
+            IfName:       name,
+            RxBytes:      rxBytes,
+            TxBytes:      txBytes,
+            RxPackets:    rxPkts,
+            TxPackets:    txPkts,
+            AdminStatus:  admin,
+            OperStatus:   oper,
+            IfType:       ifType,
+            IfTypeString: IfTypeToString(ifType),
+        })
+    }
+
+    return stats, nil
+}
+
+
+var ifTypeMap = map[uint64]string{
+    1:    "other",
+    6:    "ethernetCsmacd",
+    23:   "ppp",
+    24:   "softwareLoopback",
+    53:   "propVirtual",
+    131:  "tunnel",
+    135:  "l2vlan",
+    136:  "l3ipvlan",
+    161:  "ieee8023adLag",
+    209:  "bridge",
+    229:  "ieee80211Radio",
+    // ... πρόσθεσε όσους χρειάζεσαι
+}
+
+func IfTypeToString(code uint64) string {
+    if str, ok := ifTypeMap[code]; ok {
+        return str
+    }
+    return "unknown"
+}

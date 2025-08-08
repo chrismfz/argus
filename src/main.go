@@ -236,6 +236,7 @@ if enrichEnabled(cfg, "snmp") && cfg.SNMP.Enabled {
         ifNameCache.StartRefreshLoop(snmpClient, 5*time.Minute)
 enrich.SNMPClient = snmpClient
 enrich.IFNames = ifNameCache
+StartSNMPStatsCollector() // ✅ ξεκινά το async writer
 
     }
 } else {

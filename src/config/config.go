@@ -80,6 +80,15 @@ type Config struct {
     } `yaml:"detection"`
 
 
+API struct {
+    ListenAddress string   `yaml:"listen_address"`
+    Port          int      `yaml:"port"`
+    Tokens        []string `yaml:"tokens"`
+    AllowIPs      []string `yaml:"allow_ips"` // CIDR μορφή ή απλές IPs
+} `yaml:"api"`
+
+
+
 }
 
 
@@ -91,6 +100,8 @@ type SNMPConfig struct {
     Timeout   int    `yaml:"timeout"` // seconds
     Retries   int    `yaml:"retries"`
 }
+
+
 
 
 

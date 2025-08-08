@@ -14,6 +14,7 @@ import (
 	"time"                                   // ✅ Add this
 	apipb "github.com/osrg/gobgp/v3/api"     // ✅ Add this
 	"database/sql"
+	"flowenricher/config"
 )
 
 type GeoIPResponse struct {
@@ -33,24 +34,26 @@ var Ranger cidranger.Ranger
 var DB *sql.DB // για SQLite access
 
 func Start() {
-	http.HandleFunc("/infoip", handleInfoIP)
-	http.HandleFunc("/status", handleStatus)
-	http.HandleFunc("/communities", handleCommunities)
 
-http.HandleFunc("/announce", handleAnnounce)
-http.HandleFunc("/withdraw", handleWithdraw)
-http.HandleFunc("/announcements", handleListAnnouncements)
-http.HandleFunc("/bgpannouncements", handleAdjIn)
-http.HandleFunc("/aspathviz", handleASPathViz)
-http.HandleFunc("/bgpstatus", handleBGPStatus)
-http.HandleFunc("/blackhole-list", handleBlackholeList)
-http.HandleFunc("/flush", handleFlush)
+http.HandleFunc("/infoip", WithAuth(handleInfoIP))
+http.HandleFunc("/status", WithAuth(handleStatus))
+http.HandleFunc("/communities", WithAuth(handleCommunities))
+http.HandleFunc("/announce", WithAuth(handleAnnounce))
+http.HandleFunc("/withdraw", WithAuth(handleWithdraw))
+http.HandleFunc("/announcements", WithAuth(handleListAnnouncements))
+http.HandleFunc("/bgpannouncements", WithAuth(handleAdjIn))
+http.HandleFunc("/aspathviz", WithAuth(handleASPathViz))
+http.HandleFunc("/bgpstatus", WithAuth(handleBGPStatus))
+http.HandleFunc("/blackhole-list", WithAuth(handleBlackholeList))
+http.HandleFunc("/flush", WithAuth(handleFlush))
 
+listenAddr := fmt.Sprintf("%s:%d", config.AppConfig.API.ListenAddress, config.AppConfig.API.Port)
+log.Printf("[API] Listening on %s", listenAddr)
+if err := http.ListenAndServe(listenAddr, nil); err != nil {
 
-	log.Println("[API] Listening on 127.0.0.1:9600")
-	if err := http.ListenAndServe("127.0.0.1:9600", nil); err != nil {
 		log.Fatalf("[API] ListenAndServe error: %v", err)
 	}
+
 }
 
 

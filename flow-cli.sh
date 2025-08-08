@@ -28,6 +28,7 @@ function main_menu() {
         echo "9. /bgpstatus"
         echo "10. /blackhole-list"
         echo "11. /flush"
+	echo "12. /snmp/interfaces"
         echo "0. Exit"
         echo "============================="
         read -rp "Select option: " opt
@@ -64,6 +65,7 @@ function main_menu() {
             9) curl_api "bgpstatus" ;;
             10) curl_api "blackhole-list" ;;
             11) curl_api "flush" ;;
+            12) curl_api "snmp/interfaces" ;;
             0) echo "👋 Bye!"; exit 0 ;;
             *) echo "❌ Invalid option";;
         esac

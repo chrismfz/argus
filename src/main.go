@@ -234,6 +234,9 @@ if enrichEnabled(cfg, "snmp") && cfg.SNMP.Enabled {
     } else {
         ifNameCache = enrich.NewIFNameCache()
         ifNameCache.StartRefreshLoop(snmpClient, 5*time.Minute)
+enrich.SNMPClient = snmpClient
+enrich.IFNames = ifNameCache
+
     }
 } else {
     fmt.Println("[INFO] SNMP enrichment is DISABLED")

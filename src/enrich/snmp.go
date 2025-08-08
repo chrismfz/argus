@@ -15,6 +15,14 @@ type IFNameCache struct {
     names map[uint32]string
 }
 
+type InterfaceStat struct {
+    Index   uint32 `json:"index"`
+    Name    string `json:"name"`
+    RxBytes uint64 `json:"rx_bytes"`
+    TxBytes uint64 `json:"tx_bytes"`
+}
+
+
 func NewIFNameCache() *IFNameCache {
     return &IFNameCache{
         names: make(map[uint32]string),
@@ -76,3 +84,45 @@ func InitSNMPClient(cfg config.SNMPConfig) (*gosnmp.GoSNMP, error) {
 
     return client, nil
 }
+
+
+
+func GetInterfaceTraffic(snmp *gosnmp.GoSNMP, cache *IFNameCache) ([]InterfaceStat, error) {
+    cache.RLock()
+    defer cache.RUnlock()
+
+    var stats []InterfaceStat
+
+    for index, name := range cache.names {
+        rxOid := ".1.3.6.1.2.1.2.2.1.10." + strconv.Itoa(int(index))
+        txOid := ".1.3.6.1.2.1.2.2.1.16." + strconv.Itoa(int(index))
+
+        result, err := snmp.Get([]string{rxOid, txOid})
+        if err != nil {
+            continue // optionally: log.Printf("SNMP get failed for %s: %v", name, err)
+        }
+
+        var rxBytes, txBytes uint64
+        for _, variable := range result.Variables {
+            value := gosnmp.ToBigInt(variable.Value).Uint64()
+            if strings.Contains(variable.Name, ".10.") {
+                rxBytes = value
+            } else if strings.Contains(variable.Name, ".16.") {
+                txBytes = value
+            }
+        }
+
+        stats = append(stats, InterfaceStat{
+            Index:   index,
+            Name:    name,
+            RxBytes: rxBytes,
+            TxBytes: txBytes,
+        })
+    }
+
+    return stats, nil
+}
+
+var SNMPClient *gosnmp.GoSNMP
+var IFNames *IFNameCache
+

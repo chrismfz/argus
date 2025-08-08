@@ -47,6 +47,9 @@ http.HandleFunc("/bgpstatus", WithAuth(handleBGPStatus))
 http.HandleFunc("/blackhole-list", WithAuth(handleBlackholeList))
 http.HandleFunc("/flush", WithAuth(handleFlush))
 
+http.HandleFunc("/snmp/interfaces", WithAuth(handleSNMPInterfaces))
+
+
 listenAddr := fmt.Sprintf("%s:%d", config.AppConfig.API.ListenAddress, config.AppConfig.API.Port)
 log.Printf("[API] Listening on %s", listenAddr)
 if err := http.ListenAndServe(listenAddr, nil); err != nil {

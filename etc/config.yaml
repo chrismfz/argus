@@ -33,6 +33,11 @@ geoip:
 
 dns:
   nameserver: "1.1.1.1"
+  batch_size: 100
+  seconds_interval: 2
+  lookback_minutes: 60
+  skip_private: true
+  max_threads: 2
 
 timezone: "Europe/Athens"
 

@@ -61,6 +61,11 @@ type Config struct {
 
     DNS struct {
         Nameserver string `yaml:"nameserver"`
+	BatchSize       int    `yaml:"batch_size"`        // προαιρετικό, default θα μπει αν λείπει
+	SecondsInterval int    `yaml:"seconds_interval"`
+	LookbackMinutes int    `yaml:"lookback_minutes"`
+	SkipPrivate     bool   `yaml:"skip_private"`
+	MaxThreads      int    `yaml:"max_threads"`
     } `yaml:"dns"`
 
     Timezone string `yaml:"timezone"`

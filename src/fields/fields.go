@@ -129,8 +129,11 @@ const FIREWALL_EVENT = 233 // Kept as a common IPFIX field, but not 80 in Cisco 
 
 // Extension fields (your custom timestamp)
 const CUSTOM_TIMESTAMP = 256 // New ID for your custom timestamp to avoid conflict with REPLICATION_FACTOR (99)
+const CUSTOM_TIMESTAMP_START uint16 = 65001
 
 const DIRECTION = FLOW_DIRECTION // Alias for backward compatibility
+
+
 
 // Integer Values
 type IntValue struct {

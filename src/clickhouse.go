@@ -32,18 +32,22 @@ func NewClickHouseInserter(cfg *config.Config) (*ClickHouseInserter, error) {
 	return &ClickHouseInserter{
 		conn:  conn,
 		table: cfg.ClickHouse.Table,
-		fields: []string{
-			"timestamp_start", "proto", "tcpflags", "tos",
-			"src_host", "src_port", "src_host_country",
-			"dst_host", "dst_port", "dst_host_country",
-			"peer_src_as", "peer_dst_as", "as_path", "local_pref",
-			"packets", "bytes",
-			"peer_dst_as_name", "peer_src_as_name", "dst_as",
-   // new
-		    "input_interface", "output_interface",
-		    "input_interface_name", "output_interface_name",
-		    "flow_direction", "ip_protocol",
-		},
+
+fields: []string{
+  "timestamp_start", "timestamp_end",  // <-- προστέθηκε
+  "proto", "tcpflags", "tos",
+  "src_host", "src_port", "src_host_country",
+  "dst_host", "dst_port", "dst_host_country",
+  "post_nat_src_ip","post_nat_dst_ip","post_nat_src_port","post_nat_dst_port",
+  "peer_src_as", "peer_dst_as", "as_path", "local_pref",
+  "packets", "bytes",
+  "peer_dst_as_name", "peer_src_as_name", "dst_as",
+  "input_interface", "output_interface",
+  "input_interface_name", "output_interface_name",
+  "next_hop",
+  "flow_direction", "ip_protocol",
+},
+
 	}, nil
 }
 

@@ -114,6 +114,8 @@ const LAYER2_PACKET_SECTION_SIZE = fields.LAYER2_PACKET_SECTION_SIZE
 const LAYER2_PACKET_SECTION_DATA = fields.LAYER2_PACKET_SECTION_DATA
 const FIREWALL_EVENT = fields.FIREWALL_EVENT
 
+const CUSTOM_TIMESTAMP_START uint16 = 65001
+
 // MikroTik/IPFIX Custom Fields (NAT related)
 const POST_NAT_SOURCE_IPV4_ADDRESS = fields.POST_NAT_SOURCE_IPV4_ADDRESS
 const POST_NAT_DESTINATION_IPV4_ADDRESS = fields.POST_NAT_DESTINATION_IPV4_ADDRESS
@@ -291,16 +293,58 @@ type flowRecord struct {
 	ValuesMap map[uint16]fields.Value
 }
 
-func (r *flowRecord) calcTime(s uint32, u uint32) uint32 {
-	var ts uint32
+//func (r *flowRecord) calcTime(s uint32, u uint32) uint32 {
+//	var ts uint32
+//
+//	if flowendSecs, ok := r.ValuesMap[LAST_SWITCHED]; ok {
+//		ts = u - (s / 1000) + (uint32(flowendSecs.ToInt()) / 1000)
+//		v := fields.IntValue{Data: int(ts)}
+//		r.ValuesMap[fields.CUSTOM_TIMESTAMP] = v // Use CUSTOM_TIMESTAMP here
+//	}
+//	return ts
+//}
 
-	if flowendSecs, ok := r.ValuesMap[LAST_SWITCHED]; ok {
-		ts = u - (s / 1000) + (uint32(flowendSecs.ToInt()) / 1000)
-		v := fields.IntValue{Data: int(ts)}
-		r.ValuesMap[fields.CUSTOM_TIMESTAMP] = v // Use CUSTOM_TIMESTAMP here
+
+// netflow.go
+// s = sysUpTime (ms since boot), u = unix seconds (seconds since epoch)
+func (r *flowRecord) calcTime(s uint32, u uint32) uint32 {
+	const msDiv = 1000
+
+	// Προστασία σε ρολόγια που «γράφουν» ανάποδα (σπάνιο, αλλά ας υπάρχει)
+	if u < (s / msDiv) {
+		return 0
 	}
-	return ts
+
+	// Epoch του boot σε seconds
+	base := u - (s / msDiv)
+
+	var start, end uint32
+
+	// FIRST_SWITCHED (ms since boot) -> start (epoch seconds)
+	if v, ok := r.ValuesMap[FIRST_SWITCHED]; ok {
+		start = base + (uint32(v.ToInt()) / msDiv)
+		r.ValuesMap[fields.CUSTOM_TIMESTAMP_START] = fields.IntValue{Data: int(start)}
+	}
+
+	// LAST_SWITCHED (ms since boot) -> end (epoch seconds)
+	if v, ok := r.ValuesMap[LAST_SWITCHED]; ok {
+		end = base + (uint32(v.ToInt()) / msDiv)
+		r.ValuesMap[fields.CUSTOM_TIMESTAMP] = fields.IntValue{Data: int(end)} // end
+	}
+
+	// Fallbacks: αν λείπει το ένα, καθρέφτισέ το από το άλλο
+	if start == 0 && end != 0 {
+		start = end
+		r.ValuesMap[fields.CUSTOM_TIMESTAMP_START] = fields.IntValue{Data: int(start)}
+	} else if end == 0 && start != 0 {
+		end = start
+		r.ValuesMap[fields.CUSTOM_TIMESTAMP] = fields.IntValue{Data: int(end)}
+	}
+
+	// Επιστρέφουμε το end όπως και πριν (για συμβατότητα)
+	return end
 }
+
 func (r flowRecord) toString() string {
 	var sl []string
 	for _, v := range r.Values {

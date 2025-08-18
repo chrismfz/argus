@@ -72,24 +72,26 @@ func processPTRBatch(resolver *enrich.DNSResolver, batchSize, lookbackMin, maxTh
     }
 
     // Ένα DISTINCT συνολικά, anti-join με ptr_cache, φίλτρο χρόνου για pruning
-    query := fmt.Sprintf(`
-        SELECT ip
-        FROM (
-            SELECT src_host AS ip
-            FROM %s
-            WHERE timestamp_start >= now() - INTERVAL %d MINUTE
-            UNION ALL
-            SELECT dst_host AS ip
-            FROM %s
-            WHERE timestamp_start >= now() - INTERVAL %d MINUTE
-        )
-        LEFT JOIN ptr_cache USING ip
-        WHERE ptr_cache.ip IS NULL
-          AND ip != '' %s
-        GROUP BY ip
-        LIMIT %d
-        SETTINGS max_threads=%d
-    `, table, lookbackMin, table, lookbackMin, privateFilter, batchSize, maxThreads)
+
+query := fmt.Sprintf(`
+    SELECT s.ip
+    FROM (
+        SELECT src_host AS ip
+        FROM %s
+        WHERE timestamp_start >= now() - INTERVAL %d MINUTE
+        UNION ALL
+        SELECT dst_host AS ip
+        FROM %s
+        WHERE timestamp_start >= now() - INTERVAL %d MINUTE
+    ) AS s
+    LEFT JOIN ptr_cache AS p ON s.ip = p.ip
+    WHERE p.ip IS NULL
+      AND s.ip != '' %s
+    GROUP BY s.ip
+    LIMIT %d
+    SETTINGS max_threads=%d
+`, table, lookbackMin, table, lookbackMin, privateFilter, batchSize, maxThreads)
+
 
     rows, err := clickhouse.Global.Query(ctx, query)
     if err != nil {

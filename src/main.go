@@ -134,6 +134,15 @@ config.AppConfig = cfg
 debug = debug || cfg.Debug
 
 
+// Initialize clickhouse client for enrichment
+if err := clickhouse.Init(*cfg); err != nil {
+    log.Fatalf("[FATAL] ClickHouse init failed: %v", err)
+}
+if err := clickhouse.EnsureTables(); err != nil {
+    log.Fatalf("[FATAL] EnsureTables failed: %v", err)
+}
+
+
 
 // sqlite load
 db, err := sql.Open("sqlite", "detections.sqlite")
@@ -295,17 +304,7 @@ if enrichEnabled(cfg, "bgp") {
 // PTR Resolver
 if enrichEnabled(cfg, "ptr") {
 	log.Println("[INFO] PTR enrichment is ENABLED")
-
-	// Init ClickHouse first
-	if err := clickhouse.Init(*cfg); err != nil {
-		log.Fatalf("[FATAL] ClickHouse init failed: %v", err)
-	}
-
-	if err := clickhouse.EnsureTables(); err != nil {
-		log.Fatalf("[FATAL] EnsureTables failed: %v", err)
-	}
-
-	// Now start the async PTR resolver
+	// start the async PTR resolver
 	StartPTRResolver(cfg)
 }
 

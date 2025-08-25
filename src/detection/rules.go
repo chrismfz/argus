@@ -23,7 +23,8 @@ type DetectionRule struct {
 	BlackholeCount       int      `yaml:"blackhole_count,omitempty"`
 	BlackholeNextHop     string   `yaml:"blackhole_next_hop,omitempty"`
 	BlackholeCommunities []string `yaml:"blackhole_communities,omitempty"`
-	BlackholeTime        int      `yaml:"blackhole_time,omitempty"` // seconds
+//	BlackholeTime        int      `yaml:"blackhole_time,omitempty"` // seconds
+	BlackholeTime        interface{} `yaml:"blackhole_time,omitempty"` // int ή []int; 0 = permanent
 }
 
 type RuleSet struct {
@@ -40,4 +41,35 @@ func LoadDetectionRules(path string) ([]DetectionRule, error) {
 		return nil, fmt.Errorf("failed to parse detection rules: %w", err)
 	}
 	return ruleSet.Rules, nil
+}
+
+
+
+
+// BlackholeDurations normalizes blackhole_time (int ή λίστα) σε []int.
+// 0 σημαίνει permanent (χωρίς auto-withdraw).
+func (r *DetectionRule) BlackholeDurations() []int {
+	switch v := r.BlackholeTime.(type) {
+	case int:
+		return []int{v}
+	case int64:
+		return []int{int(v)}
+	case float64:
+		return []int{int(v)}
+	case []interface{}:
+		out := make([]int, 0, len(v))
+		for _, e := range v {
+			switch t := e.(type) {
+			case int:
+				out = append(out, t)
+			case int64:
+				out = append(out, int(t))
+			case float64:
+				out = append(out, int(t))
+			}
+		}
+		return out
+	default:
+		return nil
+	}
 }

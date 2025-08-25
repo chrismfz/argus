@@ -10,16 +10,36 @@ import (
 
 )
 
+//helper functions
+func GetASN(ip string) uint32 {
+	return enrich.Global.Geo.GetASNNumber(ip)
+}
+
+func GetASNName(ip string) string {
+	return enrich.Global.Geo.GetASNName(ip)
+}
+
+func GetCountry(ip string) string {
+	return enrich.Global.Geo.GetCountry(ip)
+}
+
+func GetPTR(ip string) string {
+	return enrich.Global.DNS.LookupPTR(ip)
+}
+
+// helper functions end
+
 
 func (e *Engine) HandleBlackhole(rule DetectionRule, flows []Flow, count int) {
 	srcIP := flows[0].SrcIP
 	prefix := fmt.Sprintf("%s/32", srcIP)
 
-	// avoid duplicate announce
+	// Αποφυγή διπλής ανακοίνωσης
 	if _, already := bgp.ListAnnouncements()[prefix]; already {
 		return
 	}
 
+	// Next-hop
 	nextHop := rule.BlackholeNextHop
 	if nextHop == "" {
 		nextHop = bgp.LocalBGPAddress
@@ -28,23 +48,47 @@ func (e *Engine) HandleBlackhole(rule DetectionRule, flows []Flow, count int) {
 		}
 	}
 
+	// Communities
 	communities := rule.BlackholeCommunities
 	if len(communities) == 0 {
 		communities = []string{"65001:666"} // default fallback
 	}
 
-	err := bgp.AnnouncePrefix(prefix, nextHop, communities, []uint32{config.GetLocalASN()})
-	if err != nil {
+	// Ανακοίνωση
+	if err := bgp.AnnouncePrefix(prefix, nextHop, communities, []uint32{config.GetLocalASN()}); err != nil {
 		log.Printf("[BLACKHOLE] Failed to announce %s: %v", prefix, err)
 		return
 	}
 
+	// ── Escalation TTL: επιλέγουμε διάρκεια με βάση πόσες φορές έχει φάει blackhole αυτή η IP για αυτόν τον κανόνα
+	durations := rule.BlackholeDurations() // από rules.go helper
+	// πόσες blackhole-ανακοινώσεις έχουμε ήδη κάνει για την IP στον κανόνα αυτό;
+	times := 1
+	if e.store != nil {
+		if t, err := e.store.IncrementCount("bh-escalate:"+rule.Name, srcIP); err == nil && t > 0 {
+			times = t
+		}
+	}
+	ttl := 0 // default = permanent
+	if len(durations) > 0 {
+		idx := times - 1
+		if idx >= len(durations) {
+			idx = len(durations) - 1
+		}
+		ttl = durations[idx]
+	}
+
 	reason := buildReason(rule)
 	timestamp := time.Now().Format(time.RFC3339)
-	log.Printf("[BLACKHOLE] Announced %s (rule: %s)", prefix, rule.Name)
+
+	if ttl == 0 {
+		log.Printf("[BLACKHOLE] Announced %s (rule: %s) PERMANENT (escalation #%d)", prefix, rule.Name, times)
+	} else {
+		log.Printf("[BLACKHOLE] Announced %s (rule: %s) ttl=%ds (escalation #%d)", prefix, rule.Name, ttl, times)
+	}
 	LogBlackhole(fmt.Sprintf("[%s] BLACKHOLE: Rule='%s' | SRC: %s", timestamp, rule.Name, srcIP))
 
-	// enrichment
+	// Enrichment
 	ptr := e.DNS.LookupPTR(srcIP)
 	asn := e.Geo.GetASNNumber(srcIP)
 	asnName := e.Geo.GetASNName(srcIP)
@@ -63,10 +107,14 @@ func (e *Engine) HandleBlackhole(rule DetectionRule, flows []Flow, count int) {
 	LogBlackhole(fmt.Sprintf("         SRC: %-15s | PTR: %-30s | ASN: AS%d (%s) | Country: %s",
 		srcIP, ptr, asn, asnName, country))
 
-	// ✅ SQLite insert only if using SQLiteStore
+	// ✅ SQLite insert (αν χρησιμοποιείται SQLiteStore)
 	if s, ok := e.store.(*SQLiteStore); ok {
-		expires := time.Now().Add(time.Duration(rule.BlackholeTime) * time.Second).Format(time.RFC3339)
-		err := s.InsertBlackhole(
+		const farFuture = "9999-12-31T00:00:00Z" // marker για permanent
+		expires := farFuture
+		if ttl > 0 {
+			expires = time.Now().Add(time.Duration(ttl) * time.Second).Format(time.RFC3339)
+		}
+		if err := s.InsertBlackhole(
 			prefix,
 			timestamp,
 			expires,
@@ -76,15 +124,14 @@ func (e *Engine) HandleBlackhole(rule DetectionRule, flows []Flow, count int) {
 			asnName,
 			country,
 			ptr,
-		)
-		if err != nil {
+		); err != nil {
 			log.Printf("[BLACKHOLE] Failed to insert %s into SQLite: %v", prefix, err)
 		}
 	}
 
-	// Optional auto-withdraw (only relevant if SQLite cleanup is disabled)
-	if rule.BlackholeTime > 0 {
-		duration := time.Duration(rule.BlackholeTime) * time.Second
+	// Auto-withdraw μόνο όταν ttl > 0 (όχι για permanent)
+	if ttl > 0 {
+		duration := time.Duration(ttl) * time.Second
 		go func(prefix string, duration time.Duration, ruleName, srcIP string) {
 			<-time.After(duration)
 			err := bgp.WithdrawPrefix(prefix)
@@ -99,20 +146,3 @@ func (e *Engine) HandleBlackhole(rule DetectionRule, flows []Flow, count int) {
 	}
 }
 
-
-
-func GetASN(ip string) uint32 {
-	return enrich.Global.Geo.GetASNNumber(ip)
-}
-
-func GetASNName(ip string) string {
-	return enrich.Global.Geo.GetASNName(ip)
-}
-
-func GetCountry(ip string) string {
-	return enrich.Global.Geo.GetCountry(ip)
-}
-
-func GetPTR(ip string) string {
-	return enrich.Global.DNS.LookupPTR(ip)
-}

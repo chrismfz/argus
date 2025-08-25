@@ -438,6 +438,10 @@ engine = detection.NewEngine(
 	store,
 )
 
+//Clickhouse case for alert detections //
+engine.SetClickHouseWriter(detection.NewClickHouseWriter())
+
+
                 go engine.Run(ctx)
                 dlog("Detection engine started with maxWindow: %s", maxWin.String())
         } else {

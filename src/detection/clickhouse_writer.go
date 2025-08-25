@@ -18,11 +18,13 @@ func NewClickHouseWriter() *ClickHouseWriter {
 }
 
 func (w *ClickHouseWriter) table() string {
-	// Παίρνουμε το table από το config, fallback "detections"
-	if config.AppConfig != nil && config.AppConfig.ClickHouse.Table != "" {
-		return config.AppConfig.ClickHouse.Table
-	}
-	return "detections"
+    // Παίρνουμε ΜΟΝΟ το database από το config (fallback "default")
+    db := "default"
+    if config.AppConfig != nil && config.AppConfig.ClickHouse.Database != "" {
+        db = config.AppConfig.ClickHouse.Database
+    }
+    // Γράφουμε πάντα στον detections
+    return db + ".detections"
 }
 
 func toIPv6Bytes(str string) []byte {

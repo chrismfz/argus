@@ -12,8 +12,6 @@ import (
     "flowenricher/clickhouse"
 )
 
-
-
 func StartPTRResolver(cfg *config.Config) {
     resolver := enrich.NewDNSResolver(cfg.DNS.Nameserver)
     log.Printf("[INFO] DNS (PTR) enrichment is enabled with resolver: %s", cfg.DNS.Nameserver)
@@ -52,8 +50,6 @@ go func() {
 }
 
 
-
-
 func processPTRBatch(resolver *enrich.DNSResolver, batchSize, lookbackMin, maxThreads int, skipPrivate bool) {
     ctx := context.Background()
     table := fmt.Sprintf("%s.%s", config.AppConfig.ClickHouse.Database, config.AppConfig.ClickHouse.Table)
@@ -72,7 +68,6 @@ func processPTRBatch(resolver *enrich.DNSResolver, batchSize, lookbackMin, maxTh
     }
 
     // Ένα DISTINCT συνολικά, anti-join με ptr_cache, φίλτρο χρόνου για pruning
-
 query := fmt.Sprintf(`
     SELECT s.ip
     FROM (

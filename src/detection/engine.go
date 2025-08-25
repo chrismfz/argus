@@ -66,7 +66,13 @@ type Engine struct {
 	DNS *enrich.DNSResolver
 //	alertCount map[string]map[string]int // rule → srcIP → count // Old way store in RAM memory map
 	store DetectionStore
+	CH *ClickHouseWriter
 }
+
+func (e *Engine) SetClickHouseWriter(w *ClickHouseWriter) {
+	e.CH = w
+}
+
 
 // ✅ Δημιουργία του detection engine
 // Removed geo, resolver, ifnames parameters
@@ -172,6 +178,44 @@ if err != nil {
 			case "alert":
 				LogDetection(rule, flows, e.Geo, e.DNS, count) // 🆕 περνάμε count
 			case "clickhouse":
+    if e.CH != nil {
+        // βασιζόμαστε στο ίδιο enrichment που ήδη έχεις διαθέσιμο στο Engine (e.Geo, e.DNS)
+        first := flows[0]
+        srcIP := first.SrcIP
+        dstIP := first.DstIP
+
+        ptr := e.DNS.LookupPTR(srcIP)
+        asn := e.Geo.GetASNNumber(srcIP)
+        asnName := e.Geo.GetASNName(srcIP)
+        country := e.Geo.GetCountry(srcIP)
+
+        // διάβασε τον συνολικό counter από το store (ή reuse το 'count' που έχεις ήδη)
+        total := uint64(count)
+        // first_seen/last_seen: αν θες πραγματικά first_seen από SQLite, μπορείς να το fetch-άρεις.
+        // Για απλότητα εδώ: χρησιμοποιούμε "τώρα" ως last_seen και
+        // αν θες αληθινό first_seen, πέρασέ το από SQLite store όταν θες.
+        now := time.Now()
+        firstSeen := now // ή από SQLite
+        lastSeen := now
+
+        if err := e.CH.UpsertDetectionSnapshot(
+            srcIP,
+            rule,
+            first.Proto,
+            first.DstPort,
+            dstIP,
+            total,
+            uint32(len(flows)),
+            asn,
+            asnName,
+            country,
+            ptr,
+            firstSeen,
+            lastSeen,
+        ); err != nil {
+            log.Printf("[ERROR] clickhouse upsert failed for %s/%s: %v", rule.Name, srcIP, err)
+        }
+    }
 				// TODO
 			case "slack":
 				// TODO

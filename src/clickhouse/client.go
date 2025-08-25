@@ -64,6 +64,30 @@ func EnsureTables() error {
                                 if_type_str String
                         ) ENGINE = MergeTree
                         ORDER BY (timestamp, if_index)`,
+
+
+    // 💡 ΝΕΟ: hardcoded "detections" χωρίς Sprintf/μεταβλητές
+        "detections": `
+            CREATE TABLE IF NOT EXISTS detections (
+                src_ip           IPv6,
+                rule             LowCardinality(String),
+                proto            LowCardinality(String),
+                src_asn          UInt32,
+                src_asn_name     LowCardinality(String),
+                country          FixedString(2),
+                ptr              String,
+                alerts           UInt64,
+                last_flows       UInt32,
+                first_seen       DateTime,
+                last_seen        DateTime,
+                example_dst_ip   IPv6,
+                example_dst_port UInt16,
+                version          UInt64
+            )
+            ENGINE = ReplacingMergeTree(version)
+            PARTITION BY toDate(first_seen)
+            ORDER BY (src_ip, rule)`,
+
         }
 
         for name, ddl := range tables {

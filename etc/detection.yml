@@ -223,28 +223,28 @@ rules:
 
 
 
-  # ──────────────── SSL / TLS Enumeration ────────────────
-  - name: ssl_horizontal_scan
+  # ──────────────── WEB / SSL / TLS Enumeration ────────────────
+  - name: web_horizontal_scan
     proto: tcp
     same_dst_port: true
-    dst_port: 443
+    dst_port: [80, 443]
     unique_dst_ips: 25
     min_flows: 25
     time_window: 30s
     action: alert,clickhouse
 
-  - name: ssl_vertical_scan
+  - name: web_vertical_scan
     proto: tcp
     same_dst_ip: true
-    dst_port: 443
+    dst_port: [80, 443]
     unique_dst_ports: 5
     min_flows: 5
     time_window: 30s
     action: alert,clickhouse
 
-  - name: ssl_slow_scan
+  - name: web_slow_scan
     proto: tcp
-    dst_port: 443
+    dst_port: [80, 443]
     same_dst_port: true
     unique_dst_ips: 10
     min_flows: 10

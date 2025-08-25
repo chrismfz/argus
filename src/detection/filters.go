@@ -36,10 +36,26 @@ func evaluateRule(rule DetectionRule, flows []Flow, myNets []*net.IPNet) (bool, 
 			DlogEngine("  Flow %s->%s proto mismatch: expected %s, got %s. Skipping.", f.SrcIP, f.DstIP, rule.Proto, f.Proto) // CHANGED: Call DlogEngine
 			continue
 		}
-		if rule.DstPort != 0 && f.DstPort != rule.DstPort {
-			DlogEngine("  Flow %s->%s dst port mismatch: expected %d, got %d. Skipping.", f.SrcIP, f.DstIP, rule.DstPort, f.DstPort) // CHANGED: Call DlogEngine
-			continue
-		}
+
+
+dstPorts := rule.DstPorts()
+if len(dstPorts) > 0 {
+    match := false
+    for _, p := range dstPorts {
+        if f.DstPort == p {
+            match = true
+            break
+        }
+    }
+    if !match {
+        DlogEngine("  Flow %s->%s dst port %d not in rule ports %v. Skipping.",
+            f.SrcIP, f.DstIP, f.DstPort, dstPorts)
+        continue
+    }
+}
+
+
+
 		if rule.TCPFlags != "" && !matchTCPFlags(f.TCPFlags, rule.TCPFlags) {
 			DlogEngine("  Flow %s->%s TCP flags mismatch: expected %s, got %d. Skipping.", f.SrcIP, f.DstIP, rule.TCPFlags, f.TCPFlags) // CHANGED: Call DlogEngine
 			continue

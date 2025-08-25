@@ -9,7 +9,8 @@ import (
 type DetectionRule struct {
 	Name              string `yaml:"name"`
 	Proto             string `yaml:"proto"`
-	DstPort           uint16 `yaml:"dst_port,omitempty"`
+//	DstPort           uint16 `yaml:"dst_port,omitempty"`
+	DstPort           interface{} `yaml:"dst_port,omitempty"` // int ή []int
 	SameDstIP         bool   `yaml:"same_dst_ip,omitempty"`
 	SameDstPort       bool   `yaml:"same_dst_port,omitempty"`
 	UniqueDstPorts    int    `yaml:"unique_dst_ports,omitempty"`
@@ -66,6 +67,33 @@ func (r *DetectionRule) BlackholeDurations() []int {
 				out = append(out, int(t))
 			case float64:
 				out = append(out, int(t))
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+// DstPorts normalizes dst_port (int ή λίστα) σε []uint16.
+func (r *DetectionRule) DstPorts() []uint16 {
+	switch v := r.DstPort.(type) {
+	case int:
+		return []uint16{uint16(v)}
+	case int64:
+		return []uint16{uint16(v)}
+	case float64:
+		return []uint16{uint16(v)}
+	case []interface{}:
+		out := make([]uint16, 0, len(v))
+		for _, e := range v {
+			switch t := e.(type) {
+			case int:
+				out = append(out, uint16(t))
+			case int64:
+				out = append(out, uint16(t))
+			case float64:
+				out = append(out, uint16(t))
 			}
 		}
 		return out

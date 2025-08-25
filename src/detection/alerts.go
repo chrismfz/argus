@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 	"flowenricher/enrich"
+	"fmt"
 )
 
 
@@ -52,8 +53,22 @@ func LogDetection(rule DetectionRule, flows []Flow, geo *enrich.GeoIP, dns *enri
 
 	timestamp := time.Now().Format(time.RFC3339)
 	first := flows[0]
-	detectionLogger.Printf("[%s] ALERT: Rule='%s' | Flows=%d | Proto=%s | DstPort=%d | Example=%s → %s",
-		timestamp, rule.Name, len(flows), first.Proto, first.DstPort, first.SrcIP, first.DstIP)
+//	detectionLogger.Printf("[%s] ALERT: Rule='%s' | Flows=%d | Proto=%s | DstPort=%d | Example=%s → %s",
+//		timestamp, rule.Name, len(flows), first.Proto, first.DstPort, first.SrcIP, first.DstIP)
+
+  // φτιάξε string για τις ports του rule (single/multi)
+  ports := rule.DstPorts()
+  var rulePorts string
+  if len(ports) == 1 {
+      rulePorts = fmt.Sprintf("%d", ports[0])
+  } else if len(ports) > 1 {
+      rulePorts = fmt.Sprintf("%v", ports)
+  } else {
+      rulePorts = "-" // no restriction
+  }
+
+  detectionLogger.Printf("[%s] ALERT: Rule='%s' | Flows=%d | Proto=%s | RulePorts=%s | Example=%s:%d → %s",
+      timestamp, rule.Name, len(flows), first.Proto, rulePorts, first.DstIP, first.DstPort, first.SrcIP)
 
 	detectionLogger.Printf("         Reason: %s", buildReason(rule))
 

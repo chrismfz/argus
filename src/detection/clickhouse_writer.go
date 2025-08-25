@@ -13,30 +13,27 @@ import (
 
 type ClickHouseWriter struct{}
 
-func NewClickHouseWriter() *ClickHouseWriter {
-	return &ClickHouseWriter{}
-}
+func NewClickHouseWriter() *ClickHouseWriter { return &ClickHouseWriter{} }
 
 func (w *ClickHouseWriter) table() string {
-    // Παίρνουμε ΜΟΝΟ το database από το config (fallback "default")
-    db := "default"
-    if config.AppConfig != nil && config.AppConfig.ClickHouse.Database != "" {
-        db = config.AppConfig.ClickHouse.Database
-    }
-    // Γράφουμε πάντα στον detections
-    return db + ".detections"
+	db := "default"
+	if config.AppConfig != nil && config.AppConfig.ClickHouse.Database != "" {
+		db = config.AppConfig.ClickHouse.Database
+	}
+	return db + ".detections"
 }
 
-func toIPv6Bytes(str string) []byte {
-	ip := net.ParseIP(str)
+// toIPString returns a clean IPv4 string for IPv4 inputs (e.g. "103.56.61.130")
+// and a canonical IPv6 string for IPv6 inputs.
+func toIPString(s string) string {
+	ip := net.ParseIP(s)
 	if ip == nil {
-		return net.IPv6zero
+		return s // fallback: return as-is
 	}
-	ip = ip.To16()
-	if ip == nil {
-		return net.IPv6zero
+	if v4 := ip.To4(); v4 != nil {
+		return v4.String()
 	}
-	return ip
+	return ip.String()
 }
 
 // Upsert-like snapshot: γράφουμε νέα έκδοση (ReplacingMergeTree με version).
@@ -46,8 +43,8 @@ func (w *ClickHouseWriter) UpsertDetectionSnapshot(
 	proto string,
 	dstPort uint16,
 	exampleDstIP string,
-	alerts uint64,     // συνολικός μετρητής που ήδη διατηρείς (SQLite)
-	lastFlows uint32,  // len(flows) του τρέχοντος match
+	alerts uint64,    // συνολικός μετρητής (SQLite)
+	lastFlows uint32, // len(flows) του match
 	asn uint32,
 	asnName string,
 	country string,
@@ -68,15 +65,14 @@ func (w *ClickHouseWriter) UpsertDetectionSnapshot(
 		ptr = "-"
 	}
 
-	// Χρησιμοποιούμε την global σύνδεση που έχεις ήδη φτιάξει στο clickhouse/client.go
-	// και το table name από config.
 	tbl := w.table()
 	q := fmt.Sprintf(`
 		INSERT INTO %s (
 			src_ip, rule, proto, src_asn, src_asn_name, country, ptr,
 			alerts, last_flows, first_seen, last_seen,
 			example_dst_ip, example_dst_port, version
-		)`, tbl)
+		)
+	`, tbl)
 
 	batch, err := clickhouse.Global.PrepareBatch(ctx, q)
 	if err != nil {
@@ -84,7 +80,7 @@ func (w *ClickHouseWriter) UpsertDetectionSnapshot(
 	}
 
 	if err := batch.Append(
-		toIPv6Bytes(srcIP),
+		toIPString(srcIP),        // String: καθαρό IPv4/IPv6
 		rule.Name,
 		proto,
 		asn,
@@ -95,8 +91,8 @@ func (w *ClickHouseWriter) UpsertDetectionSnapshot(
 		lastFlows,
 		firstSeen,
 		lastSeen,
-		toIPv6Bytes(exampleDstIP),
-		dstPort,
+		toIPString(exampleDstIP), // String: καθαρό IPv4/IPv6
+		dstPort,                  // UInt16: πραγματικό παράδειγμα port από το flow
 		nowVer,
 	); err != nil {
 		return err

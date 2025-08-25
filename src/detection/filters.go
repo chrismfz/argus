@@ -177,6 +177,13 @@ func isMyPrefix(ipStr string, nets []*net.IPNet) bool {
 // ✨ Συμπυκνώνει το γιατί ενεργοποιήθηκε ο rule (για log reason)
 func buildReason(rule DetectionRule) string {
 	var parts []string
+    // dst_port (single ή many)
+    if ports := rule.DstPorts(); len(ports) == 1 {
+        parts = append(parts, fmt.Sprintf("dst_port=%d", ports[0]))
+    } else if len(ports) > 1 {
+        parts = append(parts, fmt.Sprintf("dst_port in %v", ports))
+    }
+
 	if rule.MinFlows > 0 {
 		parts = append(parts, fmt.Sprintf("min_flows=%d", rule.MinFlows))
 	}

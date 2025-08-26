@@ -185,10 +185,10 @@ rules:
     dst_port: [22, 65535]
     tcp_flags: SYN
     same_dst_ip: true
-    min_flows: 8
+    min_flows: 20
     time_window: 60s
     action: alert,clickhouse,blackhole
-    blackhole_count: 30
+    blackhole_count: 40
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
     blackhole_time: [14400, 28800, 57600, 86400]

@@ -134,14 +134,45 @@ config.AppConfig = cfg
 debug = debug || cfg.Debug
 
 
-// main.go (after cfg is loaded)
+
+
+// ---- CFM client + heartbeat (must be one contiguous if/else block)
 var cfm *cfmapi.Client
 if cfg.CFM.Enabled && cfg.CFM.URL != "" && cfg.CFM.Token != "" {
     cfm = &cfmapi.Client{
         BaseURL: cfg.CFM.URL,
         Token:   cfg.CFM.Token,
     }
+    log.Printf("[CFM] enabled url=%s", cfg.CFM.URL)
+
+    // Send one heartbeat now
+    if err := cfm.Heartbeat(ctx, Version, "flowenricher"); err != nil {
+        log.Printf("[CFM] heartbeat (startup) failed: %v", err)
+    } else {
+        log.Printf("[CFM] heartbeat (startup) ok")
+    }
+
+    // Then every 30s until shutdown
+    go func() {
+        t := time.NewTicker(30 * time.Second)
+        defer t.Stop()
+        for {
+            select {
+            case <-ctx.Done():
+                return
+            case <-t.C:
+                if err := cfm.Heartbeat(ctx, Version, "flowenricher"); err != nil {
+                    log.Printf("[CFM] heartbeat failed: %v", err)
+                }
+            }
+        }
+    }()
+} else {
+    log.Printf("[CFM] disabled or misconfigured (enabled=%v url=%q token_len=%d)",
+        cfg.CFM.Enabled, cfg.CFM.URL, len(cfg.CFM.Token))
 }
+
+
 
 
 // Initialize clickhouse client for enrichment

@@ -92,6 +92,19 @@ req.ASPath = []uint32{asn}
 		return
 	}
 
+// after successful bgp.AnnouncePrefix (inside handleAnnounce)
+if CFM != nil {
+    ipOnly := strings.Split(req.Prefix, "/")[0]
+    ttl := req.DurationSeconds // already parsed from JSON
+    desc := "(manual) blackhole via API"
+    if err := CFM.ReportBlock(ipOnly, desc, ttl); err != nil {
+        log.Printf("[CFM] report block failed for %s: %v", ipOnly, err)
+    } else {
+        log.Printf("[CFM] report block OK ip=%s ttl=%d", ipOnly, ttl)
+    }
+}
+
+
 
 // SQLite logging (αν DB υπάρχει)
 if DB != nil {
@@ -144,6 +157,18 @@ func handleWithdraw(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to withdraw: %v", err), http.StatusInternalServerError)
 		return
 	}
+
+
+// after successful bgp.WithdrawPrefix (inside handleWithdraw)
+if CFM != nil {
+    ipOnly := strings.Split(req.Prefix, "/")[0]
+    if err := CFM.ReportUnblock(ipOnly, "manual", "withdraw via API"); err != nil {
+        log.Printf("[CFM] report unblock failed for %s: %v", ipOnly, err)
+    } else {
+        log.Printf("[CFM] report unblock OK ip=%s", ipOnly)
+    }
+}
+
 
 
 if DB != nil {

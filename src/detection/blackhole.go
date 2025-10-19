@@ -129,6 +129,21 @@ func (e *Engine) HandleBlackhole(rule DetectionRule, flows []Flow, count int) {
 		}
 	}
 
+//cfm api reporter
+if e.reporter != nil {
+    if err := e.reporter.ReportBlock(srcIP, fmt.Sprintf("Rule=%s; %s", rule.Name, reason), ttl); err != nil {
+        log.Printf("[CFM] report block failed ip=%s err=%v", srcIP, err)
+    }
+}
+
+
+if e.reporter != nil {
+    if err := e.reporter.ReportUnblock(srcIP, "auto", "TTL expired"); err != nil {
+        log.Printf("[CFM] report unblock failed ip=%s err=%v", srcIP, err)
+    }
+}
+
+
 	// Auto-withdraw μόνο όταν ttl > 0 (όχι για permanent)
 	if ttl > 0 {
 		duration := time.Duration(ttl) * time.Second

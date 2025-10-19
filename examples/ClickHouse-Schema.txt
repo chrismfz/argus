@@ -28,5 +28,5 @@ SHOW CREATE TABLE pmacct.flows
    ENGINE = MergeTree                       
    PARTITION BY toYYYYMMDD(timestamp_start) 
    ORDER BY timestamp_start                 
-   TTL timestamp_start + toIntervalMonth(3) 
+   TTL timestamp_start + toIntervalMonth(1) 
    SETTINGS index_granularity = 8192         

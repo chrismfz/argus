@@ -67,7 +67,16 @@ type Engine struct {
 //	alertCount map[string]map[string]int // rule → srcIP → count // Old way store in RAM memory map
 	store DetectionStore
 	CH *ClickHouseWriter
+	reporter Reporter
 }
+
+type Reporter interface {
+    ReportBlock(ip, description string, ttlSec int) error
+    ReportUnblock(ip, source, why string) error
+}
+
+func (e *Engine) SetReporter(r Reporter) { e.reporter = r }
+
 
 func (e *Engine) SetClickHouseWriter(w *ClickHouseWriter) {
 	e.CH = w

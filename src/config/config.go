@@ -40,6 +40,8 @@ type Config struct {
     Collectors map[string]FrontendConfig `yaml:"collectors"`
     Enrich string `yaml:"enrich"`
 
+    CFM CFMConfig `yaml:"cfm"`
+
     ClickHouse struct {
         Host     string `yaml:"host"`
         User     string `yaml:"user"`
@@ -107,6 +109,11 @@ type SNMPConfig struct {
 }
 
 
+type CFMConfig struct {
+    Enabled bool   `yaml:"enabled"`    // on/off
+    URL     string `yaml:"url"`        // e.g. https://cfm.example.com
+    Token   string `yaml:"token"`      // shared token (header "Token")
+}
 
 
 

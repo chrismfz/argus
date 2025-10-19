@@ -17,7 +17,7 @@ import (
         "flowenricher/enrich"
         "flowenricher/api"
         "flowenricher/bgp"
-	
+	"flowenricher/internal/cfmapi"
 	"database/sql"
 	_ "modernc.org/sqlite"
 	"flowenricher/internal/sqlite"
@@ -132,6 +132,16 @@ fmt.Printf("Starting flowenricher %s (built at %s)\n", Version, BuildTime)
         }
 config.AppConfig = cfg
 debug = debug || cfg.Debug
+
+
+// main.go (after cfg is loaded)
+var cfm *cfmapi.Client
+if cfg.CFM.Enabled && cfg.CFM.URL != "" && cfg.CFM.Token != "" {
+    cfm = &cfmapi.Client{
+        BaseURL: cfg.CFM.URL,
+        Token:   cfg.CFM.Token,
+    }
+}
 
 
 // Initialize clickhouse client for enrichment
@@ -441,6 +451,9 @@ engine = detection.NewEngine(
 //Clickhouse case for alert detections //
 engine.SetClickHouseWriter(detection.NewClickHouseWriter())
 
+if cfm != nil {
+    engine.SetReporter(cfm)
+}
 
                 go engine.Run(ctx)
                 dlog("Detection engine started with maxWindow: %s", maxWin.String())
@@ -459,6 +472,7 @@ if resolver == nil && cfg.DNS.Nameserver != "" {
 }
 
 
+
 go func() {
         api.Geo = geo
 	api.DB = db
@@ -466,6 +480,7 @@ go func() {
         if listener != nil {
                 api.Ranger = listener.Ranger
         }
+	api.CFM = cfm
         api.Start()
 }()
 

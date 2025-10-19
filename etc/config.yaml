@@ -85,3 +85,8 @@ api:
   allow_ips:
     - "127.0.0.1"
     - "192.168.0.0/16"
+
+cfm:
+  enabled: true
+  url: "https://cfm.example.com"
+  token: "REDACTED-TOKEN"

@@ -1,7 +1,7 @@
 package api
 
 import (
-	"context"                               // ✅ Add this
+	"context"
 	"encoding/json"
 	"net"
 	"net/http"
@@ -11,10 +11,11 @@ import (
 	"log"
 	"fmt"
 	"sort"
-	"time"                                   // ✅ Add this
-	apipb "github.com/osrg/gobgp/v3/api"     // ✅ Add this
+	"time"
+	apipb "github.com/osrg/gobgp/v3/api"
 	"database/sql"
 	"flowenricher/config"
+	"flowenricher/internal/cfmapi"
 )
 
 type GeoIPResponse struct {
@@ -32,6 +33,7 @@ var Geo *enrich.GeoIP
 var Resolver *enrich.DNSResolver
 var Ranger cidranger.Ranger
 var DB *sql.DB // για SQLite access
+var CFM *cfmapi.Client
 
 func Start() {
 

@@ -137,11 +137,6 @@ if e.reporter != nil {
 }
 
 
-if e.reporter != nil {
-    if err := e.reporter.ReportUnblock(srcIP, "auto", "TTL expired"); err != nil {
-        log.Printf("[CFM] report unblock failed ip=%s err=%v", srcIP, err)
-    }
-}
 
 
 	// Auto-withdraw μόνο όταν ttl > 0 (όχι για permanent)
@@ -156,6 +151,13 @@ if e.reporter != nil {
 			} else {
 				log.Printf("[BLACKHOLE] Withdrawn %s after %v", prefix, duration)
 				LogBlackhole(fmt.Sprintf("[%s] WITHDRAW: Rule='%s' | SRC: %s", timestamp, ruleName, srcIP))
+if e.reporter != nil {
+    if err := e.reporter.ReportUnblock(srcIP, "auto", "TTL expired"); err != nil {
+        log.Printf("[CFM] report unblock failed ip=%s err=%v", srcIP, err)
+    }
+}
+
+
 			}
 		}(prefix, duration, rule.Name, srcIP)
 	}

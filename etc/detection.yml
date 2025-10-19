@@ -15,7 +15,7 @@ rules:
     blackhole_count: 30
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
-    blackhole_time: 14400  # Seconds
+    blackhole_time: [14400, 28800, 57600, 86400, 0]
 
   - name: syn_flood
     proto: tcp
@@ -28,7 +28,7 @@ rules:
     blackhole_count: 30
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
-    blackhole_time: 14400  # Seconds
+    blackhole_time: [14400, 28800, 57600, 86400, 0]
 
 
   - name: udp_flood
@@ -41,7 +41,7 @@ rules:
     blackhole_count: 30
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
-    blackhole_time: 14400  # Seconds
+    blackhole_time: [14400, 28800, 57600, 86400, 0]
 
 
   - name: icmp_flood
@@ -54,7 +54,7 @@ rules:
     blackhole_count: 30
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
-    blackhole_time: 14400  # Seconds
+    blackhole_time: [14400, 28800, 57600, 86400, 0]
 
 
   # ──────────────── Brute Force Attacks ────────────────
@@ -68,7 +68,7 @@ rules:
     blackhole_count: 40
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
-    blackhole_time: 14400  # Seconds
+    blackhole_time: [14400, 28800, 57600, 86400, 0]
 
 
   - name: ssh_brute_custom_port1
@@ -81,7 +81,7 @@ rules:
     blackhole_count: 30
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
-    blackhole_time: 14400  # Seconds
+    blackhole_time: [14400, 28800, 57600, 86400, 0]
 
 
   - name: smtp_brute
@@ -110,7 +110,7 @@ rules:
     blackhole_count: 30
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
-    blackhole_time: 14400  # Seconds
+    blackhole_time: [14400, 28800, 57600, 86400, 0]
 
 
   # ──────────────── Port Scanning ────────────────
@@ -124,7 +124,7 @@ rules:
     blackhole_count: 30
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
-    blackhole_time: 14400  # Seconds
+    blackhole_time: [14400, 28800, 57600, 86400, 0]
 
 
   - name: horizontal_scan
@@ -137,7 +137,7 @@ rules:
     blackhole_count: 30
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
-    blackhole_time: 14400  # Seconds
+    blackhole_time: [14400, 28800, 57600, 86400, 0]
 
 
   - name: generic_scanner
@@ -149,7 +149,7 @@ rules:
     blackhole_count: 30
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
-    blackhole_time: 14400  # Seconds
+    blackhole_time: [14400, 28800, 57600, 86400, 0]
 
 
   - name: dns_flood
@@ -163,7 +163,7 @@ rules:
     blackhole_count: 30
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
-    blackhole_time: 14400  # Seconds
+    blackhole_time: [14400, 28800, 57600, 86400, 0]
 
 
   - name: slow_horizontal_scan
@@ -176,7 +176,7 @@ rules:
     blackhole_count: 30
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
-    blackhole_time: [14400, 28800, 57600, 86400]
+    blackhole_time: [14400, 28800, 57600, 86400, 0]
 
 
   # ──────────────── Slow SYN Attacks ────────────────
@@ -191,7 +191,7 @@ rules:
     blackhole_count: 40
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
-    blackhole_time: [14400, 28800, 57600, 86400]
+    blackhole_time: [14400, 28800, 57600, 86400, 0]
 
 
   - name: slow_syn_scan_rdp
@@ -205,7 +205,7 @@ rules:
     blackhole_count: 30
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
-    blackhole_time: [14400, 28800, 57600, 86400]
+    blackhole_time: [14400, 28800, 57600, 86400, 0]
 
 
 
@@ -221,7 +221,7 @@ rules:
     blackhole_count: 30
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
-    blackhole_time: [14400, 28800, 57600, 86400]
+    blackhole_time: [14400, 28800, 57600, 86400, 0]
 
 
   - name: web_vertical_scan
@@ -235,7 +235,7 @@ rules:
     blackhole_count: 30
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
-    blackhole_time: [14400, 28800, 57600, 86400]
+    blackhole_time: [14400, 28800, 57600, 86400, 0]
 
 
   - name: web_slow_scan
@@ -249,5 +249,5 @@ rules:
     blackhole_count: 30
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
-    blackhole_time: [14400, 28800, 57600, 86400]
+    blackhole_time: [14400, 28800, 57600, 86400, 0]
 

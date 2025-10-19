@@ -10,10 +10,11 @@ Restart=on-failure
 RestartSec=5
 User=root
 Group=root
-StandardOutput=journal
-StandardError=journal
 
-# Environment=CONFIG_PATH=/opt/flowenricher/etc/config.yaml
+# Logs
+LogsDirectory=flowenricher
+StandardOutput=append:/var/log/flowenricher/output.log
+StandardError=append:/var/log/flowenricher/error.log
 
 [Install]
 WantedBy=multi-user.target

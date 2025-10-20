@@ -6,10 +6,28 @@ TOKEN="testtoken1"
 function curl_api() {
     local endpoint="$1"
     local data="$2"
+    local resp body code
+
     if [[ -n "$data" ]]; then
-        curl -s -H "Authorization: Bearer $TOKEN" -X POST -d "$data" "$API_URL/$endpoint" | jq
+        resp=$(curl -s -w "\n%{http_code}" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -X POST --data "$data" \
+            "$API_URL/$endpoint")
     else
-        curl -s -H "Authorization: Bearer $TOKEN" "$API_URL/$endpoint" | jq
+        resp=$(curl -s -w "\n%{http_code}" \
+            -H "Authorization: Bearer $TOKEN" \
+            "$API_URL/$endpoint")
+    fi
+
+    body="${resp%$'\n'*}"
+    code="${resp##*$'\n'}"
+
+    if [[ "$code" =~ ^2 ]]; then
+        echo "$body" | jq . 2>/dev/null || echo "$body"
+    else
+        echo "HTTP $code"
+        echo "$body"
     fi
 }
 

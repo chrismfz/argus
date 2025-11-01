@@ -480,12 +480,43 @@ engine = detection.NewEngine(
 	store,
 )
 
+
+
 //Clickhouse case for alert detections //
 engine.SetClickHouseWriter(detection.NewClickHouseWriter())
 
 if cfm != nil {
     engine.SetReporter(cfm)
 }
+
+
+
+/* =====  ANOMALY BLOCK HERE ===== */
+anomCfg := detection.AnomalyConfig{
+        Window:       60 * time.Second,
+        Interval:     10 * time.Second,
+        Label:        "iforest_anomaly",
+        MinScore:     0.70,         // tune later
+        LogOnly:      true,         // start safe: log-only
+        RetrainEvery: 5 * time.Minute,
+        BaselineMax:  20000,
+        // BlackholeCount: 3,                     // enable later if you want auto-mitigation
+        // BlackholeTime:  []int{300, 1800, 0},   // your existing semantics
+}
+
+// Isolation Forest detector
+det := detection.NewIForestDetector(100, 256, 0.01)
+
+// Create & wire anomaly lane
+anom := detection.NewAnomaly(anomCfg, det, store)
+engine.SetAnomaly(anom)
+anom.Start(ctx)
+/* ===== END ANOMALY ===== */
+
+
+
+
+
 
                 go engine.Run(ctx)
                 dlog("Detection engine started with maxWindow: %s", maxWin.String())

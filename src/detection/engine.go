@@ -68,6 +68,7 @@ type Engine struct {
 	store DetectionStore
 	CH *ClickHouseWriter
 	reporter Reporter
+	anomaly *Anomaly
 }
 
 type Reporter interface {
@@ -80,6 +81,12 @@ func (e *Engine) SetReporter(r Reporter) { e.reporter = r }
 
 func (e *Engine) SetClickHouseWriter(w *ClickHouseWriter) {
 	e.CH = w
+}
+
+
+func (e *Engine) SetAnomaly(a *Anomaly) {
+	e.anomaly = a
+	if a != nil { a.BindEngine(e) }
 }
 
 
@@ -107,6 +114,12 @@ func (e *Engine) AddFlow(f Flow) {
 	e.flows = append(e.flows, f)
 	DlogEngine("Flow added. Current flow cache size: %d. Added: Src=%s, Dst=%s, DstPort=%d, Proto=%s, Timestamp=%s",
 		len(e.flows), f.SrcIP, f.DstIP, f.DstPort, f.Proto, f.Timestamp.Format(time.RFC3339Nano))
+
+if e.anomaly != nil {
+	e.anomaly.AddFlow(f)
+}
+
+
 }
 
 // ✅ Κύρια detection loop

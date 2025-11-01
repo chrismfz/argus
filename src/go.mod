@@ -4,6 +4,7 @@ go 1.24.4
 
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.40.3
+	github.com/e-XpertSolutions/go-iforest/v2 v2.0.0
 	github.com/gosnmp/gosnmp v1.42.1
 	github.com/miekg/dns v1.1.68
 	github.com/oschwald/geoip2-golang v1.13.0

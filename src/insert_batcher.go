@@ -27,6 +27,7 @@ type InsertFlowBatcher struct {
 	myASN  uint32
 	myNets []*net.IPNet
 	ifNames *enrich.IFNameCache
+	storeASPath   bool // NEW
 }
 
 
@@ -38,6 +39,8 @@ func NewInsertFlowBatcher(
     myASN uint32,
     myNets []*net.IPNet,
     ifNames *enrich.IFNameCache,
+    storeASPath bool, // NEW
+
 ) *InsertFlowBatcher {
     ctx, cancel := context.WithCancel(context.Background())
     b := &InsertFlowBatcher{
@@ -52,7 +55,8 @@ func NewInsertFlowBatcher(
         isFlushing:    false,
         myASN:         myASN,
         myNets:        myNets,
-        ifNames:       ifNames, // ✅ ΤΩΡΑ σωστά
+        ifNames:       ifNames,
+	storeASPath:   storeASPath,
     }
     go b.autoFlushLoop()
     return b
@@ -150,10 +154,13 @@ for _, rec := range batch {
                     bestEntry = entry
                 }
             }
-            if enriched, ok := bestEntry.(bgp.BGPEnrichedEntry); ok {
-                if len(rec.ASPath) == 0 || len(enriched.ASPath) > len(rec.ASPath) {
-                    rec.ASPath = enriched.ASPath
-                }
+
+    if enriched, ok := bestEntry.(bgp.BGPEnrichedEntry); ok {
+        if b.storeASPath {
+            if len(rec.ASPath) == 0 || len(enriched.ASPath) > len(rec.ASPath) {
+                rec.ASPath = enriched.ASPath
+            }
+        }
                 if rec.LocalPref == 0 {
                     rec.LocalPref = enriched.LocalPref
                 }

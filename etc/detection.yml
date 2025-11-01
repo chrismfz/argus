@@ -114,17 +114,21 @@ rules:
 
 
   # ──────────────── Port Scanning ────────────────
+
   - name: vertical_scan
     proto: tcp
     same_dst_ip: true
-    unique_dst_ports: 90
-    min_flows: 150
-    time_window: 20s
+    unique_dst_ports: 30
+    min_flows: 80
+    dst_port: [20,21,22,23,25,53,67,68,69,80,110,123,135,137,138,139,143,161,162,179,389,443,445,465,514,520,587,636,993,995,1080,1194,1433,1521,1701,1723,2049,2082,2083,2483,3306,3389,3690,4444,4500,5000,5001,5060,5061,5432,5900,5984,6379,6667,8000,8008,8080,8443,8888,9000,9090,9200,9300,11211,27017,27018]
+    tcp_flags: SYN
+    time_window: 30s
     action: alert,clickhouse,blackhole
     blackhole_count: 30
     blackhole_next_hop: 192.0.2.1
-    blackhole_communities: [ "65001:666" ]
+    blackhole_communities: ["65001:666"]
     blackhole_time: [14400, 28800, 57600, 86400, 0]
+
 
 
   - name: horizontal_scan

@@ -24,7 +24,10 @@ type BGPListenerConfig struct {
 type BGPConfig struct {
     TableFile string             `yaml:"table_file"`
     Listener  BGPListenerConfig  `yaml:"bgp_listener"`
+    DumpEnabled bool `yaml:"dump_enabled"`
+    StoreASPath  bool `yaml:"store_aspath"`
 }
+
 
 
 type FrontendConfig struct {

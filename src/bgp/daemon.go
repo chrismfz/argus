@@ -206,84 +206,127 @@ func getPrefixFromNlri(nlri *anypb.Any) (*net.IPNet, error) {
 }
 
 func (b *BGPListener) watchUpdates() {
-	f, err := os.Create("bgp_dump.jsonl")
-	if err != nil {
-		log.Fatalf("cannot open dump file: %v", err)
-	}
-	defer f.Close()
-
-	log.Println("[BGP] Starting update watcher")
-	var totalPaths int
-
-	if err := b.Server.WatchEvent(b.Ctx, &api.WatchEventRequest{
-		Table: &api.WatchEventRequest_Table{
-			Filters: []*api.WatchEventRequest_Table_Filter{{
-				Type: api.WatchEventRequest_Table_Filter_BEST, Init: true, // Init: true fetches current RIB
-			}},
-		},
-	}, func(res *api.WatchEventResponse) {
-		if table := res.GetTable(); table != nil {
-			//debugLog.Printf("[BGP] Received table event with %d paths.", len(table.Paths))
-			for _, path := range table.Paths {
-				nlriAny := path.GetNlri()
-				if nlriAny == nil {
-					debugLog.Println("[BGP] Skipping nil NLRI from path.")
-					continue
-				}
-				//debugLog.Printf("[BGP] Processing path with NLRI TypeUrl: %s", nlriAny.TypeUrl)
-
-				prefix, err := getPrefixFromNlri(nlriAny)
-				if err != nil {
-					//debugLog.Printf("[BGP] Error getting prefix from NLRI (TypeUrl %s): %v", nlriAny.TypeUrl, err)
-					continue
-				}
-				//debugLog.Printf("[BGP] Successfully parsed prefix: %s", prefix.String())
-
-
-
-// Decode attributes
-var asPath []string
-var localPref uint32
-var communities []uint32
-
-attrs, err := apiutil.UnmarshalPathAttributes(path.Pattrs)
-if err != nil {
-	// log.Printf("[BGP] Failed to unmarshal path attributes: %v", err)
-} else {
-	for _, attr := range attrs {
-		switch v := attr.(type) {
-
-
-
-case *bgp.PathAttributeCommunities:
-    for _, c := range v.Value {
-        communities = append(communities, c)
-        //log.Printf("[BGP] Community received: %d:%d", c>>16, c&0xFFFF)
+    var f *os.File
+    if config.AppConfig != nil && config.AppConfig.BGP.DumpEnabled {
+        var err error
+        f, err = os.Create("bgp_dump.jsonl")
+        if err != nil {
+            log.Fatalf("cannot open dump file: %v", err)
+        }
+        defer f.Close()
     }
 
+    log.Println("[BGP] Starting update watcher")
+    var totalPaths int
 
-case *bgp.PathAttributeAsPath:
-	for _, seg := range v.Value {
-		switch p := seg.(type) {
-		case *bgp.AsPathParam:
-			for _, asn := range p.AS {
-				asPath = append(asPath, fmt.Sprintf("%d", asn))
-			}
-case *bgp.As4PathParam:
-		for _, asn := range p.AS {
-			asPath = append(asPath, fmt.Sprintf("%d", asn))
-				}
-			}
-		}
+    err := b.Server.WatchEvent(b.Ctx, &api.WatchEventRequest{
+        Table: &api.WatchEventRequest_Table{
+            Filters: []*api.WatchEventRequest_Table_Filter{{
+                Type: api.WatchEventRequest_Table_Filter_BEST,
+                Init: true, // fetch current RIB
+            }},
+        },
+    }, func(res *api.WatchEventResponse) {
+        if table := res.GetTable(); table != nil {
+            for _, path := range table.Paths {
+                nlriAny := path.GetNlri()
+                if nlriAny == nil {
+                    continue
+                }
 
-		case *bgp.PathAttributeLocalPref:
-			localPref = v.Value
+                prefix, err := getPrefixFromNlri(nlriAny)
+                if err != nil {
+                    continue
+                }
 
+                // --- decode attributes (AS path gated by config) ---
+                var (
+                    asPath      []string
+                    localPref   uint32
+                    communities []uint32
+                )
 
-		default:
-			// Ignore other attribute types
-		}
-	}
+                attrs, aerr := apiutil.UnmarshalPathAttributes(path.Pattrs)
+                if aerr == nil {
+                    for _, attr := range attrs {
+                        switch v := attr.(type) {
+                        case *bgp.PathAttributeCommunities:
+                            for _, c := range v.Value {
+                                communities = append(communities, c)
+                            }
+                        case *bgp.PathAttributeAsPath:
+                            if config.AppConfig != nil && config.AppConfig.BGP.StoreASPath {
+                                for _, seg := range v.Value {
+                                    switch p := seg.(type) {
+                                    case *bgp.AsPathParam:
+                                        for _, asn := range p.AS {
+                                            asPath = append(asPath, fmt.Sprintf("%d", asn))
+                                        }
+                                    case *bgp.As4PathParam:
+                                        for _, asn := range p.AS {
+                                            asPath = append(asPath, fmt.Sprintf("%d", asn))
+                                        }
+                                    }
+                                }
+                            }
+                        case *bgp.PathAttributeLocalPref:
+                            localPref = v.Value
+                        default:
+                            // ignore others
+                        }
+                    }
+                }
+
+                // origin ASN from last AS in path (if present)
+                var originASN uint32
+                if len(asPath) > 0 {
+                    fmt.Sscanf(asPath[len(asPath)-1], "%d", &originASN)
+                }
+
+                entry := BGPEnrichedEntry{
+                    Net:       *prefix,
+                    LocalPref: localPref,
+                    ASN:       originASN,
+                }
+                if config.AppConfig != nil && config.AppConfig.BGP.StoreASPath {
+                    entry.ASPath = asPath
+                }
+
+                if err := b.Ranger.Insert(entry); err == nil {
+                    totalPaths++
+                    b.PathCount = totalPaths
+                    PathCount = totalPaths
+                }
+
+                // optional dump
+                if f != nil {
+                    rawPattrs := make([]string, len(path.Pattrs))
+                    for i, attrAny := range path.Pattrs {
+                        rawPattrs[i] = hex.EncodeToString(attrAny.Value)
+                    }
+                    dump := struct {
+                        NLRI      string   `json:"nlri"`
+                        RawPattrs []string `json:"raw_pattrs"`
+                        ASPath    []string `json:"as_path"`
+                        LocalPref uint32   `json:"local_pref"`
+                    }{
+                        NLRI:      prefix.String(),
+                        RawPattrs: rawPattrs,
+                        ASPath:    asPath,
+                        LocalPref: localPref,
+                    }
+                    if line, jerr := json.Marshal(dump); jerr == nil {
+                        _, _ = f.Write(append(line, '\n'))
+                    }
+                }
+            }
+        }
+    })
+    if err != nil {
+        log.Printf("[BGP] WatchEvent error (updates): %v", err)
+    }
+
+    log.Printf("[BGP] Initial table sync complete. Total prefixes received: %d", totalPaths)
 }
 
 
@@ -292,50 +335,6 @@ case *bgp.As4PathParam:
 
 
 
-				// The 'rawPattrs' part is for debugging raw attribute bytes, good for seeing what's there
-				rawPattrs := make([]string, len(path.Pattrs))
-				for i, attrAny := range path.Pattrs {
-					rawPattrs[i] = hex.EncodeToString(attrAny.Value)
-				}
-				//debugLog.Printf("[BGP] Raw Path Attributes: %v", rawPattrs)
-
-				originASN := uint32(0)
-				if len(asPath) > 0 {
-				fmt.Sscanf(asPath[len(asPath)-1], "%d", &originASN)
-				}
-				entry := BGPEnrichedEntry{Net: *prefix, ASPath: asPath, LocalPref: localPref, ASN: originASN}
-				if err := b.Ranger.Insert(entry); err != nil {
-					//debugLog.Printf("[BGP] Ranger insert error for %s: %v", prefix.String(), err)
-				} else {
-					totalPaths++
-					b.PathCount = totalPaths
-					PathCount = totalPaths
-					//if totalPaths%1000 == 0 { // Changed to 1000 for more frequent updates if many routes
-					//	fmt.Printf("\r[BGP] Progress: %d prefixes...", totalPaths)
-					//}
-				}
-
-				dump := struct {
-					NLRI      string   `json:"nlri"`
-					RawPattrs []string `json:"raw_pattrs"`
-					ASPath    []string `json:"as_path"`
-					LocalPref uint32   `json:"local_pref"`
-				}{prefix.String(), rawPattrs, asPath, localPref}
-
-				if line, err := json.Marshal(dump); err == nil {
-					f.Write(line)
-					f.Write([]byte("\n"))
-				} else {
-					//debugLog.Printf("[BGP] Error marshalling dump to JSON: %v", err)
-				}
-			}
-		}
-	}); err != nil {
-		log.Printf("[BGP] WatchEvent error (updates): %v", err)
-	}
-
-	log.Printf("[BGP] Initial table sync complete. Total prefixes received: %d", totalPaths)
-}
 
 func (b *BGPListener) watchPeers() {
 	log.Println("[BGP] Starting peer event watcher")
@@ -425,11 +424,12 @@ func (b *BGPListener) logEstablishedPeerDetails(peerAddress string) {
 		}
 
 
-
 if p.Transport != nil {
-    LocalBGPAddress = p.Transport.LocalAddress
-    log.Printf("[BGP]   Local Address (our IP): %s", LocalBGPAddress)
+    b.LocalAddress = p.Transport.LocalAddress
+    log.Printf("[BGP]   Local Address (our IP): %s", b.LocalAddress)
 }
+
+
 
 		// Capabilities are in p.State.RemoteCap and p.State.LocalCap
 		remoteCaps := make([]string, 0)

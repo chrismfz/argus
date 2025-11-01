@@ -1,8 +1,8 @@
 # --- Config (adjust as needed) ---
 PPROF_HOST=127.0.0.1
-PPROF_PORT=9061                 # use your chosen debug port (NOT 9601)
+PPROF_PORT=9601                 # use your chosen debug port (NOT 9601)
 BIN_CFM=/usr/bin/cfm
-BIN_FLOW=/usr/local/bin/flowenricher   # or wherever your binary lives
+BIN_FLOW=/opt/flowenricher/bin/flowenricher   # or wherever your binary lives
 BIN=$BIN_FLOW                   # set to $BIN_CFM if profiling cfm
 
 OUTDIR=/tmp/pprof-$(date +%F_%H%M%S)

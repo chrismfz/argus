@@ -367,8 +367,9 @@ if enrichEnabled(cfg, "ptr") {
         time.Duration(cfg.Insert.FlushIntervalMs)*time.Millisecond,
         listener.Ranger,
         cfg.MyASN,
-        myNets, // my IPs and my ASN
-            ifNameCache, // interface names
+        myNets,
+        ifNameCache,
+	cfg.BGP.StoreASPath,
         )
 
         defer batcher.Close()

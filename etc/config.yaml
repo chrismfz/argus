@@ -17,6 +17,8 @@ bgp:
     local_asn:  65001
     remote_asn: 216285              # MikroTik’s ASN
     max_peers:  2
+    dump_enabled: false   # default off
+    store_aspath: false   # set to false for the test; default true in prod
 
 clickhouse:
   host: "localhost"

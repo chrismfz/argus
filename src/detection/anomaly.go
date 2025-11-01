@@ -115,6 +115,15 @@ func (a *Anomaly) tick() {
 		feat := buildFeatures(local, windowSec)
 		vec := log1pVec(feat.slice())
 
+// pre-filter: skip low-signal sources to avoid noise
+if feat.PktsPerSec < 5 &&
+   feat.UniqDstPorts < 10 &&
+   feat.UniqDstIPs   < 10 &&
+   feat.TCPSYNRatio  < 0.90 &&
+   feat.ICMPShare    < 0.50 {
+    continue
+}
+
 		// grow baseline (bounded)
 		a.mu.Lock()
 		if len(a.baseline) < a.cfg.BaselineMax {
@@ -133,9 +142,9 @@ func (a *Anomaly) tick() {
 
 
 //ORIGINAL COMMENTED FOR DEBUG//
-//		if label == 1 && score >= a.cfg.MinScore {
+		if label == 1 && score >= a.cfg.MinScore {
 // TEMP (for debug): fire if EITHER the label OR score threshold hits
-if label == 1 || score >= a.cfg.MinScore {
+//if label == 1 || score >= a.cfg.MinScore {
 			cnt, _ := a.store.IncrementCount(a.cfg.Label, src)
 
 			logAnomalyLine("[%s] ANOMALY label=%s score=%.4f src=%s feats=%v count=%d",

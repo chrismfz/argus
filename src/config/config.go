@@ -87,7 +87,33 @@ type Config struct {
         RulesConfig string `yaml:"rules_config"`
         FlowCacheMaxWindow string `yaml:"flow_cache_max_window"`
 	DebugDetection bool `yaml:"debug_detection"`
+
+        Anomaly struct {
+            Enabled       bool    `yaml:"enabled"`
+            Window        string  `yaml:"window"`        // "60s"
+            Interval      string  `yaml:"interval"`      // "10s"
+            Label         string  `yaml:"label"`
+            MinScore      float64 `yaml:"min_score"`
+            LogOnly       bool    `yaml:"log_only"`
+            RetrainEvery  string  `yaml:"retrain_every"` // "5m"
+            BaselineMax   int     `yaml:"baseline_max"`
+            TopK          int     `yaml:"top_k"`
+
+            Trees         int     `yaml:"trees"`
+            SampleSize    int     `yaml:"sample_size"`
+            Contamination float64 `yaml:"contamination"`
+
+            Prefilter struct {
+                MinPPS          float64 `yaml:"min_pps"`
+                MinUniqDstPorts float64 `yaml:"min_uniq_dst_ports"`
+                MinUniqDstIPs   float64 `yaml:"min_uniq_dst_ips"`
+                MinSynRatio     float64 `yaml:"min_syn_ratio"`
+                MinICMPShare    float64 `yaml:"min_icmp_share"`
+
+            } `yaml:"prefilter"`
+        } `yaml:"anomaly"`
     } `yaml:"detection"`
+
 
 
 API struct {

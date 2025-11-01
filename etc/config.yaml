@@ -75,7 +75,32 @@ detection:
   rules_config: /opt/flowenricher/etc/detection.yml
   flow_cache_max_window: 60s
   debug_detection: false
+
+  anomaly:
+    enabled: true
+    window: 60s
+    interval: 10s
+    label: iforest_anomaly
+    min_score: 0.70
+    log_only: true
+    retrain_every: 5m
+    baseline_max: 20000
+    top_k: 10
+
+    # Isolation Forest hyperparams
+    trees: 100
+    sample_size: 256
+    contamination: 0.01
+
+    # (optional) pre-filter to reduce noise
+    prefilter:
+      min_pps: 5
+      min_uniq_dst_ports: 10
+      min_uniq_dst_ips: 10
+      min_syn_ratio: 0.90
+      min_icmp_share: 0.50
 # /ip route add dst-address=192.0.2.1/32 blackhole comment="BGP Blackhole Nexthop"
+
 
 
 api:

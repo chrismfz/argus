@@ -269,3 +269,102 @@ SETTINGS index_granularity = 8192;
 go build -o flowenricher
 ./flowenricher --config config.yaml --rules detection.yml
 ```
+
+
+
+## Machine Learning to the Party!
+
+ML Feature Design & Implementation
+Goals
+
+Add an unsupervised anomaly score (Isolation Forest) to help detect scans/stealthy floods that rule-based detectors miss.
+
+Keep the core flowenricher in Go, avoid shipping heavy ML libs in the Go binary.
+
+Implement a small Python microservice for training + scoring (scikit-learn) with a simple HTTP API (FastAPI). Go forwards feature vectors, receives anomaly score.
+
+Integrate anomaly score into detection pipeline: a detection rule can match on ml_score (e.g., > 0.85) and trigger alert/blackhole.
+
+### High-level architecture
+NetFlow/IPFIX --> flowenricher (Go)
+- enrichment (ASN/GeoIP/PTR/SNMP) -> ClickHouse
+- feature extraction per window -> POST to ML scorer /score
+- receives ml_score -> feed into detection engine
+- detection rules can use Isolation Forest alongside rule conditions
+
+
+### Feature set (recommended)
+
+Normalize and log where counts/bytes are heavy-tailed.
+
+Per (src_ip,window) or (src_ip,dst_asn,window) vector (10–12 features):
+
+bytes_per_sec
+
+pkts_per_sec
+
+flows_per_sec
+
+avg_pkt_size (bytes/packet)
+
+unique_dst_ips
+
+unique_dst_ports
+
+dst_ip_entropy
+
+dst_port_entropy
+
+syn_flag_ratio (syn_pkts / pkts)
+
+top1_src_share (fraction of traffic from top talker in this window)
+
+rolling_delta_bytes (derivative vs previous window)
+
+You can add other enrichments (peer_dst_as, geo_count) if useful. Keep dimensionality moderate.
+
+
+# Teaching FlowEnricher to Spot Weirdos: Isolation Forest Joins the Party
+
+tl;dr: We added unsupervised anomaly detection to FlowEnricher using an Isolation Forest microservice. It scores per-IP behavior in real time and helps catch stealthy port scans and low-and-slow DoS bursts that signatures miss.
+
+## Why Isolation Forest?
+
+Rule engines are great at “known patterns.” But attackers get creative. Isolation Forest learns what’s normal for your network and flags outliers—no labels required.
+
+How it works
+
+FlowEnricher aggregates flows per source and builds compact feature vectors (packets/sec, bytes/sec, unique destinations, SYN ratio, entropies…).
+
+Vectors are POSTed to a tiny Python service (FastAPI + scikit-learn). It maintains an Isolation Forest model.
+
+The service replies with an anomaly score (0..1). FlowEnricher can log it, visualize it in ClickHouse, or use it directly in rules.
+
+
+
+
+## Ops, not research
+
+No GPU, no massive frameworks. A ~30MB container scores vectors in sub-millisecond time.
+
+Retraining is cheap: point it at a rolling baseline every 5–15 minutes.
+
+It’s optional—feature-flagged and hot-reloadable. You can A/B it alongside the classic rules.
+
+What it catches well
+
+Horizontal scans: one source, many destinations → high uniqueness + entropy.
+
+Vertical scans: many ports on one host → high unique ports, SYN ratio.
+
+Weird mixes: atypical packet sizes / protocol shares.
+
+What it won’t solve
+
+Encrypted exfiltration that mimics business traffic perfectly (no silver bullets).
+
+Poor baselines (train on clean intervals!).
+
+
+---EOF
+

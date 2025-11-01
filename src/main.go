@@ -10,6 +10,7 @@ import (
         "strings"
         "syscall"
         "time"
+	"github.com/fsnotify/fsnotify"
         "flowenricher/fields"
         "flowenricher/config"
         "flowenricher/collectors"
@@ -34,6 +35,8 @@ var Version   = "dev" // fallback version
 var BuildTime = "unknown"
 var engine *detection.Engine
 var detectionRules []detection.DetectionRule // MOVED THIS DECLARATION TO GLOBAL SCOPE
+// anomaly globals for hot-reload
+var anom *detection.Anomaly
 
 
 func dlog(msg string, args ...interface{}) {
@@ -491,28 +494,125 @@ if cfm != nil {
 
 
 
-/* =====  ANOMALY BLOCK HERE ===== */
-anomCfg := detection.AnomalyConfig{
-        Window:       60 * time.Second,
-        Interval:     10 * time.Second,
-        Label:        "iforest_anomaly",
-        MinScore:     0.30,         // tune later
-        LogOnly:      true,         // start safe: log-only
-        RetrainEvery: 1 * time.Minute,
-        BaselineMax:  10000,
-        // BlackholeCount: 3,                     // enable later if you want auto-mitigation
-        // BlackholeTime:  []int{300, 1800, 0},   // your existing semantics
+/* =====  ANOMALY (config-driven + hot-reload) ===== */
+if cfg.Detection.Enabled && cfg.Detection.Anomaly.Enabled {
+        // Parse durations from YAML
+        win, _  := time.ParseDuration(cfg.Detection.Anomaly.Window)
+        ivl, _  := time.ParseDuration(cfg.Detection.Anomaly.Interval)
+        retr, _ := time.ParseDuration(cfg.Detection.Anomaly.RetrainEvery)
+
+        // Build initial config from file
+        anomCfg := detection.AnomalyConfig{
+                Window:       win,
+                Interval:     ivl,
+                Label:        cfg.Detection.Anomaly.Label,
+                MinScore:     cfg.Detection.Anomaly.MinScore,
+                LogOnly:      cfg.Detection.Anomaly.LogOnly,
+                RetrainEvery: retr,
+                BaselineMax:  cfg.Detection.Anomaly.BaselineMax,
+		TopK:         cfg.Detection.Anomaly.TopK,
+        }
+
+        // Detector hyperparams from file
+        trees         := cfg.Detection.Anomaly.Trees
+        sampleSize    := cfg.Detection.Anomaly.SampleSize
+        contamination := cfg.Detection.Anomaly.Contamination
+        if trees <= 0 { trees = 100 }
+        if sampleSize <= 0 { sampleSize = 256 }
+        if contamination <= 0 { contamination = 0.01 }
+
+        // Create & wire anomaly lane
+        det := detection.NewIForestDetector(trees, sampleSize, contamination)
+        anom = detection.NewAnomaly(anomCfg, det, store)
+        engine.SetAnomaly(anom)
+        anom.Start(ctx)
+
+        // --- Hot reload: watch config.yaml (and optionally rules) ---
+        go func() {
+                watcher, err := fsnotify.NewWatcher()
+                if err != nil {
+                        log.Printf("[WARN] fsnotify init failed: %v", err)
+                        return
+                }
+                defer watcher.Close()
+
+                if err := watcher.Add(configPath); err != nil {
+                        log.Printf("[WARN] fsnotify add failed: %v", err)
+                        return
+                }
+                // also watch rules file so you can reload rules later if you add engine.UpdateRules(...)
+                if cfg.Detection.RulesConfig != "" {
+                        _ = watcher.Add(cfg.Detection.RulesConfig)
+                }
+
+                for {
+                        select {
+                        case <-ctx.Done():
+                                return
+                        case ev := <-watcher.Events:
+                                if ev.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename) == 0 {
+                                        continue
+                                }
+                                // debounce a bit
+                                time.Sleep(200 * time.Millisecond)
+
+                                // Reload config
+                                nc, err := config.LoadConfig(configPath)
+                                if err != nil {
+                                        log.Printf("[WARN] reload config failed: %v", err)
+                                        continue
+                                }
+                                config.AppConfig = nc
+
+                                if nc.Detection.Enabled && nc.Detection.Anomaly.Enabled {
+                                        // parse durations
+                                        nwin, _  := time.ParseDuration(nc.Detection.Anomaly.Window)
+                                        nivl, _  := time.ParseDuration(nc.Detection.Anomaly.Interval)
+                                        nretr, _ := time.ParseDuration(nc.Detection.Anomaly.RetrainEvery)
+
+                                        newAnom := detection.AnomalyConfig{
+                                                Window:       nwin,
+                                                Interval:     nivl,
+                                                Label:        nc.Detection.Anomaly.Label,
+                                                MinScore:     nc.Detection.Anomaly.MinScore,
+                                                LogOnly:      nc.Detection.Anomaly.LogOnly,
+                                                RetrainEvery: nretr,
+                                                BaselineMax:  nc.Detection.Anomaly.BaselineMax,
+						TopK:         nc.Detection.Anomaly.TopK,
+                                        }
+                                        // Live-apply config (requires Anomaly.UpdateConfig)
+                                        if anom != nil {
+                                                anom.UpdateConfig(newAnom)
+                                        }
+
+                                        // If detector params changed, rebuild detector live (requires Anomaly.RebuildDetector)
+                                        nTrees := nc.Detection.Anomaly.Trees
+                                        nSample := nc.Detection.Anomaly.SampleSize
+                                        nContam := nc.Detection.Anomaly.Contamination
+                                        if nTrees <= 0 { nTrees = 100 }
+                                        if nSample <= 0 { nSample = 256 }
+                                        if nContam <= 0 { nContam = 0.01 }
+                                        if (nTrees != trees) || (nSample != sampleSize) || (nContam != contamination) {
+                                                if anom != nil {
+                                                        anom.RebuildDetector(nTrees, nSample, nContam)
+                                                }
+                                                trees, sampleSize, contamination = nTrees, nSample, nContam
+                                                log.Printf("[ANOMALY] detector rebuilt (trees=%d sample=%d contam=%.3f)", trees, sampleSize, contamination)
+                                        }
+
+                                        log.Printf("[ANOMALY] reloaded cfg: window=%s interval=%s min_score=%.2f log_only=%v",
+                                                newAnom.Window, newAnom.Interval, newAnom.MinScore, newAnom.LogOnly)
+                                }
+
+                                // TODO (optional): if ev.Name == cfg.Detection.RulesConfig => reload rules & engine.UpdateRules(...)
+
+                        case err := <-watcher.Errors:
+                                log.Printf("[WARN] fsnotify error: %v", err)
+                        }
+                }
+        }()
 }
-
-// Isolation Forest detector
-det := detection.NewIForestDetector(100, 256, 0.02) // slightly higher contamination for tests 0.02 not 0.01
-
-// Create & wire anomaly lane
-anom := detection.NewAnomaly(anomCfg, det, store)
-engine.SetAnomaly(anom)
-anom.Start(ctx)
-/* ===== END ANOMALY ===== */
-
+ /* ===== END ANOMALY ===== */
 
 
 

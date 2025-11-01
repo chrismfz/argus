@@ -18,6 +18,8 @@ type AnomalyConfig struct {
 	RetrainEvery  time.Duration // e.g., 5m
 	BaselineMax   int           // cap baseline vectors (e.g., 20000)
 
+	TopK          int            // optional: max anomalies to log per tick (0 = no cap)
+
 	// optional blackhole escalation (later)
 	BlackholeCount int
 	BlackholeTime  interface{}
@@ -33,7 +35,40 @@ type Anomaly struct {
 
 	baseline [][]float64
 	lastTrain time.Time
+
+    // hot-reload plumbing
+    cfgUpdate chan AnomalyConfig
+    ticker    *time.Ticker
+
 }
+
+
+// Optional: hold runtime prefilter thresholds (attach to Anomaly if you use them)
+type Prefilter struct {
+    MinPPS, MinUniqDstPorts, MinUniqDstIPs, MinSynRatio, MinICMPShare float64
+}
+
+func (a *Anomaly) UpdateConfig(newCfg AnomalyConfig) {
+    // push to Start() loop; it will swap the ticker and cfg atomically
+    select {
+    case a.cfgUpdate <- newCfg:
+    default:
+        // if channel is full, drop the older pending update
+        <-a.cfgUpdate
+        a.cfgUpdate <- newCfg
+    }
+
+}
+
+func (a *Anomaly) RebuildDetector(trees, sample int, contamination float64) {
+    a.mu.Lock()
+    // swap detector & force retrain on next tick from baseline
+    a.detector = NewIForestDetector(trees, sample, contamination)
+    a.lastTrain = time.Time{} // force immediate retrain if enough baseline
+    a.mu.Unlock()
+}
+
+
 
 func NewAnomaly(cfg AnomalyConfig, det Detector, store DetectionStore) *Anomaly {
 	if cfg.Window <= 0 { cfg.Window = 60 * time.Second }
@@ -48,6 +83,7 @@ func NewAnomaly(cfg AnomalyConfig, det Detector, store DetectionStore) *Anomaly 
 		cfg:      cfg,
 		detector: det,
 		store:    store,
+		cfgUpdate: make(chan AnomalyConfig, 1),
 	}
 }
 
@@ -66,18 +102,27 @@ func (a *Anomaly) AddFlow(f Flow) {
 }
 
 func (a *Anomaly) Start(ctx context.Context) {
-	t := time.NewTicker(a.cfg.Interval)
-	go func() {
-		defer t.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-t.C:
-				a.tick()
-			}
-		}
-	}()
+
+    a.ticker = time.NewTicker(a.cfg.Interval)
+    go func() {
+        defer a.ticker.Stop()
+        for {
+            select {
+            case <-ctx.Done():
+                return
+            case <-a.ticker.C:
+                a.tick()
+            case nc := <-a.cfgUpdate:
+                // apply new config and rebuild ticker if interval changed
+                a.mu.Lock()
+                a.cfg = nc
+                a.mu.Unlock()
+                a.ticker.Stop()
+                a.ticker = time.NewTicker(nc.Interval)
+            }
+        }
+    }()
+
 }
 
 func (a *Anomaly) tick() {

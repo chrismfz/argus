@@ -2,6 +2,7 @@ package detection
 
 import (
 	"time"
+	"strings"
 )
 
 type srcWindow struct {
@@ -38,8 +39,10 @@ func buildFeatures(flows []Flow, windowSec float64) featureVector {
 		bytes += f.Bytes
 		uniDst[f.DstIP] = struct{}{}
 		uniPorts[f.DstPort] = struct{}{}
-		switch f.Proto {
-		case "tcp":
+
+
+		        switch strings.ToLower(f.Proto) {
+		        case "tcp":
 			tcpPkts += f.Packets
 			if f.TCPFlags&0x02 != 0 { // SYN
 				tcpSyn += f.Packets

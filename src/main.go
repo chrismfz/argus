@@ -496,16 +496,16 @@ anomCfg := detection.AnomalyConfig{
         Window:       60 * time.Second,
         Interval:     10 * time.Second,
         Label:        "iforest_anomaly",
-        MinScore:     0.70,         // tune later
+        MinScore:     0.30,         // tune later
         LogOnly:      true,         // start safe: log-only
-        RetrainEvery: 5 * time.Minute,
-        BaselineMax:  20000,
+        RetrainEvery: 1 * time.Minute,
+        BaselineMax:  10000,
         // BlackholeCount: 3,                     // enable later if you want auto-mitigation
         // BlackholeTime:  []int{300, 1800, 0},   // your existing semantics
 }
 
 // Isolation Forest detector
-det := detection.NewIForestDetector(100, 256, 0.01)
+det := detection.NewIForestDetector(100, 256, 0.02) // slightly higher contamination for tests 0.02 not 0.01
 
 // Create & wire anomaly lane
 anom := detection.NewAnomaly(anomCfg, det, store)

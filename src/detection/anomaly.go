@@ -99,6 +99,9 @@ func (a *Anomaly) tick() {
 
 	windowSec := a.cfg.Window.Seconds()
 
+	type scored struct{ src string; score float64; fv featureVector }
+	top := scored{}
+
 	// score each src
 	for _, src := range keys {
 		a.mu.Lock()
@@ -123,7 +126,16 @@ func (a *Anomaly) tick() {
 		a.mu.Unlock()
 
 		label, score := a.detector.Score(vec)
-		if label == 1 && score >= a.cfg.MinScore {
+
+   if score > top.score {
+            top = scored{src: src, score: score, fv: feat}
+        }
+
+
+//ORIGINAL COMMENTED FOR DEBUG//
+//		if label == 1 && score >= a.cfg.MinScore {
+// TEMP (for debug): fire if EITHER the label OR score threshold hits
+if label == 1 || score >= a.cfg.MinScore {
 			cnt, _ := a.store.IncrementCount(a.cfg.Label, src)
 
 			logAnomalyLine("[%s] ANOMALY label=%s score=%.4f src=%s feats=%v count=%d",
@@ -144,6 +156,16 @@ func (a *Anomaly) tick() {
 			}
 		}
 	}
+
+
+  // --- add this debug line at the end of tick() ---
+    if top.src != "" {
+        logAnomalyLine("[%s] DEBUG top_score=%.4f top_src=%s feats={PktsPerSec:%.1f,BytesPerSec:%.1f,MeanPkt:%.1f,UniqDstIPs:%.0f,UniqDstPorts:%.0f,TCPSYNRatio:%.2f,ICMPShare:%.2f}",
+            nowRFC3339(), top.score, top.src,
+            top.fv.PktsPerSec, top.fv.BytesPerSec, top.fv.MeanPktSize,
+            top.fv.UniqDstIPs, top.fv.UniqDstPorts, top.fv.TCPSYNRatio, top.fv.ICMPShare)
+    }
+    // --- end add ---
 
 	// periodic retrain
 	if now.Sub(a.lastTrain) >= a.cfg.RetrainEvery {

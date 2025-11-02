@@ -292,13 +292,13 @@ NetFlow/IPFIX --> flowenricher (Go)
 
 # Teaching FlowEnricher to Spot Weirdos: Isolation Forest Joins the Party
 
-``` 
+--- 
 We added unsupervised anomaly detection to FlowEnricher using an Isolation Forest microservice. 
 It scores per-IP behavior in real time and helps catch stealthy port scans and low-and-slow DoS bursts that signatures miss. ```
 
 
 ## Why Isolation Forest?
-```
+
 Rule engines are great at “known patterns.” But attackers get creative. 
 Isolation Forest learns what’s normal for your network and flags outliers—no labels required.
 
@@ -309,12 +309,12 @@ FlowEnricher aggregates flows per source and builds compact feature vectors (pac
 Vectors are POSTed to a tiny Python service (FastAPI + scikit-learn). It maintains an Isolation Forest model.
 
 The service replies with an anomaly score (0..1). FlowEnricher can log it, visualize it in ClickHouse, or use it directly in rules.
-```
+
 
 
 
 ## Ops, not research
-```
+
 No GPU, no massive frameworks. A ~30MB container scores vectors in sub-millisecond time.
 
 Retraining is cheap: point it at a rolling baseline every 5–15 minutes.
@@ -334,7 +334,7 @@ What it won’t solve
 Encrypted exfiltration that mimics business traffic perfectly (no silver bullets).
 
 Poor baselines (train on clean intervals!).
-```
+
 
 ---EOF
 

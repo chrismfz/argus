@@ -137,6 +137,18 @@ config.AppConfig = cfg
 debug = debug || cfg.Debug
 
 
+// ==== Print effective ANOMALY config (startup) ====
+ac := cfg.Detection.Anomaly
+pf := ac.Prefilter
+log.Printf("[CFG] anomaly: enabled=%v window=%s interval=%s label=%s min_score=%.3f log_only=%v",
+    ac.Enabled, ac.Window, ac.Interval, ac.Label, ac.MinScore, ac.LogOnly)
+log.Printf("[CFG] anomaly: retrain_every=%s baseline_max=%d top_k=%d trees=%d sample_size=%d contamination=%.3f",
+    ac.RetrainEvery, ac.BaselineMax, ac.TopK, ac.Trees, ac.SampleSize, ac.Contamination)
+log.Printf("[CFG] anomaly.prefilter: pps>=%.1f uniq_ports>=%.0f uniq_ips>=%.0f syn_ratio>=%.2f icmp_share>=%.2f",
+    pf.MinPPS, pf.MinUniqDstPorts, pf.MinUniqDstIPs, pf.MinSynRatio, pf.MinICMPShare)
+
+
+
 
 
 // ---- CFM client + heartbeat (must be one contiguous if/else block)

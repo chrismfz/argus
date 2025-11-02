@@ -75,7 +75,7 @@ func NewAnomaly(cfg AnomalyConfig, det Detector, store DetectionStore) *Anomaly 
 	if cfg.Interval <= 0 { cfg.Interval = 10 * time.Second }
 	if cfg.Label == "" { cfg.Label = "iforest_anomaly" }
 	if cfg.RetrainEvery <= 0 { cfg.RetrainEvery = 5 * time.Minute }
-	if cfg.BaselineMax <= 0 { cfg.BaselineMax = 20000 }
+	if cfg.BaselineMax <= 0 { cfg.BaselineMax = 50000 }
 	if cfg.MinScore <= 0 { cfg.MinScore = 0.70 }
 
 	return &Anomaly{

@@ -112,7 +112,44 @@ type Config struct {
 
             } `yaml:"prefilter"`
         } `yaml:"anomaly"`
+
+
+
+
+
+// in config.go (inside type Config { Detection struct { ... } })
+Memory struct {
+    Enabled           bool    `yaml:"enabled"`
+    Interval          string  `yaml:"interval"`
+    LogPath           string  `yaml:"log_path"`
+
+    Alpha             float64 `yaml:"alpha"`
+    Theta             float64 `yaml:"theta"`
+    TauRisk           float64 `yaml:"tau_risk"`
+
+    Debt struct {
+        DecayPerTick   float64 `yaml:"decay_per_tick"`
+        WarnThreshold  float64 `yaml:"warn_threshold"`
+    } `yaml:"debt"`
+
+    Flags struct {
+        SpikeThreshold   float64 `yaml:"spike_threshold"`
+        Decay5m          float64 `yaml:"decay_5m"`
+        Decay30m         float64 `yaml:"decay_30m"`
+        ConsecHighWarn   int     `yaml:"consec_high_warn"`
+    } `yaml:"flags"`
+
+    TTL                string  `yaml:"ttl"`
+    TopKEnrich         int     `yaml:"top_k_enrich"`
+    LogStateChangesOnly bool   `yaml:"log_state_changes_only"`
+} `yaml:"memory"`
+
+
+
+
+
     } `yaml:"detection"`
+
 
 
 

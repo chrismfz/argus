@@ -76,30 +76,64 @@ detection:
   flow_cache_max_window: 60s
   debug_detection: false
 
-anomaly:
-  enabled: true                 # Enable or disable the anomaly detection engine.
-  window: 60s                   # Duration of each feature window (e.g. 1 minute of traffic per sample).
-  interval: 10s                 # How often to slide the window forward (e.g. every 10s = 6x overlap).
-  label: iforest_anomaly        # Tag used when writing anomaly records to logs or DB.
-  min_score: 0.50               # Minimum Isolation Forest anomaly score (0–1) to consider suspicious.
-  log_only: true                # If true, only log anomalies; if false, take mitigation or alert actions.
-  retrain_every: 30m            # How often the model is retrained on new baseline data (e.g. 30m, 1h).
-  baseline_max: 200000          # Maximum number of feature samples kept for training (acts as a memory buffer).
-  top_k: 10                     # Number of top anomalies per interval to log/report.
+  anomaly:
+    enabled: true                 # Enable or disable the anomaly detection engine.
+    window: 60s                   # Duration of each feature window (e.g. 1 minute of traffic per sample).
+    interval: 10s                 # How often to slide the window forward (e.g. every 10s = 6x overlap).
+    label: iforest_anomaly        # Tag used when writing anomaly records to logs or DB.
+    min_score: 0.50               # Minimum Isolation Forest anomaly score (0–1) to consider suspicious.
+    log_only: true                # If true, only log anomalies; if false, take mitigation or alert actions.
+    retrain_every: 30m            # How often the model is retrained on new baseline data (e.g. 30m, 1h).
+    baseline_max: 200000          # Maximum number of feature samples kept for training (acts as a memory buffer).
+    top_k: 10                     # Number of top anomalies per interval to log/report.
 
   # --- Isolation Forest hyperparameters ---
-  trees: 256                    # Number of decision trees in the forest (128–512 typical; more = smoother).
-  sample_size: 1024             # Number of samples per tree (512–2048 typical; higher = more accurate, slower).
-  contamination: 0.007          # Expected fraction of anomalies in baseline (0.001–0.02). Lower = stricter.
+    trees: 256                    # Number of decision trees in the forest (128–512 typical; more = smoother).
+    sample_size: 1024             # Number of samples per tree (512–2048 typical; higher = more accurate, slower).
+    contamination: 0.007          # Expected fraction of anomalies in baseline (0.001–0.02). Lower = stricter.
 
   # --- Optional pre-filter to reduce noise ---
   # Only include flows meeting these conditions in model training/scoring.
-  prefilter:
-    min_pps: 2                  # Minimum packets per second per source (ignore idle/low-volume hosts).
-    min_uniq_dst_ports: 2       # Minimum unique destination ports in window (ignore trivial single-port traffic).
-    min_uniq_dst_ips: 2         # Minimum unique destination IPs (ignore one-to-one sessions).
-    min_syn_ratio: 0.50         # Minimum TCP SYN ratio (helps focus on connection attempts/scans).
-    min_icmp_share: 0.00        # Minimum share of ICMP packets (set >0.3 to focus on ICMP floods, if desired).
+    prefilter:
+      min_pps: 2                  # Minimum packets per second per source (ignore idle/low-volume hosts).
+      min_uniq_dst_ports: 2       # Minimum unique destination ports in window (ignore trivial single-port traffic).
+      min_uniq_dst_ips: 2         # Minimum unique destination IPs (ignore one-to-one sessions).
+      min_syn_ratio: 0.50         # Minimum TCP SYN ratio (helps focus on connection attempts/scans).
+      min_icmp_share: 0.00        # Minimum share of ICMP packets (set >0.3 to focus on ICMP floods, if desired).
+
+
+
+  memory:
+    enabled: true
+    interval: 10s          # should match anomaly.interval
+    log_path: /opt/flowenricher/risk.log
+
+    alpha: 0.30            # EWMA smoothing for risk (↑ = shorter memory)
+    theta: 0.60            # pivot for “above-normal” debt accumulation
+    tau_risk: 0.70         # risk (EWMA) considered high
+
+    debt:
+      decay_per_tick: 0.10
+      warn_threshold: 1.50
+
+    flags:
+      spike_threshold: 0.80   # single-tick spike
+      decay_5m: 0.967         # ~exp decay per 10s tick
+      decay_30m: 0.994
+      consec_high_warn: 3     # 3 spikes in a row
+
+    ttl: 90m
+    top_k_enrich: 25          # max IPs/tick to PTR/ASN enrich (extra safety)
+    log_state_changes_only: true   # reduces noise
+
+
+
+
+
+
+
+
+
 
 
 # /ip route add dst-address=192.0.2.1/32 blackhole comment="BGP Blackhole Nexthop"

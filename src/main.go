@@ -149,6 +149,16 @@ log.Printf("[CFG] anomaly.prefilter: pps>=%.1f uniq_ports>=%.0f uniq_ips>=%.0f s
 
 
 
+// ==== Print effective MEMORY ANOMALY config (startup) ====
+mc := cfg.Detection.Memory
+log.Printf("[CFG] memory: enabled=%v interval=%s log_path=%s alpha=%.2f theta=%.2f tau_risk=%.2f",
+    mc.Enabled, mc.Interval, mc.LogPath, mc.Alpha, mc.Theta, mc.TauRisk)
+log.Printf("[CFG] memory: debt(decay=%.2f warn=%.2f) flags(spike=%.2f consec=%d d5m=%.3f d30m=%.3f) ttl=%s top_k_enrich=%d state_changes_only=%v",
+    mc.Debt.DecayPerTick, mc.Debt.WarnThreshold, mc.Flags.SpikeThreshold, mc.Flags.ConsecHighWarn,
+    mc.Flags.Decay5m, mc.Flags.Decay30m, mc.TTL, mc.TopKEnrich, mc.LogStateChangesOnly)
+
+
+
 
 
 // ---- CFM client + heartbeat (must be one contiguous if/else block)
@@ -537,6 +547,35 @@ if cfg.Detection.Enabled && cfg.Detection.Anomaly.Enabled {
         det := detection.NewIForestDetector(trees, sampleSize, contamination)
         anom = detection.NewAnomaly(anomCfg, det, store)
         engine.SetAnomaly(anom)
+
+        // ---- Memory (risk.log) wire-up ----
+        if cfg.Detection.Memory.Enabled {
+            memInterval, _ := time.ParseDuration(cfg.Detection.Memory.Interval)
+            if memInterval == 0 { memInterval = 10 * time.Second }
+            ttl, _ := time.ParseDuration(cfg.Detection.Memory.TTL)
+            if ttl == 0 { ttl = 90 * time.Minute }
+
+            mcfg := detection.MemoryConfig{
+                Interval:            memInterval,
+                Alpha:               cfg.Detection.Memory.Alpha,
+                Theta:               cfg.Detection.Memory.Theta,
+                TauRisk:             cfg.Detection.Memory.TauRisk,
+                DebtDecayPerTick:    cfg.Detection.Memory.Debt.DecayPerTick,
+                DebtWarn:            cfg.Detection.Memory.Debt.WarnThreshold,
+                SpikeThreshold:      cfg.Detection.Memory.Flags.SpikeThreshold,
+                Decay5m:             cfg.Detection.Memory.Flags.Decay5m,
+                Decay30m:            cfg.Detection.Memory.Flags.Decay30m,
+                ConsecHighWarn:      cfg.Detection.Memory.Flags.ConsecHighWarn,
+                TTL:                 ttl,
+                LogPath:             cfg.Detection.Memory.LogPath,
+                TopKEnrich:          cfg.Detection.Memory.TopKEnrich,
+                LogStateChangesOnly: cfg.Detection.Memory.LogStateChangesOnly,
+            }
+            mem := detection.NewMemoryLayer(mcfg)
+            anom.SetMemory(mem)
+        }
+
+
         anom.Start(ctx)
 
         // --- Hot reload: watch config.yaml (and optionally rules) ---

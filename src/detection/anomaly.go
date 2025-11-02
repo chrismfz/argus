@@ -5,6 +5,8 @@ import (
 //	"math"
 	"sync"
 	"time"
+//	"fmt"
+	"flowenricher/enrich"
 )
 
 type AnomalyConfig struct {
@@ -32,6 +34,8 @@ type Anomaly struct {
 	detector  Detector
 	store     DetectionStore
 	engine    *Engine
+
+	memory    *MemoryLayer
 
 	baseline [][]float64
 	lastTrain time.Time
@@ -68,6 +72,8 @@ func (a *Anomaly) RebuildDetector(trees, sample int, contamination float64) {
     a.mu.Unlock()
 }
 
+// Wire in the EWMA/debt risk logger
+func (a *Anomaly) SetMemory(m *MemoryLayer) { a.memory = m }
 
 
 func NewAnomaly(cfg AnomalyConfig, det Detector, store DetectionStore) *Anomaly {
@@ -194,6 +200,29 @@ if feat.PktsPerSec < 5 &&
 
 			logAnomalyLine("[%s] ANOMALY label=%s score=%.4f src=%s feats=%v count=%d",
 				nowRFC3339(), a.cfg.Label, score, src, feat, cnt)
+
+                        // ---- Risk memory layer (EWMA + debt + flags + enrichment) ----
+                        if a.memory != nil {
+                                st, reasons, shouldLog := a.memory.Update(src, score, feat)
+                                if shouldLog {
+                                        // cheap cached enrichments
+                                        var asn uint32
+                                        var asnName, cc, ptr string
+                                        if enrich.Global != nil {
+                                                if enrich.Global.Geo != nil {
+                                                        asn = enrich.Global.Geo.GetASNNumber(src)
+                                                        asnName = enrich.Global.Geo.GetASNName(src)
+                                                        cc = enrich.Global.Geo.GetCountry(src)
+                                                }
+                                                if enrich.Global.DNS != nil {
+                                                        ptr = enrich.Global.DNS.LookupPTR(src)
+                                                }
+                                        }
+                                        model := "IF" // (keep simple; or format with detector params later)
+                                        a.memory.MaybeLog(src, score, feat, st, reasons, asn, asnName, cc, ptr, model)
+                                }
+                        }
+
 
 			if !a.cfg.LogOnly && a.engine != nil && a.cfg.BlackholeCount > 0 && cnt >= a.cfg.BlackholeCount {
 				// synthesize a minimal rule for consistent TTL/escalation

@@ -292,12 +292,15 @@ NetFlow/IPFIX --> flowenricher (Go)
 
 # Teaching FlowEnricher to Spot Weirdos: Isolation Forest Joins the Party
 
-``` We added unsupervised anomaly detection to FlowEnricher using an Isolation Forest microservice. It scores per-IP behavior in real time and helps catch stealthy port scans and low-and-slow DoS bursts that signatures miss. ```
+``` 
+We added unsupervised anomaly detection to FlowEnricher using an Isolation Forest microservice. 
+It scores per-IP behavior in real time and helps catch stealthy port scans and low-and-slow DoS bursts that signatures miss. ```
 
 
 ## Why Isolation Forest?
 ```
-Rule engines are great at “known patterns.” But attackers get creative. Isolation Forest learns what’s normal for your network and flags outliers—no labels required.
+Rule engines are great at “known patterns.” But attackers get creative. 
+Isolation Forest learns what’s normal for your network and flags outliers—no labels required.
 
 How it works
 

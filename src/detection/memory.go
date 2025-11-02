@@ -122,6 +122,10 @@ func (m *MemoryLayer) Update(ip string, score float64, feats featureVector) (sta
 func (m *MemoryLayer) MaybeLog(ip string, score float64, feats featureVector, s *riskState, reasons []string,
     asn uint32, asnName, country, ptr string, model string) {
 
+    // Hard gate: emit only when EWMA risk is above threshold (reduces noise)
+    if s.Risk < m.cfg.TauRisk {
+        return
+    }
     if len(reasons) == 0 { return }
     m.initLogger()
     m.lg.Printf("[%s] ip=%s if=%.3f risk=%.3f debt=%.2f flags5m=%.1f flags30m=%.1f consec=%d reasons=%v",

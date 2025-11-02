@@ -37,7 +37,8 @@ var engine *detection.Engine
 var detectionRules []detection.DetectionRule // MOVED THIS DECLARATION TO GLOBAL SCOPE
 // anomaly globals for hot-reload
 var anom *detection.Anomaly
-
+// memory lane
+var mem *detection.MemoryLayer
 
 func dlog(msg string, args ...interface{}) {
         if debug {
@@ -86,13 +87,13 @@ func enrichEnabled(cfg *config.Config, name string) bool {
 /////////////////// MAIN //////////////////
 func main() {
         var configPath string
-// 🔧 Δημιουργία context για graceful shutdown
+//context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	go handleSignals(cancel)
 
-        // Επεξεργασία παραμέτρων
+        // parameters
         for i := 1; i < len(os.Args); i++ {
                 arg := os.Args[i]
                 switch arg {
@@ -121,7 +122,7 @@ func main() {
 
 fmt.Printf("Starting flowenricher %s (built at %s)\n", Version, BuildTime)
 
-        // Φόρτωση config
+        // load config
         if configPath == "" {
                 var err error
                 configPath, err = config.GetDefaultConfigPath()
@@ -384,8 +385,6 @@ if enrichEnabled(cfg, "ptr") {
         }
         dlog("ClickHouse connection established.")
 
-//        ctx, cancel := context.WithCancel(context.Background())
-        go handleSignals(cancel)
         batcher := NewInsertFlowBatcher(
         inserter,
         cfg.Insert.BatchSize,
@@ -518,6 +517,31 @@ if cfm != nil {
 
 /* =====  ANOMALY (config-driven + hot-reload) ===== */
 if cfg.Detection.Enabled && cfg.Detection.Anomaly.Enabled {
+
+        // --- Build Memory layer (EWMA + risk counters) ---
+        if cfg.Detection.Memory.Enabled {
+                mivl, _ := time.ParseDuration(cfg.Detection.Memory.Interval)
+                mttl, _ := time.ParseDuration(cfg.Detection.Memory.TTL)
+                memCfg := detection.MemoryConfig{
+                        Interval:          mivl,
+                        Alpha:             cfg.Detection.Memory.Alpha,
+                        Theta:             cfg.Detection.Memory.Theta,
+                        TauRisk:           cfg.Detection.Memory.TauRisk,
+                        DebtDecayPerTick:  cfg.Detection.Memory.Debt.DecayPerTick,
+                        DebtWarn:          cfg.Detection.Memory.Debt.WarnThreshold,
+                        SpikeThreshold:    cfg.Detection.Memory.Flags.SpikeThreshold,
+                        Decay5m:           cfg.Detection.Memory.Flags.Decay5m,
+                        Decay30m:          cfg.Detection.Memory.Flags.Decay30m,
+                        ConsecHighWarn:    cfg.Detection.Memory.Flags.ConsecHighWarn,
+                        TTL:               mttl,
+                        LogPath:           cfg.Detection.Memory.LogPath,
+                        TopKEnrich:        cfg.Detection.Memory.TopKEnrich,
+                        LogStateChangesOnly: cfg.Detection.Memory.LogStateChangesOnly,
+                }
+                mem = detection.NewMemoryLayer(memCfg)
+                mem.StartGC(ctx)
+        }
+
         // Parse durations from YAML
         win, _  := time.ParseDuration(cfg.Detection.Anomaly.Window)
         ivl, _  := time.ParseDuration(cfg.Detection.Anomaly.Interval)
@@ -530,6 +554,7 @@ if cfg.Detection.Enabled && cfg.Detection.Anomaly.Enabled {
                 Label:        cfg.Detection.Anomaly.Label,
                 MinScore:     cfg.Detection.Anomaly.MinScore,
                 LogOnly:      cfg.Detection.Anomaly.LogOnly,
+		Debug:        cfg.Detection.Anomaly.Debug,
                 RetrainEvery: retr,
                 BaselineMax:  cfg.Detection.Anomaly.BaselineMax,
 		TopK:         cfg.Detection.Anomaly.TopK,
@@ -548,33 +573,12 @@ if cfg.Detection.Enabled && cfg.Detection.Anomaly.Enabled {
         anom = detection.NewAnomaly(anomCfg, det, store)
         engine.SetAnomaly(anom)
 
-        // ---- Memory (risk.log) wire-up ----
-        if cfg.Detection.Memory.Enabled {
-            memInterval, _ := time.ParseDuration(cfg.Detection.Memory.Interval)
-            if memInterval == 0 { memInterval = 10 * time.Second }
-            ttl, _ := time.ParseDuration(cfg.Detection.Memory.TTL)
-            if ttl == 0 { ttl = 90 * time.Minute }
 
-            mcfg := detection.MemoryConfig{
-                Interval:            memInterval,
-                Alpha:               cfg.Detection.Memory.Alpha,
-                Theta:               cfg.Detection.Memory.Theta,
-                TauRisk:             cfg.Detection.Memory.TauRisk,
-                DebtDecayPerTick:    cfg.Detection.Memory.Debt.DecayPerTick,
-                DebtWarn:            cfg.Detection.Memory.Debt.WarnThreshold,
-                SpikeThreshold:      cfg.Detection.Memory.Flags.SpikeThreshold,
-                Decay5m:             cfg.Detection.Memory.Flags.Decay5m,
-                Decay30m:            cfg.Detection.Memory.Flags.Decay30m,
-                ConsecHighWarn:      cfg.Detection.Memory.Flags.ConsecHighWarn,
-                TTL:                 ttl,
-                LogPath:             cfg.Detection.Memory.LogPath,
-                TopKEnrich:          cfg.Detection.Memory.TopKEnrich,
-                LogStateChangesOnly: cfg.Detection.Memory.LogStateChangesOnly,
-            }
-            mem := detection.NewMemoryLayer(mcfg)
-            anom.SetMemory(mem)
+
+        // Wire existing, single MemoryLayer (if enabled) to anomaly
+        if mem != nil {
+                anom.SetMemory(mem)
         }
-
 
         anom.Start(ctx)
 
@@ -627,6 +631,7 @@ if cfg.Detection.Enabled && cfg.Detection.Anomaly.Enabled {
                                                 Label:        nc.Detection.Anomaly.Label,
                                                 MinScore:     nc.Detection.Anomaly.MinScore,
                                                 LogOnly:      nc.Detection.Anomaly.LogOnly,
+						Debug:        nc.Detection.Anomaly.Debug,
                                                 RetrainEvery: nretr,
                                                 BaselineMax:  nc.Detection.Anomaly.BaselineMax,
 						TopK:         nc.Detection.Anomaly.TopK,
@@ -654,6 +659,36 @@ if cfg.Detection.Enabled && cfg.Detection.Anomaly.Enabled {
                                         log.Printf("[ANOMALY] reloaded cfg: window=%s interval=%s min_score=%.2f log_only=%v",
                                                 newAnom.Window, newAnom.Interval, newAnom.MinScore, newAnom.LogOnly)
                                 }
+
+
+
+                        // Optional: hot-reload memory layer (simple replace; loses in-RAM state by design)
+                        if nc.Detection.Memory.Enabled {
+                                nmivl, _ := time.ParseDuration(nc.Detection.Memory.Interval)
+                                nmttl, _ := time.ParseDuration(nc.Detection.Memory.TTL)
+                                nmemCfg := detection.MemoryConfig{
+                                        Interval:            nmivl,
+                                        Alpha:               nc.Detection.Memory.Alpha,
+                                        Theta:               nc.Detection.Memory.Theta,
+                                        TauRisk:             nc.Detection.Memory.TauRisk,
+                                        DebtDecayPerTick:    nc.Detection.Memory.Debt.DecayPerTick,
+                                        DebtWarn:            nc.Detection.Memory.Debt.WarnThreshold,
+                                        SpikeThreshold:      nc.Detection.Memory.Flags.SpikeThreshold,
+                                        Decay5m:             nc.Detection.Memory.Flags.Decay5m,
+                                        Decay30m:            nc.Detection.Memory.Flags.Decay30m,
+                                        ConsecHighWarn:      nc.Detection.Memory.Flags.ConsecHighWarn,
+                                        TTL:                 nmttl,
+                                        LogPath:             nc.Detection.Memory.LogPath,
+                                        TopKEnrich:          nc.Detection.Memory.TopKEnrich,
+                                        LogStateChangesOnly: nc.Detection.Memory.LogStateChangesOnly,
+                                }
+
+                                mem = detection.NewMemoryLayer(nmemCfg)
+                                mem.StartGC(ctx)
+                                if anom != nil { anom.SetMemory(mem) }
+                                log.Printf("[MEMORY] reloaded cfg: interval=%s alpha=%.2f theta=%.2f tau=%.2f",
+                                        nmemCfg.Interval, nmemCfg.Alpha, nmemCfg.Theta, nmemCfg.TauRisk)
+                        }
 
                                 // TODO (optional): if ev.Name == cfg.Detection.RulesConfig => reload rules & engine.UpdateRules(...)
 

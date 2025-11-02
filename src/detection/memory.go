@@ -6,6 +6,7 @@ import (
     "sync"
     "time"
 //    "flowenricher/enrich"
+"context"
 )
 
 type riskState struct {
@@ -127,4 +128,32 @@ func (m *MemoryLayer) MaybeLog(ip string, score float64, feats featureVector, s 
         time.Now().UTC().Format(time.RFC3339), ip, score, s.Risk, s.Debt, s.Flags5m, s.Flags30m, s.ConsecHigh, reasons)
     m.lg.Printf("       PTR=%s ASN=AS%d (%s) CC=%s feats={pps:%.0f,bps:%.0f,uniq_ports:%.0f,uniq_ips:%.0f,syn:%.2f,icmp:%.2f} model=%s",
         ptr, asn, asnName, country, feats.PktsPerSec, feats.BytesPerSec, feats.UniqDstPorts, feats.UniqDstIPs, feats.TCPSYNRatio, feats.ICMPShare, model)
+}
+
+
+
+// StartGC periodically purges stale IP states older than TTL.
+func (m *MemoryLayer) StartGC(ctx context.Context) {
+    if m.cfg.TTL <= 0 || m.cfg.Interval <= 0 {
+        return
+    }
+    ticker := time.NewTicker(m.cfg.Interval)
+    go func() {
+        defer ticker.Stop()
+        for {
+            select {
+            case <-ctx.Done():
+                return
+            case <-ticker.C:
+                now := time.Now().UTC()
+                m.st.Range(func(k, v any) bool {
+                    s := v.(*riskState)
+                    if now.Sub(s.LastSeen) > m.cfg.TTL {
+                        m.st.Delete(k)
+                    }
+                    return true
+                })
+            }
+        }
+    }()
 }

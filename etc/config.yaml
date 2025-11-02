@@ -78,6 +78,7 @@ detection:
 
   anomaly:
     enabled: true                 # Enable or disable the anomaly detection engine.
+    debug: true
     window: 60s                   # Duration of each feature window (e.g. 1 minute of traffic per sample).
     interval: 10s                 # How often to slide the window forward (e.g. every 10s = 6x overlap).
     label: iforest_anomaly        # Tag used when writing anomaly records to logs or DB.

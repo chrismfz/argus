@@ -98,7 +98,7 @@ type Config struct {
             RetrainEvery  string  `yaml:"retrain_every"` // "5m"
             BaselineMax   int     `yaml:"baseline_max"`
             TopK          int     `yaml:"top_k"`
-
+	    Debug 	  bool 	  `yaml:"debug"`
             Trees         int     `yaml:"trees"`
             SampleSize    int     `yaml:"sample_size"`
             Contamination float64 `yaml:"contamination"`

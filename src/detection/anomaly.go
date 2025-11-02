@@ -2,10 +2,8 @@ package detection
 
 import (
 	"context"
-//	"math"
 	"sync"
 	"time"
-//	"fmt"
 	"flowenricher/enrich"
 )
 
@@ -15,7 +13,7 @@ type AnomalyConfig struct {
 	Label         string        // "iforest_anomaly"
 	MinScore      float64       // anomaly score threshold (0..1)
 	LogOnly       bool          // true = never escalate
-
+        Debug         bool          // when true, log extra DEBUG info (top_score, candidates)
 	// iForest training
 	RetrainEvery  time.Duration // e.g., 5m
 	BaselineMax   int           // cap baseline vectors (e.g., 20000)
@@ -192,6 +190,29 @@ if feat.PktsPerSec < 5 &&
         }
 
 
+                // ---- EWMA / Risk memory runs for every scored source ----
+                if a.memory != nil {
+                        st, reasons, shouldLog := a.memory.Update(src, score, feat)
+                        if a.cfg.Debug || shouldLog {
+                                // cheap cached enrichments
+                                var asn uint32
+                                var asnName, cc, ptr string
+                                if enrich.Global != nil {
+                                        if enrich.Global.Geo != nil {
+                                                asn = enrich.Global.Geo.GetASNNumber(src)
+                                                asnName = enrich.Global.Geo.GetASNName(src)
+                                                cc = enrich.Global.Geo.GetCountry(src)
+                                        }
+                                        if enrich.Global.DNS != nil {
+                                                ptr = enrich.Global.DNS.LookupPTR(src)
+                                        }
+                                }
+                                model := "IF"
+                                a.memory.MaybeLog(src, score, feat, st, reasons, asn, asnName, cc, ptr, model)
+                        }
+                }
+
+
 //ORIGINAL COMMENTED FOR DEBUG//
 		if label == 1 && score >= a.cfg.MinScore {
 // TEMP (for debug): fire if EITHER the label OR score threshold hits
@@ -201,27 +222,6 @@ if feat.PktsPerSec < 5 &&
 			logAnomalyLine("[%s] ANOMALY label=%s score=%.4f src=%s feats=%v count=%d",
 				nowRFC3339(), a.cfg.Label, score, src, feat, cnt)
 
-                        // ---- Risk memory layer (EWMA + debt + flags + enrichment) ----
-                        if a.memory != nil {
-                                st, reasons, shouldLog := a.memory.Update(src, score, feat)
-                                if shouldLog {
-                                        // cheap cached enrichments
-                                        var asn uint32
-                                        var asnName, cc, ptr string
-                                        if enrich.Global != nil {
-                                                if enrich.Global.Geo != nil {
-                                                        asn = enrich.Global.Geo.GetASNNumber(src)
-                                                        asnName = enrich.Global.Geo.GetASNName(src)
-                                                        cc = enrich.Global.Geo.GetCountry(src)
-                                                }
-                                                if enrich.Global.DNS != nil {
-                                                        ptr = enrich.Global.DNS.LookupPTR(src)
-                                                }
-                                        }
-                                        model := "IF" // (keep simple; or format with detector params later)
-                                        a.memory.MaybeLog(src, score, feat, st, reasons, asn, asnName, cc, ptr, model)
-                                }
-                        }
 
 
 			if !a.cfg.LogOnly && a.engine != nil && a.cfg.BlackholeCount > 0 && cnt >= a.cfg.BlackholeCount {
@@ -242,7 +242,7 @@ if feat.PktsPerSec < 5 &&
 
 
   // --- add this debug line at the end of tick() ---
-    if top.src != "" {
+    if a.cfg.Debug && top.src != "" {
         logAnomalyLine("[%s] DEBUG top_score=%.4f top_src=%s feats={PktsPerSec:%.1f,BytesPerSec:%.1f,MeanPkt:%.1f,UniqDstIPs:%.0f,UniqDstPorts:%.0f,TCPSYNRatio:%.2f,ICMPShare:%.2f}",
             nowRFC3339(), top.score, top.src,
             top.fv.PktsPerSec, top.fv.BytesPerSec, top.fv.MeanPktSize,

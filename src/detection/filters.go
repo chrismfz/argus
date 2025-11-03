@@ -7,6 +7,26 @@ import (
 	"time"
 )
 
+
+func parseCIDRs(cidrs []string) []*net.IPNet {
+    var out []*net.IPNet
+    for _, c := range cidrs {
+        if _, n, err := net.ParseCIDR(strings.TrimSpace(c)); err == nil {
+            out = append(out, n)
+        }
+    }
+    return out
+}
+
+func ipInAny(ipStr string, nets []*net.IPNet) bool {
+    ip := net.ParseIP(ipStr)
+    if ip == nil { return false }
+    for _, n := range nets {
+        if n.Contains(ip) { return true }
+    }
+    return false
+}
+
 // DlogEngine is assumed to be available from engine.go as this file is part of the same package.
 
 // 🔎 Ελέγχει αν ένας rule ταιριάζει με πρόσφατα flows
@@ -32,12 +52,34 @@ func evaluateRule(rule DetectionRule, flows []Flow, myNets []*net.IPNet) (bool, 
         srcPorts := rule.SrcPorts()
 
 
-	for _, f := range flows {
+        onlyNets := parseCIDRs(rule.OnlyPrefixes)
+        for _, f := range flows {
 		if f.Timestamp.Before(cutoff) {
 			DlogEngine("  Flow %s->%s (at %s) is before rule cutoff %s, skipping.", f.SrcIP, f.DstIP, f.Timestamp.Format(time.RFC3339Nano), cutoff.Format(time.RFC3339)) // CHANGED: Call DlogEngine
 			continue
 		}
-        if rule.Proto != "" && strings.ToLower(rule.Proto) != "any" && strings.ToLower(f.Proto) != strings.ToLower(rule.Proto) {
+
+                // Per-rule exact excludes
+                for _, x := range rule.ExcludeDstIPs {
+                        if f.DstIP == x {
+                                DlogEngine("  Excluding dst %s per rule.", x)
+                                continue
+                        }
+                }
+                for _, x := range rule.ExcludeSrcIPs {
+                        if f.SrcIP == x {
+                                DlogEngine("  Excluding src %s per rule.", x)
+                                continue
+                        }
+                }
+                // Per-rule CIDR scoping (if set, require src OR dst in allowed set)
+                if len(onlyNets) > 0 && !(ipInAny(f.SrcIP, onlyNets) || ipInAny(f.DstIP, onlyNets)) {
+                        DlogEngine("  Flow %s->%s outside OnlyPrefixes scope. Skipping.", f.SrcIP, f.DstIP)
+                        continue
+                }
+
+                if rule.Proto != "" && strings.ToLower(rule.Proto) != "any" &&
+                   strings.ToLower(f.Proto) != strings.ToLower(rule.Proto) {
 			DlogEngine("  Flow %s->%s proto mismatch: expected %s, got %s. Skipping.", f.SrcIP, f.DstIP, rule.Proto, f.Proto) // CHANGED: Call DlogEngine
 			continue
 		}
@@ -72,28 +114,12 @@ func evaluateRule(rule DetectionRule, flows []Flow, myNets []*net.IPNet) (bool, 
 			continue
 		}
 
-        // Direction gate (prefix-based)
-        if rule.Direction != "" {
-            inMy := func(ip string) bool {
-                dip := net.ParseIP(ip)
-                for _, n := range myNets { if n.Contains(dip) { return true } }
-                return false
-            }
-            switch strings.ToLower(rule.Direction) {
-            case "ingress":
-                if !inMy(f.DstIP) {
-                    DlogEngine("  Flow %s->%s rejected by direction=ingress (Dst not local).", f.SrcIP, f.DstIP)
-                    continue
-                }
-            case "egress":
-                if !inMy(f.SrcIP) {
-                    DlogEngine("  Flow %s->%s rejected by direction=egress (Src not local).", f.SrcIP, f.DstIP)
-                    continue
-                }
-            }
-        }
 
-                // Direction gate (explicit)
+
+
+
+
+                // Direction gate (explicit, skip internal<->internal)
                 if rule.Direction != "" {
                         inMy := func(ip string) bool {
                                 dip := net.ParseIP(ip)
@@ -102,12 +128,14 @@ func evaluateRule(rule DetectionRule, flows []Flow, myNets []*net.IPNet) (bool, 
                         }
                         switch strings.ToLower(rule.Direction) {
                         case "ingress":
-               if !inMy(f.DstIP) { continue }
-               if inMy(f.SrcIP)  { DlogEngine("  Skipping internal->internal on ingress."); continue }
+
+		       if !inMy(f.DstIP) { continue }
+		       if inMy(f.SrcIP)  { DlogEngine("  Skipping internal->internal on ingress."); continue }
+
                         case "egress":
 
-               if !inMy(f.SrcIP) { continue }
-               if inMy(f.DstIP)  { DlogEngine("  Skipping internal->internal on egress."); continue }
+                                if !inMy(f.SrcIP) { continue }
+                                if inMy(f.DstIP)  { DlogEngine("  Skipping internal->internal on egress."); continue }
                         }
                 }
                 // Per-flow floors

@@ -143,10 +143,11 @@ rules:
     blackhole_communities: [ "65001:666" ]
     blackhole_time: [14400, 28800, 57600, 86400, 0]
 
+# "any" or "udp" in generic_scanner messes up with DNS
 
   - name: generic_scanner
-    proto: any
-    unique_dst_ports: 200
+    proto: tcp
+    unique_dst_ports: 250
     min_flows: 300
     time_window: 20s
     action: alert,clickhouse,blackhole

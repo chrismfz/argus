@@ -23,6 +23,7 @@ import (
 	_ "modernc.org/sqlite"
 	"flowenricher/internal/sqlite"
 	"flowenricher/clickhouse"
+	"path/filepath"
 
 )
 
@@ -277,6 +278,31 @@ for _, n := range myNets {
     fmt.Printf("  - %s\n", n.String())
 }
 
+
+
+
+        // --- Load protection list (exclude.detections.conf) ---
+        // Prefer local ./etc/ path next to the binary or working dir.
+        // Example layout: /opt/flowenricher/etc/exclude.detections.conf
+        protPath := filepath.Join("etc", "exclude.detections.conf")
+        if err := detection.LoadProtectedFromFile(protPath); err != nil {
+                log.Printf("[SAFEGUARD] protection list not loaded (%s): %v", protPath, err)
+        } else {
+                log.Printf("[SAFEGUARD] protection list loaded from %s", protPath)
+        }
+        // Optional: periodic reload (every 60s)
+        go func() {
+                t := time.NewTicker(60 * time.Second)
+                defer t.Stop()
+                for {
+                        select {
+                        case <-ctx.Done():
+                                return
+                        case <-t.C:
+                                _ = detection.LoadProtectedFromFile(protPath)
+                        }
+                }
+        }()
 
 
 

@@ -36,6 +36,13 @@ type DetectionRule struct {
 	BlackholeNextHop     string   `yaml:"blackhole_next_hop,omitempty"`
 	BlackholeCommunities []string `yaml:"blackhole_communities,omitempty"`
 	BlackholeTime        interface{} `yaml:"blackhole_time,omitempty"` // int ή []int; 0 = permanent
+
+    // Safety & targeting
+    BlackholeTarget      string   `yaml:"blackhole_target,omitempty"`      // "src" (default) | "dst"
+    ExcludeDstIPs        []string `yaml:"exclude_dst_ips,omitempty"`       // exact IPs
+    ExcludeSrcIPs        []string `yaml:"exclude_src_ips,omitempty"`
+    OnlyPrefixes         []string `yaml:"only_prefixes,omitempty"`         // if set, match only if (src OR dst) in these CIDRs
+
 }
 
 type RuleSet struct {

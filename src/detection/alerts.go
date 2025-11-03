@@ -39,8 +39,6 @@ func openDetectionLog() (*os.File, error) {
 	return os.OpenFile("detections.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 }
 
-// 🔔 Εγγραφή σε log όταν ταιριάζει κάποιο rule (χωρίς enrichment εδώ)
-// Enrichment (GeoIP, PTR, IFName) should be handled upstream (e.g., in main)
 // before passing flows to the detection engine, or by a separate enrichment service.
 
 func LogDetection(rule DetectionRule, flows []Flow, geo *enrich.GeoIP, dns *enrich.DNSResolver, count int) {
@@ -53,10 +51,7 @@ func LogDetection(rule DetectionRule, flows []Flow, geo *enrich.GeoIP, dns *enri
 
 	timestamp := time.Now().Format(time.RFC3339)
 	first := flows[0]
-//	detectionLogger.Printf("[%s] ALERT: Rule='%s' | Flows=%d | Proto=%s | DstPort=%d | Example=%s → %s",
-//		timestamp, rule.Name, len(flows), first.Proto, first.DstPort, first.SrcIP, first.DstIP)
 
-  // φτιάξε string για τις ports του rule (single/multi)
   ports := rule.DstPorts()
   var rulePorts string
   if len(ports) == 1 {

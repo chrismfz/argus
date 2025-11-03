@@ -62,6 +62,26 @@ func (a *Anomaly) UpdateConfig(newCfg AnomalyConfig) {
 
 }
 
+
+// NEW: small helper to fetch cached enrich data safely
+func getEnrichLabels(ip string) (asn uint32, asnName, cc, ptr string) {
+    if enrich.Global != nil {
+        if enrich.Global.Geo != nil {
+            asn = enrich.Global.Geo.GetASNNumber(ip)
+            asnName = enrich.Global.Geo.GetASNName(ip)
+            cc = enrich.Global.Geo.GetCountry(ip)
+        }
+        if enrich.Global.DNS != nil {
+            ptr = enrich.Global.DNS.LookupPTR(ip)
+        }
+    }
+    if asnName == "" { asnName = "Unknown" }
+    if cc == "" { cc = "--" }
+    if ptr == "" { ptr = "-" }
+    return
+}
+
+
 func (a *Anomaly) RebuildDetector(trees, sample int, contamination float64) {
     a.mu.Lock()
     // swap detector & force retrain on next tick from baseline
@@ -219,9 +239,9 @@ if feat.PktsPerSec < 5 &&
 //if label == 1 || score >= a.cfg.MinScore {
 			cnt, _ := a.store.IncrementCount(a.cfg.Label, src)
 
-			logAnomalyLine("[%s] ANOMALY label=%s score=%.4f src=%s feats=%v count=%d",
-				nowRFC3339(), a.cfg.Label, score, src, feat, cnt)
-
+asn, asnName, cc, ptr := getEnrichLabels(src) // NEW
+logAnomalyLine("[%s] ANOMALY label=%s score=%.4f src=%s PTR=%s ASN=AS%d (%s) CC=%s feats=%v count=%d",
+    nowRFC3339(), a.cfg.Label, score, src, ptr, asn, asnName, cc, feat, cnt)
 
 
 			if !a.cfg.LogOnly && a.engine != nil && a.cfg.BlackholeCount > 0 && cnt >= a.cfg.BlackholeCount {
@@ -242,11 +262,14 @@ if feat.PktsPerSec < 5 &&
 
 
   // --- add this debug line at the end of tick() ---
-    if a.cfg.Debug && top.src != "" {
-        logAnomalyLine("[%s] DEBUG top_score=%.4f top_src=%s feats={PktsPerSec:%.1f,BytesPerSec:%.1f,MeanPkt:%.1f,UniqDstIPs:%.0f,UniqDstPorts:%.0f,TCPSYNRatio:%.2f,ICMPShare:%.2f}",
-            nowRFC3339(), top.score, top.src,
-            top.fv.PktsPerSec, top.fv.BytesPerSec, top.fv.MeanPktSize,
-            top.fv.UniqDstIPs, top.fv.UniqDstPorts, top.fv.TCPSYNRatio, top.fv.ICMPShare)
+
+if a.cfg.Debug && top.src != "" {
+    asn, asnName, cc, ptr := getEnrichLabels(top.src) // NEW
+    logAnomalyLine("[%s] DEBUG top_score=%.4f top_src=%s PTR=%s ASN=AS%d (%s) CC=%s feats={PktsPerSec:%.1f,BytesPerSec:%.1f,MeanPkt:%.1f,UniqDstIPs:%.0f,UniqDstPorts:%.0f,TCPSYNRatio:%.2f,ICMPShare:%.2f}",
+        nowRFC3339(), top.score, top.src, ptr, asn, asnName, cc,
+        top.fv.PktsPerSec, top.fv.BytesPerSec, top.fv.MeanPktSize,
+        top.fv.UniqDstIPs, top.fv.UniqDstPorts, top.fv.TCPSYNRatio, top.fv.ICMPShare)
+
     }
     // --- end add ---
 

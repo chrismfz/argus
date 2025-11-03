@@ -53,6 +53,16 @@ type Flow struct {
 	Bytes     uint64
 	Packets   uint64
 	TCPFlags  uint8
+    // New (optional) signals
+    Direction string // "ingress" | "egress" | ""
+    // NAT (if your ingest populates them; safe to leave empty otherwise)
+    PostNATSrcIP   string
+    PostNATDstIP   string
+    PostNATSrcPort uint16
+    PostNATDstPort uint16
+    // TTL (min/max seen on the flow if available)
+    TTLMin uint8
+    TTLMax uint8
 }
 
 type Engine struct {

@@ -6,8 +6,8 @@ rules:
 
   # ──────────────── DDoS & Floods ────────────────
   - name: ddos_generic
-    proto: any
     same_dst_ip: true
+    proto: any
     min_flows: 10000
     min_unique_src_ips: 100
     time_window: 20s
@@ -255,3 +255,154 @@ rules:
     blackhole_communities: [ "65001:666" ]
     blackhole_time: [14400, 28800, 57600, 86400, 0]
 
+### v 2025-11-03 onwards ###
+
+
+# ICMP sweep: one source pinging many of your hosts quickly
+  - name: icmp_sweep
+    proto: icmp
+    same_src_ip: true
+    unique_dst_ips: 50
+    min_flows: 50
+    time_window: 20s
+    direction: ingress
+    action: alert,clickhouse,blackhole
+    blackhole_count: 10
+    blackhole_next_hop: 192.0.2.1
+    blackhole_communities: ["65001:666"]
+    blackhole_time: [14400, 28800, 0]
+
+# UDP horizontal scan across your network on one dst port (e.g., 161 SNMP, 5060 SIP)
+  - name: udp_horizontal_scan_common
+    proto: udp
+    same_dst_port: true
+    dst_port: [161, 5060, 69, 123, 1900, 11211, 389, 53]
+    unique_dst_ips: 60
+    min_flows: 80
+    time_window: 30s
+    direction: ingress
+    action: alert,clickhouse,blackhole
+    blackhole_count: 20
+    blackhole_next_hop: 192.0.2.1
+    blackhole_communities: ["65001:666"]
+    blackhole_time: [14400]
+
+# UDP vertical scan against one of your hosts
+  - name: udp_vertical_scan
+    proto: udp
+    same_dst_ip: true
+    unique_dst_ports: 20
+    min_flows: 40
+    time_window: 30s
+    direction: ingress
+    action: alert,clickhouse,blackhole
+    blackhole_count: 20
+    blackhole_next_hop: 192.0.2.1
+    blackhole_communities: ["65001:666"]
+    blackhole_time: [14400]
+
+
+# You as potential reflector: your host blasting UDP responses to many victims
+# Key signs: egress, same_src_ip (your server), common amp service src_port, high bytes/packets.
+  - name: amp_reflector_dns
+    proto: udp
+    same_src_ip: true
+    src_port: 53
+    unique_dst_ips: 100
+    min_flows: 100
+    min_bytes: 20000         # each flow or total? (per-flow min; keeps noise out)
+    time_window: 30s
+    direction: egress
+    action: alert,clickhouse
+
+  - name: amp_reflector_ntp
+    proto: udp
+    same_src_ip: true
+    src_port: 123
+    unique_dst_ips: 50
+    min_flows: 60
+    min_bytes: 20000
+    time_window: 30s
+    direction: egress
+    action: alert,clickhouse
+
+  - name: amp_reflector_memcached
+    proto: udp
+    same_src_ip: true
+    src_port: 11211
+    unique_dst_ips: 20
+    min_flows: 20
+    min_bytes: 40000
+    time_window: 30s
+    direction: egress
+    action: alert,clickhouse
+
+# You as victim of reflection: many sources, same dst IP (yours), UDP service ports, high AvgPPS
+  - name: dns_amp_victim
+    proto: udp
+    same_dst_ip: true
+    dst_port: 53
+    min_unique_src_ips: 100
+    min_flows: 2000
+    min_avg_pps: 1500
+    time_window: 20s
+    direction: ingress
+    action: alert,clickhouse,blackhole
+    blackhole_count: 10
+    blackhole_next_hop: 192.0.2.1
+    blackhole_communities: ["65001:666"]
+    blackhole_time: [14400, 28800, 0]
+
+
+# Big egress on uncommon ports to many dsts from one host in short time
+  - name: data_exfil_multi_dst
+    proto: tcp
+    same_src_ip: true
+    unique_dst_ips: 50
+    min_flows: 80
+    min_bytes: 50000000   # 50 MB across flows in window? (see note below)
+    time_window: 60s
+    direction: egress
+    action: alert,clickhouse
+
+
+# Very slow horizontal web scan over 5 minutes
+  - name: web_slow_horizontal_long
+    proto: tcp
+    same_dst_port: true
+    dst_port: [80, 443]
+    unique_dst_ips: 60
+    min_flows: 60
+    time_window: 5m
+    direction: ingress
+    action: alert,clickhouse,blackhole
+    blackhole_count: 20
+    blackhole_next_hop: 192.0.2.1
+    blackhole_communities: ["65001:666"]
+    blackhole_time: [14400, 28800, 0]
+
+# Very slow vertical (ports) on a single host over 10 minutes
+  - name: slow_vertical_any
+    proto: tcp
+    same_dst_ip: true
+    unique_dst_ports: 30
+    min_flows: 30
+    time_window: 10m
+    direction: ingress
+    action: alert,clickhouse
+
+
+  - name: syn_only_many_sources
+    proto: tcp
+    tcp_flags: SYN
+    same_dst_ip: true
+    min_unique_src_ips: 200
+    min_flows: 3000
+    min_avg_pps: 1200
+    time_window: 15s
+    direction: ingress
+    action: alert,clickhouse,blackhole
+    blackhole_count: 10
+    blackhole_next_hop: 192.0.2.1
+    blackhole_communities: ["65001:666"]
+    blackhole_time: [14400, 28800, 0]

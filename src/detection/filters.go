@@ -27,32 +27,43 @@ func evaluateRule(rule DetectionRule, flows []Flow, myNets []*net.IPNet) (bool, 
 	}
 	groups := make(map[key][]Flow)
 
+        // Normalize ports once per rule
+        dstPorts := rule.DstPorts()
+        srcPorts := rule.SrcPorts()
+
+
 	for _, f := range flows {
 		if f.Timestamp.Before(cutoff) {
 			DlogEngine("  Flow %s->%s (at %s) is before rule cutoff %s, skipping.", f.SrcIP, f.DstIP, f.Timestamp.Format(time.RFC3339Nano), cutoff.Format(time.RFC3339)) // CHANGED: Call DlogEngine
 			continue
 		}
-		if rule.Proto != "" && strings.ToLower(f.Proto) != strings.ToLower(rule.Proto) {
+        if rule.Proto != "" && strings.ToLower(rule.Proto) != "any" && strings.ToLower(f.Proto) != strings.ToLower(rule.Proto) {
 			DlogEngine("  Flow %s->%s proto mismatch: expected %s, got %s. Skipping.", f.SrcIP, f.DstIP, rule.Proto, f.Proto) // CHANGED: Call DlogEngine
 			continue
 		}
 
 
-dstPorts := rule.DstPorts()
-if len(dstPorts) > 0 {
-    match := false
-    for _, p := range dstPorts {
-        if f.DstPort == p {
-            match = true
-            break
-        }
-    }
-    if !match {
-        DlogEngine("  Flow %s->%s dst port %d not in rule ports %v. Skipping.",
-            f.SrcIP, f.DstIP, f.DstPort, dstPorts)
-        continue
-    }
-}
+
+                // dst_port filter
+                if len(dstPorts) > 0 {
+                        ok := false
+                        for _, p := range dstPorts { if f.DstPort == p { ok = true; break } }
+                        if !ok {
+                                DlogEngine("  Flow %s->%s dst port %d not in rule ports %v. Skipping.",
+                                        f.SrcIP, f.DstIP, f.DstPort, dstPorts)
+                                continue
+                        }
+                }
+                // src_port filter
+                if len(srcPorts) > 0 {
+                        ok := false
+                        for _, p := range srcPorts { if f.SrcPort == p { ok = true; break } }
+                        if !ok {
+                                DlogEngine("  Flow %s->%s src port %d not in rule ports %v. Skipping.",
+                                        f.SrcIP, f.DstIP, f.SrcPort, srcPorts)
+                                continue
+                        }
+                }
 
 
 
@@ -60,6 +71,73 @@ if len(dstPorts) > 0 {
 			DlogEngine("  Flow %s->%s TCP flags mismatch: expected %s, got %d. Skipping.", f.SrcIP, f.DstIP, rule.TCPFlags, f.TCPFlags) // CHANGED: Call DlogEngine
 			continue
 		}
+
+        // Direction gate (prefix-based)
+        if rule.Direction != "" {
+            inMy := func(ip string) bool {
+                dip := net.ParseIP(ip)
+                for _, n := range myNets { if n.Contains(dip) { return true } }
+                return false
+            }
+            switch strings.ToLower(rule.Direction) {
+            case "ingress":
+                if !inMy(f.DstIP) {
+                    DlogEngine("  Flow %s->%s rejected by direction=ingress (Dst not local).", f.SrcIP, f.DstIP)
+                    continue
+                }
+            case "egress":
+                if !inMy(f.SrcIP) {
+                    DlogEngine("  Flow %s->%s rejected by direction=egress (Src not local).", f.SrcIP, f.DstIP)
+                    continue
+                }
+            }
+        }
+
+                // Direction gate (explicit)
+                if rule.Direction != "" {
+                        inMy := func(ip string) bool {
+                                dip := net.ParseIP(ip)
+                                for _, n := range myNets { if n.Contains(dip) { return true } }
+                                return false
+                        }
+                        switch strings.ToLower(rule.Direction) {
+                        case "ingress":
+               if !inMy(f.DstIP) { continue }
+               if inMy(f.SrcIP)  { DlogEngine("  Skipping internal->internal on ingress."); continue }
+                        case "egress":
+
+               if !inMy(f.SrcIP) { continue }
+               if inMy(f.DstIP)  { DlogEngine("  Skipping internal->internal on egress."); continue }
+                        }
+                }
+                // Per-flow floors
+                if rule.MinBytes > 0 && f.Bytes < rule.MinBytes {
+                        DlogEngine("  Flow %s->%s bytes %d < min_bytes %d. Skipping.", f.SrcIP, f.DstIP, f.Bytes, rule.MinBytes)
+                        continue
+                }
+                if rule.MinPackets > 0 && f.Packets < rule.MinPackets {
+                        DlogEngine("  Flow %s->%s packets %d < min_packets %d. Skipping.", f.SrcIP, f.DstIP, f.Packets, rule.MinPackets)
+                        continue
+                }
+                // NAT presence
+                if rule.NATPresent {
+                        if f.PostNATSrcIP == "" && f.PostNATDstIP == "" && f.PostNATSrcPort == 0 && f.PostNATDstPort == 0 {
+                                DlogEngine("  Flow %s->%s has no NAT fields but nat_present=true. Skipping.", f.SrcIP, f.DstIP)
+                                continue
+                        }
+                }
+                // TTL gates (only if flow carries values)
+                if rule.TTLMin > 0 && f.TTLMin > 0 && f.TTLMin < rule.TTLMin {
+                        DlogEngine("  Flow %s->%s TTLMin %d < ttl_min %d. Skipping.", f.SrcIP, f.DstIP, f.TTLMin, rule.TTLMin)
+                        continue
+                }
+                if rule.TTLMax > 0 && f.TTLMax > 0 && f.TTLMax > rule.TTLMax {
+                        DlogEngine("  Flow %s->%s TTLMax %d > ttl_max %d. Skipping.", f.SrcIP, f.DstIP, f.TTLMax, rule.TTLMax)
+                        continue
+                }
+
+
+
 		// This condition applies if any of the SameDstIP, SameDstPort, MinUniqueSrcIPs, UniqueDstIPs are relevant
 		// For test_all_tcp, none of these are true, so this check will be skipped.
 		if (rule.SameDstIP || rule.SameDstPort || rule.MinUniqueSrcIPs > 0 || rule.UniqueDstIPs > 0) && !isMyPrefix(f.DstIP, myNets) {
@@ -72,6 +150,10 @@ if len(dstPorts) > 0 {
 			k = key{Src: f.SrcIP, Dst: f.DstIP}
 		} else if rule.SameDstPort {
 			k = key{Src: f.SrcIP, Dst: fmt.Sprintf("port:%d", f.DstPort)}
+                } else if rule.SameSrcIP {
+                        k = key{Src: f.SrcIP, Dst: "*"}
+                } else if rule.SameSrcPort {
+                        k = key{Src: fmt.Sprintf("sport:%d", f.SrcPort), Dst: "*"}
 		} else {
 			k = key{Src: f.SrcIP, Dst: "any"}
 		}
@@ -97,15 +179,17 @@ if len(dstPorts) > 0 {
 		uniqueSrcs := make(map[string]struct{})
 		uniqueDstIPs := make(map[string]struct{})
 		totalPackets := uint64(0)
-		
+                totalBytes := uint64(0)
+
 		// To calculate AvgPPS, use the rule's time window as the duration for the group.
-		groupDurationSeconds := window.Seconds() 
+		groupDurationSeconds := window.Seconds()
 
 		for _, f := range group {
 			uniquePorts[f.DstPort] = struct{}{}
 			uniqueSrcs[f.SrcIP] = struct{}{}
 			uniqueDstIPs[f.DstIP] = struct{}{}
 			totalPackets += f.Packets
+                        totalBytes += f.Bytes
 		}
 
 		if rule.UniqueDstPorts > 0 && len(uniquePorts) < rule.UniqueDstPorts {
@@ -136,6 +220,12 @@ if len(dstPorts) > 0 {
 				continue 
 			}
 		}
+
+
+                if rule.MinTotalBytes > 0 && totalBytes < rule.MinTotalBytes {
+                        DlogEngine("    TotalBytes %d < MinTotalBytes %d. Skipping group.", totalBytes, rule.MinTotalBytes)
+                        continue
+                }
 
 		DlogEngine("  Rule '%s' matched for group %v!", rule.Name, k) // CHANGED: Call DlogEngine
 		return true, group
@@ -174,15 +264,22 @@ func isMyPrefix(ipStr string, nets []*net.IPNet) bool {
 	return false
 }
 
-// ✨ Συμπυκνώνει το γιατί ενεργοποιήθηκε ο rule (για log reason)
+// log reason
 func buildReason(rule DetectionRule) string {
 	var parts []string
-    // dst_port (single ή many)
-    if ports := rule.DstPorts(); len(ports) == 1 {
-        parts = append(parts, fmt.Sprintf("dst_port=%d", ports[0]))
-    } else if len(ports) > 1 {
-        parts = append(parts, fmt.Sprintf("dst_port in %v", ports))
-    }
+
+
+        // dst_port (single ή many)
+        if ports := rule.DstPorts(); len(ports) == 1 {
+                parts = append(parts, fmt.Sprintf("dst_port=%d", ports[0]))
+        } else if len(ports) > 1 {
+                parts = append(parts, fmt.Sprintf("dst_port in %v", ports))
+        }
+        if sps := rule.SrcPorts(); len(sps) == 1 {
+                parts = append(parts, fmt.Sprintf("src_port=%d", sps[0]))
+        } else if len(sps) > 1 {
+                parts = append(parts, fmt.Sprintf("src_port in %v", sps))
+        }
 
 	if rule.MinFlows > 0 {
 		parts = append(parts, fmt.Sprintf("min_flows=%d", rule.MinFlows))
@@ -202,6 +299,29 @@ func buildReason(rule DetectionRule) string {
 	if rule.TCPFlags != "" {
 		parts = append(parts, fmt.Sprintf("tcp_flags=%s", rule.TCPFlags))
 	}
+
+        if rule.Direction != "" {
+               parts = append(parts, fmt.Sprintf("direction=%s", rule.Direction))
+        }
+        if rule.MinBytes > 0 {
+                parts = append(parts, fmt.Sprintf("min_bytes=%d", rule.MinBytes))
+        }
+        if rule.MinPackets > 0 {
+                parts = append(parts, fmt.Sprintf("min_packets=%d", rule.MinPackets))
+        }
+        if rule.MinTotalBytes > 0 {
+                parts = append(parts, fmt.Sprintf("min_total_bytes=%d", rule.MinTotalBytes))
+        }
+        if rule.NATPresent {
+                parts = append(parts, "nat_present=true")
+        }
+        if rule.TTLMin > 0 {
+                parts = append(parts, fmt.Sprintf("ttl_min=%d", rule.TTLMin))
+        }
+        if rule.TTLMax > 0 {
+                parts = append(parts, fmt.Sprintf("ttl_max=%d", rule.TTLMax))
+        }
+
 	return strings.Join(parts, ", ")
 }
 

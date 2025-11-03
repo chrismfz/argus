@@ -103,6 +103,32 @@ detection:
       min_icmp_share: 0.00        # Minimum share of ICMP packets (set >0.3 to focus on ICMP floods, if desired).
 
 
+  # ──────────────────────────────
+  # 🧠 MEMORY (EWMA Risk & Debt Log)
+  # ──────────────────────────────
+  # Tracks each source IP’s anomaly score over time using EWMA (risk), “debt” buildup,
+  # and short-term spike flags.  Writes entries to `risk.log` only when the EWMA risk
+  # exceeds `tau_risk` OR certain conditions (bucket↑, consecutive spikes, debt>=warn)
+  # are met.  This makes it an early-warning system for hosts slowly trending abnormal.
+  #
+  # ⚙️ Key tuning knobs:
+  #   • alpha — EWMA smoothing (↑ = more reactive / noisier, ↓ = smoother / quieter)
+  #   • tau_risk — EWMA threshold for "high risk" logging (↑ quieter, ↓ chattier)
+  #   • theta — pivot score for debt accumulation (↑ quieter, ↓ more debt)
+  #   • debt.decay_per_tick / warn_threshold — how fast debt drains / when it warns
+  #   • flags.spike_threshold — per-tick spike trigger (↑ quieter)
+  #   • flags.consec_high_warn — required back-to-back spikes (↑ quieter)
+  #   • log_state_changes_only — if true, log only when EWMA bucket rises
+  #
+  # Typical baselines:
+  #   - alpha: 0.3–0.5
+  #   - tau_risk: 0.7 (quiet) → 0.5 (medium) → 0.3 (verbose)
+  #   - spike_threshold: 0.8–0.9 for low noise
+  #   - consec_high_warn: 3–5 for stability
+  #
+  # The resulting `risk.log` shows IPs with their EWMA risk, debt, and flags
+  # along with ASN, PTR, and country enrichment for easier triage.
+
 
   memory:
     enabled: true

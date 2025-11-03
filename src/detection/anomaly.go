@@ -2,6 +2,8 @@ package detection
 
 import (
 	"context"
+	"fmt"
+	"sort"
 	"sync"
 	"time"
 	"flowenricher/enrich"
@@ -30,6 +32,7 @@ type Anomaly struct {
 	bySrc     map[string]*srcWindow
 	cfg       AnomalyConfig
 	detector  Detector
+        hbos      *HBOS
 	store     DetectionStore
 	engine    *Engine
 
@@ -106,6 +109,7 @@ func NewAnomaly(cfg AnomalyConfig, det Detector, store DetectionStore) *Anomaly 
 		bySrc:    make(map[string]*srcWindow),
 		cfg:      cfg,
 		detector: det,
+                hbos:     NewHBOS(15, 1e-6),
 		store:    store,
 		cfgUpdate: make(chan AnomalyConfig, 1),
 	}
@@ -168,7 +172,13 @@ func (a *Anomaly) tick() {
 
 	windowSec := a.cfg.Window.Seconds()
 
-	type scored struct{ src string; score float64; fv featureVector }
+        type scored struct{
+            src   string
+            score float64
+            fv    featureVector
+            flows []Flow
+        }
+
 	top := scored{}
 
 	// score each src
@@ -205,9 +215,19 @@ if feat.PktsPerSec < 5 &&
 
 		label, score := a.detector.Score(vec)
 
-   if score > top.score {
-            top = scored{src: src, score: score, fv: feat}
-        }
+
+                // parallel HBOS score (if trained)
+                hbosScore := 0.0
+                hbosTau := 0.0
+                if a.hbos != nil {
+                        hbosScore = a.hbos.Score(vec)
+                        hbosTau   = a.hbos.Bound(0.99) // 99th-percentile threshold
+                }
+
+
+                if score > top.score {
+                    top = scored{src: src, score: score, fv: feat, flows: local}
+                }
 
 
                 // ---- EWMA / Risk memory runs for every scored source ----
@@ -234,15 +254,29 @@ if feat.PktsPerSec < 5 &&
 
 
 //ORIGINAL COMMENTED FOR DEBUG//
-		if label == 1 && score >= a.cfg.MinScore {
+//		if label == 1 && score >= a.cfg.MinScore {
 // TEMP (for debug): fire if EITHER the label OR score threshold hits
 //if label == 1 || score >= a.cfg.MinScore {
+
+//BOUND METHOD//
+        // Prefer the model's label; fall back to comparing against the trained bound.
+        fire := (label == 1)
+        if !fire {
+            if b, ok := a.detector.(interface{ Bound() float64 }); ok {
+                fire = (score >= b.Bound())
+            } else {
+                fire = (score >= a.cfg.MinScore) // legacy fallback
+            }
+        }
+        if fire {
 			cnt, _ := a.store.IncrementCount(a.cfg.Label, src)
 
-asn, asnName, cc, ptr := getEnrichLabels(src) // NEW
-logAnomalyLine("[%s] ANOMALY label=%s score=%.4f src=%s PTR=%s ASN=AS%d (%s) CC=%s feats=%v count=%d",
-    nowRFC3339(), a.cfg.Label, score, src, ptr, asn, asnName, cc, feat, cnt)
-
+                        asn, asnName, cc, ptr := getEnrichLabels(src) // NEW
+                        exIP, exPort, exProto, exCnt := topDstTriple(local)
+                        shape := explainShape(feat)
+                        logAnomalyLine("[%s] ANOMALY label=%s if=%.4f hbos=%.2f(τ=%.2f) src=%s PTR=%s ASN=AS%d (%s) CC=%s example_dst=%s:%d/%s x%d shape=%v feats=%v count=%d",
+                            nowRFC3339(), a.cfg.Label, score, hbosScore, hbosTau, src, ptr, asn, asnName, cc,
+                            exIP, exPort, exProto, exCnt, shape, feat, cnt)
 
 			if !a.cfg.LogOnly && a.engine != nil && a.cfg.BlackholeCount > 0 && cnt >= a.cfg.BlackholeCount {
 				// synthesize a minimal rule for consistent TTL/escalation
@@ -263,14 +297,24 @@ logAnomalyLine("[%s] ANOMALY label=%s score=%.4f src=%s PTR=%s ASN=AS%d (%s) CC=
 
   // --- add this debug line at the end of tick() ---
 
-if a.cfg.Debug && top.src != "" {
-    asn, asnName, cc, ptr := getEnrichLabels(top.src) // NEW
-    logAnomalyLine("[%s] DEBUG top_score=%.4f top_src=%s PTR=%s ASN=AS%d (%s) CC=%s feats={PktsPerSec:%.1f,BytesPerSec:%.1f,MeanPkt:%.1f,UniqDstIPs:%.0f,UniqDstPorts:%.0f,TCPSYNRatio:%.2f,ICMPShare:%.2f}",
-        nowRFC3339(), top.score, top.src, ptr, asn, asnName, cc,
-        top.fv.PktsPerSec, top.fv.BytesPerSec, top.fv.MeanPktSize,
-        top.fv.UniqDstIPs, top.fv.UniqDstPorts, top.fv.TCPSYNRatio, top.fv.ICMPShare)
+        if a.cfg.Debug && top.src != "" {
+            asn, asnName, cc, ptr := getEnrichLabels(top.src) // NEW
+            exIP, exPort, exProto, exCnt := topDstTriple(top.flows)
+            tops := topKDsts(top.flows, 3) // optional top-3
+            shape := explainShape(top.fv)
+            // recompute HBOS on the top vector for visibility
+            topHBOS, topTau := 0.0, 0.0
+            if a.hbos != nil {
+                topHBOS = a.hbos.Score(log1pVec(top.fv.slice()))
+                topTau  = a.hbos.Bound(0.99)
+            }
+            logAnomalyLine("[%s] DEBUG top_if=%.4f top_hbos=%.2f(τ=%.2f) top_src=%s PTR=%s ASN=AS%d (%s) CC=%s example_dst=%s:%d/%s x%d tops=%v shape=%v feats={PktsPerSec:%.1f,BytesPerSec:%.1f,MeanPkt:%.1f,UniqDstIPs:%.0f,UniqDstPorts:%.0f,TCPSYNRatio:%.2f,ICMPShare:%.2f}",
+                nowRFC3339(), top.score, topHBOS, topTau, top.src, ptr, asn, asnName, cc,
+                exIP, exPort, exProto, exCnt, tops, shape,
+                top.fv.PktsPerSec, top.fv.BytesPerSec, top.fv.MeanPktSize,
+                top.fv.UniqDstIPs, top.fv.UniqDstPorts, top.fv.TCPSYNRatio, top.fv.ICMPShare)
+        }
 
-    }
     // --- end add ---
 
 	// periodic retrain
@@ -278,12 +322,87 @@ if a.cfg.Debug && top.src != "" {
 		a.mu.Lock()
 		b := a.baseline
 		a.mu.Unlock()
-		if len(b) >= 128 { // ensure enough samples
-			_ = a.detector.Train(b)
-			logAnomalyLine("[%s] TRAIN baseline=%d", nowRFC3339(), len(b))
+
+
+                if len(b) >= 128 { // ensure enough samples
+                        _ = a.detector.Train(b)
+                        if a.hbos != nil { a.hbos.Train(b) }
+                        if wb, ok := a.detector.(interface{ Bound() float64 }); ok {
+                                if a.hbos != nil {
+                                        logAnomalyLine("[%s] TRAIN baseline=%d if_bound=%.4f hbos_tau99=%.2f",
+                                                nowRFC3339(), len(b), wb.Bound(), a.hbos.Bound(0.99))
+                                } else {
+                                        logAnomalyLine("[%s] TRAIN baseline=%d if_bound=%.4f",
+                                                nowRFC3339(), len(b), wb.Bound())
+                                }
+                        } else {
+                                logAnomalyLine("[%s] TRAIN baseline=%d", nowRFC3339(), len(b))
+                        }
+
+
 			a.lastTrain = now
 		}
 	}
 }
 
 
+
+// -------- helpers (dst summarization & explanation) --------
+
+// pick the most frequent (dst_ip, dst_port, proto) in the current window
+func topDstTriple(flows []Flow) (ip string, port uint16, proto string, count int) {
+    type key struct{ ip string; port uint16; proto string }
+    m := map[key]int{}
+    var best key
+    for _, f := range flows {
+        k := key{ip: f.DstIP, port: f.DstPort, proto: f.Proto}
+        m[k]++
+        if m[k] > count {
+            count = m[k]
+            best = k
+        }
+    }
+    return best.ip, best.port, best.proto, count
+}
+
+// return the top-K destination tuples for richer context
+func topKDsts(flows []Flow, k int) []string {
+    type key struct{ ip string; port uint16; proto string }
+    m := map[key]int{}
+    for _, f := range flows {
+        m[key{f.DstIP, f.DstPort, f.Proto}]++
+    }
+    type item struct{ k key; n int }
+    arr := make([]item, 0, len(m))
+    for kk, v := range m { arr = append(arr, item{kk, v}) }
+    sort.Slice(arr, func(i, j int) bool { return arr[i].n > arr[j].n })
+    if k > len(arr) { k = len(arr) }
+    out := make([]string, 0, k)
+    for i := 0; i < k; i++ {
+        it := arr[i]
+        out = append(out, fmt.Sprintf("%s:%d/%s x%d", it.k.ip, it.k.port, it.k.proto, it.n))
+    }
+    return out
+}
+
+// produce human-readable “shape” tags that hint why it was flagged
+func explainShape(v featureVector) []string {
+    var r []string
+    if v.TCPSYNRatio >= 0.95 { r = append(r, "syn-heavy") }
+    switch {
+    case v.UniqDstIPs <= 1:
+        r = append(r, "single-dst-ip")
+    case v.UniqDstIPs >= 50:
+        r = append(r, "wide-dst-sweep")
+    }
+    switch {
+    case v.UniqDstPorts <= 1:
+        r = append(r, "single-port")
+    case v.UniqDstPorts >= 30:
+        r = append(r, "port-scan")
+    }
+    if v.ICMPShare >= 0.30  { r = append(r, "icmp-heavy") }
+    if v.PktsPerSec >= 500  { r = append(r, "high-pps") }
+    if v.BytesPerSec >= 1e8 { r = append(r, "high-bps") } // ~100MB/s
+    return r
+}

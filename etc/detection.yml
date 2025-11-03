@@ -8,6 +8,7 @@ rules:
   - name: ddos_generic
     same_dst_ip: true
     proto: any
+    direction: ingress
     min_flows: 10000
     min_unique_src_ips: 100
     time_window: 20s
@@ -20,6 +21,7 @@ rules:
   - name: syn_flood
     proto: tcp
     tcp_flags: SYN
+    direction: ingress
     same_dst_ip: true
     min_flows: 5000
     min_avg_pps: 1000
@@ -33,6 +35,7 @@ rules:
 
   - name: udp_flood
     proto: udp
+    direction: ingress
     same_dst_ip: true
     min_flows: 5000
     min_avg_pps: 2000
@@ -46,6 +49,7 @@ rules:
 
   - name: icmp_flood
     proto: icmp
+    direction: ingress
     same_dst_ip: true
     min_flows: 1000
     min_avg_pps: 1000
@@ -60,6 +64,7 @@ rules:
   # ──────────────── Brute Force Attacks ────────────────
   - name: ssh_brute
     proto: tcp
+    direction: ingress
     dst_port: 22
     same_dst_ip: true
     min_flows: 50
@@ -73,6 +78,7 @@ rules:
 
   - name: ssh_brute_custom_port1
     proto: tcp
+    direction: ingress
     dst_port: 65535
     same_dst_ip: true
     min_flows: 50
@@ -86,6 +92,7 @@ rules:
 
   - name: smtp_brute
     proto: tcp
+    direction: ingress
     dst_port: [25, 26, 465, 587]
     same_dst_ip: true
     min_flows: 40
@@ -94,6 +101,7 @@ rules:
 
   - name: imap_brute
     proto: tcp
+    direction: ingress
     dst_port: 143
     same_dst_ip: true
     min_flows: 40
@@ -102,6 +110,7 @@ rules:
 
   - name: rdp_brute
     proto: tcp
+    direction: ingress
     dst_port: 3389
     same_dst_ip: true
     min_flows: 40
@@ -117,6 +126,7 @@ rules:
 
   - name: vertical_scan
     proto: tcp
+    direction: ingress
     same_dst_ip: true
     unique_dst_ports: 30
     min_flows: 80
@@ -133,6 +143,7 @@ rules:
 
   - name: horizontal_scan
     proto: tcp
+    direction: ingress
     same_dst_port: true
     unique_dst_ips: 80
     min_flows: 150
@@ -147,6 +158,7 @@ rules:
 
   - name: generic_scanner
     proto: tcp
+    direction: ingress
     unique_dst_ports: 250
     min_flows: 300
     time_window: 20s
@@ -159,6 +171,7 @@ rules:
 
   - name: dns_flood
     proto: udp
+    direction: ingress
     dst_port: 53
     same_dst_ip: true
     min_flows: 3000
@@ -173,6 +186,7 @@ rules:
 
   - name: slow_horizontal_scan
     proto: tcp
+    direction: ingress
     same_dst_port: true
     unique_dst_ips: 50
     min_flows: 70
@@ -187,6 +201,7 @@ rules:
   # ──────────────── Slow SYN Attacks ────────────────
   - name: slow_syn_scan_ssh
     proto: tcp
+    direction: ingress
     dst_port: [22, 65535]
     tcp_flags: SYN
     same_dst_ip: true
@@ -201,6 +216,7 @@ rules:
 
   - name: slow_syn_scan_rdp
     proto: tcp
+    direction: ingress
     dst_port: 3389
     tcp_flags: SYN
     same_dst_ip: true
@@ -217,6 +233,7 @@ rules:
   # ──────────────── WEB / SSL / TLS Enumeration ────────────────
   - name: web_horizontal_scan
     proto: tcp
+    direction: ingress
     same_dst_port: true
     dst_port: [80, 443]
     unique_dst_ips: 25
@@ -231,6 +248,7 @@ rules:
 
   - name: web_vertical_scan
     proto: tcp
+    direction: ingress
     same_dst_ip: true
     dst_port: [80, 443]
     unique_dst_ports: 5
@@ -245,6 +263,7 @@ rules:
 
   - name: web_slow_scan
     proto: tcp
+    direction: ingress
     dst_port: [80, 443]
     same_dst_port: true
     unique_dst_ips: 10

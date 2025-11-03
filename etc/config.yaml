@@ -82,7 +82,7 @@ detection:
     window: 60s                   # Duration of each feature window (e.g. 1 minute of traffic per sample).
     interval: 10s                 # How often to slide the window forward (e.g. every 10s = 6x overlap).
     label: iforest_anomaly        # Tag used when writing anomaly records to logs or DB.
-    min_score: 0.50               # Minimum Isolation Forest anomaly score (0–1) to consider suspicious.
+    min_score: 0.00               # Minimum Isolation Forest anomaly score (0–1) to consider suspicious.
     log_only: true                # If true, only log anomalies; if false, take mitigation or alert actions.
     retrain_every: 30m            # How often the model is retrained on new baseline data (e.g. 30m, 1h).
     baseline_max: 200000          # Maximum number of feature samples kept for training (acts as a memory buffer).
@@ -91,15 +91,15 @@ detection:
   # --- Isolation Forest hyperparameters ---
     trees: 256                    # Number of decision trees in the forest (128–512 typical; more = smoother).
     sample_size: 1024             # Number of samples per tree (512–2048 typical; higher = more accurate, slower).
-    contamination: 0.007          # Expected fraction of anomalies in baseline (0.001–0.02). Lower = stricter.
+    contamination: 0.012          # Expected fraction of anomalies in baseline (0.001–0.02). Lower = stricter.
 
   # --- Optional pre-filter to reduce noise ---
   # Only include flows meeting these conditions in model training/scoring.
     prefilter:
-      min_pps: 2                  # Minimum packets per second per source (ignore idle/low-volume hosts).
+      min_pps: 3                  # Minimum packets per second per source (ignore idle/low-volume hosts).
       min_uniq_dst_ports: 2       # Minimum unique destination ports in window (ignore trivial single-port traffic).
       min_uniq_dst_ips: 2         # Minimum unique destination IPs (ignore one-to-one sessions).
-      min_syn_ratio: 0.50         # Minimum TCP SYN ratio (helps focus on connection attempts/scans).
+      min_syn_ratio: 0.60         # Minimum TCP SYN ratio (helps focus on connection attempts/scans).
       min_icmp_share: 0.00        # Minimum share of ICMP packets (set >0.3 to focus on ICMP floods, if desired).
 
 
@@ -176,6 +176,7 @@ api:
   allow_ips:
     - "127.0.0.1"
     - "192.168.0.0/16"
+    - "84.54.49.0/24"
 
 debug_api:
   enabled: true

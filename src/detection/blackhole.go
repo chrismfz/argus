@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"time"
+	"strings"
 	"flowenricher/config"
 	"flowenricher/bgp"
         "flowenricher/enrich"
@@ -31,9 +32,14 @@ func GetPTR(ip string) string {
 
 
 func (e *Engine) HandleBlackhole(rule DetectionRule, flows []Flow, count int) {
-        // Decide target IP (currently: attacker/source IP)
+
+        // Decide target (default "src", optional "dst")
         targetIP := flows[0].SrcIP
-        // Safeguard: skip RTBH for protected IPs (log only)
+        if strings.ToLower(rule.BlackholeTarget) == "dst" {
+                targetIP = flows[0].DstIP
+        }
+
+        // Safeguard 1: file-based protection list
         if ok, why := ShouldExecuteBlackhole(rule.Name, targetIP); !ok {
                 log.Printf("[SAFEGUARD] skipping blackhole for %s (rule=%s reason=%s); logging only", targetIP, rule.Name, why)
                 // Still log an 'ALERT-like' line to blackholes.txt for audit
@@ -42,6 +48,18 @@ func (e *Engine) HandleBlackhole(rule DetectionRule, flows []Flow, count int) {
                         timestamp, rule.Name, targetIP, why))
                 return
         }
+
+
+        // Safeguard 2: treat myNets as protected (auto-skip)
+        if isMyPrefix(targetIP, e.myNets) {
+                log.Printf("[SAFEGUARD] skipping blackhole for %s (rule=%s reason=myNets)", targetIP, rule.Name)
+                timestamp := time.Now().Format(time.RFC3339)
+                LogBlackhole(fmt.Sprintf("[%s] BLACKHOLE-SKIPPED: Rule='%s' | TARGET: %s | Reason=myNets",
+                        timestamp, rule.Name, targetIP))
+                return
+        }
+
+
         prefix := fmt.Sprintf("%s/32", targetIP)
 
 

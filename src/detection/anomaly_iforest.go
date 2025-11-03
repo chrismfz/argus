@@ -9,6 +9,7 @@ type Detector interface {
 
 type IForestDetector struct {
 	forest *iforest.Forest
+	bound  float64
 }
 
 func NewIForestDetector(trees, sample int, contamination float64) *IForestDetector {
@@ -26,6 +27,7 @@ func (d *IForestDetector) Train(b [][]float64) error {
     // …and derive an anomaly threshold based on contamination
     // so that Predict can yield meaningful labels.
     d.forest.Test(b)
+    d.bound = d.forest.AnomalyBound
     return nil
 }
 
@@ -43,3 +45,6 @@ func (d *IForestDetector) Score(vec []float64) (int, float64) {
     }
     return label, score
 }
+
+// Bound returns the trained anomaly decision boundary.
+func (d *IForestDetector) Bound() float64 { return d.bound }

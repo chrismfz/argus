@@ -281,16 +281,43 @@ for _, n := range myNets {
 
 
 
-        // --- Load protection list (exclude.detections.conf) ---
-        // Prefer local ./etc/ path next to the binary or working dir.
-        // Example layout: /opt/flowenricher/etc/exclude.detections.conf
+        // --- Load & hot-reload protection list (etc/exclude.detections.conf) ---
         protPath := filepath.Join("etc", "exclude.detections.conf")
         if err := detection.LoadProtectedFromFile(protPath); err != nil {
                 log.Printf("[SAFEGUARD] protection list not loaded (%s): %v", protPath, err)
         } else {
                 log.Printf("[SAFEGUARD] protection list loaded from %s", protPath)
         }
-        // Optional: periodic reload (every 60s)
+        // fsnotify watcher (reload on change)
+        go func() {
+                w, err := fsnotify.NewWatcher()
+                if err != nil {
+                        log.Printf("[SAFEGUARD] fsnotify init failed: %v", err)
+                        return
+                }
+                defer w.Close()
+                // It’s OK if Add fails (file may not exist yet); we’ll rely on the timer below.
+                _ = w.Add(protPath)
+                for {
+                        select {
+                        case <-ctx.Done():
+                                return
+                        case ev := <-w.Events:
+                                if ev.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename) != 0 {
+                                        // small debounce
+                                        time.Sleep(150 * time.Millisecond)
+                                        if err := detection.LoadProtectedFromFile(protPath); err != nil {
+                                                log.Printf("[SAFEGUARD] reload failed: %v", err)
+                                        } else {
+                                                log.Printf("[SAFEGUARD] reloaded protection list (%s)", protPath)
+                                        }
+                                }
+                        case err := <-w.Errors:
+                                log.Printf("[SAFEGUARD] fsnotify error: %v", err)
+                        }
+                }
+        }()
+        // Fallback: periodic reload every 60s (covers replace/move cases)
         go func() {
                 t := time.NewTicker(60 * time.Second)
                 defer t.Stop()

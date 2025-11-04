@@ -16,6 +16,7 @@ type AnomalyConfig struct {
 	MinScore      float64       // anomaly score threshold (0..1)
 	LogOnly       bool          // true = never escalate
         Debug         bool          // when true, log extra DEBUG info (top_score, candidates)
+        DebugAll      bool          // NEW: log every candidate line to anomalies.log (no gating)
 	// iForest training
 	RetrainEvery  time.Duration // e.g., 5m
 	BaselineMax   int           // cap baseline vectors (e.g., 20000)
@@ -26,12 +27,20 @@ type AnomalyConfig struct {
 	BlackholeCount int
 	BlackholeTime  interface{}
 
-  // NEW: noise controls
-  UseIFLabel     bool     // if false, ignore detector's label() and use thresholds only
-  RequireHBOS    bool     // if true, require HBOS to exceed percentile bound too
-  HBOSPercentile float64  // e.g., 0.99 or 0.995
-  // Optional allowlist knobs (cheap, best-effort)
-  AllowASNs      []uint32 // sources with these ASNs are ignored unless very strong
+        // NEW: noise controls / fusion
+        UseIFLabel              bool     // if false, ignore detector's label() and use thresholds only
+        RequireHBOSPercentile   float64  // e.g., 0.99 means require HBOS >= 99th pct (as normalized percentile)
+        // Fusion weights (fused = w_iforest*ifScore + w_hbos*hbNorm)
+        Weights struct {
+                IForest float64
+                HBOS    float64
+        }
+        // Mean-based printing to risk.log (percent above mean of fused in this tick)
+        PrintAboveMeanPercent float64 // e.g., 25 -> mean*1.25 threshold for risk.log
+        RiskLogPath           string  // optional override; default "risk.log"
+
+        // Optional allowlist knobs (cheap, best-effort)
+        AllowASNs      []uint32 // sources with these ASNs are ignored unless very strong
 
 
 }
@@ -113,9 +122,18 @@ func NewAnomaly(cfg AnomalyConfig, det Detector, store DetectionStore) *Anomaly 
 	if cfg.RetrainEvery <= 0 { cfg.RetrainEvery = 5 * time.Minute }
 	if cfg.BaselineMax <= 0 { cfg.BaselineMax = 50000 }
 	if cfg.MinScore <= 0 { cfg.MinScore = 0.70 }
-        if cfg.HBOSPercentile <= 0 { cfg.HBOSPercentile = 0.99 }
-        // default: keep current behavior unless user opts out
-        if !cfg.UseIFLabel { cfg.UseIFLabel = false } // explicit; zero value is false
+        // sensible defaults
+        if cfg.RequireHBOSPercentile < 0 { cfg.RequireHBOSPercentile = 0 }
+        if cfg.Weights.IForest == 0 && cfg.Weights.HBOS == 0 {
+                cfg.Weights.IForest, cfg.Weights.HBOS = 0.7, 0.3
+        }
+        if cfg.PrintAboveMeanPercent < 0 {
+                cfg.PrintAboveMeanPercent = 0
+        }
+        // risk log path (optional)
+        if cfg.RiskLogPath != "" {
+                SetRiskLogPath(cfg.RiskLogPath)
+        }
 
 	return &Anomaly{
 		bySrc:    make(map[string]*srcWindow),
@@ -228,18 +246,36 @@ if feat.PktsPerSec < 5 &&
 		label, score := a.detector.Score(vec)
 
 
-                // parallel HBOS score (if trained)
-                hbosScore := 0.0
-                hbosTau := 0.0
+                // HBOS: raw + normalized percentile [0..1]
+                hbosRaw, hbosNorm, hbosTau := 0.0, 0.0, 0.0
                 if a.hbos != nil {
-                        hbosScore = a.hbos.Score(vec)
-                        hbosTau   = a.hbos.Bound(a.cfg.HBOSPercentile)
-                }
 
+                        hbosRaw = a.hbos.Score(vec)
+                        // choose a tau (bound) to normalize against
+                        if a.cfg.RequireHBOSPercentile > 0 {
+                                hbosTau = a.hbos.Bound(a.cfg.RequireHBOSPercentile)
+                        } else {
+                                hbosTau = a.hbos.Bound(0.99)
+                        }
+                        // normalize HBOS roughly into [0..1] by dividing by tau and clamping
+                        if hbosTau <= 0 || !isFinite(hbosTau) {
+                                hbosNorm = 0
+                        } else {
+                                v := hbosRaw / hbosTau
+                                if v < 0 { v = 0 }
+                                if v > 1 { v = 1 }
+                                hbosNorm = v
+                        }
+
+
+                }
 
                 if score > top.score {
                     top = scored{src: src, score: score, fv: feat, flows: local}
                 }
+
+                // FUSION: fused = w_iforest * ifScore + w_hbos * hbosNorm
+                fused := a.cfg.Weights.IForest*score + a.cfg.Weights.HBOS*hbosNorm
 
 
                 // ---- EWMA / Risk memory runs for every scored source ----
@@ -265,12 +301,6 @@ if feat.PktsPerSec < 5 &&
                 }
 
 
-//ORIGINAL COMMENTED FOR DEBUG//
-//		if label == 1 && score >= a.cfg.MinScore {
-// TEMP (for debug): fire if EITHER the label OR score threshold hits
-//if label == 1 || score >= a.cfg.MinScore {
-
-//BOUND METHOD//
 
         // Decide whether to fire:
         // (a) optionally trust iForest label(), otherwise threshold by bound()/MinScore
@@ -285,12 +315,14 @@ if feat.PktsPerSec < 5 &&
                 fire = (score >= a.cfg.MinScore)
             }
         }
-        // (b) optionally AND-gate with HBOS outlier
-        if fire && a.cfg.RequireHBOS && a.hbos != nil {
-            if hbosScore < hbosTau {
+
+        // (b) optionally AND-gate with HBOS percentile (normalized)
+        if fire && a.cfg.RequireHBOSPercentile > 0 && a.hbos != nil {
+            if hbosNorm < a.cfg.RequireHBOSPercentile {
                 fire = false
             }
         }
+
         // (c) optional cheap allowlist by ASN (still lets very strong stuff pass if you wish)
         if fire && len(a.cfg.AllowASNs) > 0 && enrich.Global != nil && enrich.Global.Geo != nil {
             asn := enrich.Global.Geo.GetASNNumber(src)
@@ -304,15 +336,24 @@ if feat.PktsPerSec < 5 &&
         }
 
 
+        // Always collect candidate for mean-based risk logging; optionally log all to anomalies.log
+        asn, asnName, cc, ptr := getEnrichLabels(src)
+        exIP, exPort, exProto, exCnt := topDstTriple(local)
+        shape := explainShape(feat)
+
+        if a.cfg.DebugAll {
+            logAnomalyLine("[%s] ANOMALY label=%s fused=%.4f if=%.4f hbos_norm=%.4f hbos_raw=%.2f(τ=%.2f) src=%s PTR=%s ASN=AS%d (%s) CC=%s example_dst=%s:%d/%s x%d shape=%v feats=%v",
+                nowRFC3339(), a.cfg.Label, fused, score, hbosNorm, hbosRaw, hbosTau, src, ptr, asn, asnName, cc,
+                exIP, exPort, exProto, exCnt, shape, feat)
+        }
+
         if fire {
+
 			cnt, _ := a.store.IncrementCount(a.cfg.Label, src)
 
-                        asn, asnName, cc, ptr := getEnrichLabels(src) // NEW
-                        exIP, exPort, exProto, exCnt := topDstTriple(local)
-                        shape := explainShape(feat)
-            logAnomalyLine("[%s] ANOMALY label=%s if=%.4f hbos=%.2f(τ=%.2f) src=%s PTR=%s ASN=AS%d (%s) CC=%s example_dst=%s:%d/%s x%d shape=%v feats=%v count=%d",
-                nowRFC3339(), a.cfg.Label, score, hbosScore, hbosTau, src, ptr, asn, asnName, cc,
-                            exIP, exPort, exProto, exCnt, shape, feat, cnt)
+            logAnomalyLine("[%s] ANOMALY label=%s fused=%.4f if=%.4f hbos_norm=%.4f hbos_raw=%.2f(τ=%.2f) src=%s PTR=%s ASN=AS%d (%s) CC=%s example_dst=%s:%d/%s x%d shape=%v feats=%v count=%d",
+                nowRFC3339(), a.cfg.Label, fused, score, hbosNorm, hbosRaw, hbosTau, src, ptr, asn, asnName, cc,
+                exIP, exPort, exProto, exCnt, shape, feat, cnt)
 
 			if !a.cfg.LogOnly && a.engine != nil && a.cfg.BlackholeCount > 0 && cnt >= a.cfg.BlackholeCount {
 				// synthesize a minimal rule for consistent TTL/escalation
@@ -328,6 +369,22 @@ if feat.PktsPerSec < 5 &&
 				logAnomalyLine("[%s] ESCALATE blackhole src=%s count=%d", nowRFC3339(), src, cnt)
 			}
 		}
+
+                // Collect candidate for mean-based risk logging
+                candidates = append(candidates, cand{
+                        src:   src,
+                        fused: fused,
+                        ifs:   score,
+                        hraw:  hbosRaw,
+                        hnorm: hbosNorm,
+                        feat:  feat,
+                        flows: local,
+                        asn:   asn, asnName: asnName, cc: cc, ptr: ptr,
+                        exIP: exIP, exPort: exPort, exProto: exProto, exCnt: exCnt,
+                        shape: shape,
+                })
+
+
 	}
 
 
@@ -379,9 +436,69 @@ if feat.PktsPerSec < 5 &&
 			a.lastTrain = now
 		}
 	}
+a.afterTickPrintInteresting(now)
+
 }
 
 
+
+
+
+// ---- mean-based “interesting” printer to risk.log ----
+// We compute mean of fused scores for this tick and print candidates >= mean*(1+P)
+// If TopK>0, we limit to top-K by fused before printing.
+
+type cand struct {
+        src         string
+        fused, ifs  float64
+       hraw, hnorm float64
+        feat        featureVector
+        flows       []Flow
+        asn         uint32
+        asnName     string
+        cc, ptr     string
+        exIP        string
+        exPort      uint16
+        exProto     string
+        exCnt       int
+        shape       []string
+}
+
+var candidates []cand
+
+func meanFused(xs []cand) float64 {
+        if len(xs) == 0 { return 0 }
+        s := 0.0
+        for _, c := range xs { s += c.fused }
+        return s / float64(len(xs))
+}
+
+func (a *Anomaly) afterTickPrintInteresting(now time.Time) {
+        if len(candidates) == 0 { return }
+        mu := meanFused(candidates)
+        thr := mu * (1.0 + a.cfg.PrintAboveMeanPercent/100.0)
+
+        // sort by fused desc
+        sort.Slice(candidates, func(i, j int) bool { return candidates[i].fused > candidates[j].fused })
+
+        limit := len(candidates)
+        if a.cfg.TopK > 0 && a.cfg.TopK < limit {
+                limit = a.cfg.TopK
+        }
+        printed := 0
+        for i := 0; i < limit; i++ {
+                c := candidates[i]
+                if c.fused < thr {
+                        break
+                }
+                logRiskLine("[%s] RISK fused=%.4f if=%.4f hbos_norm=%.4f hbos_raw=%.2f mu=%.4f thr=%.4f src=%s PTR=%s ASN=AS%d (%s) CC=%s example_dst=%s:%d/%s x%d shape=%v feats=%v",
+                        nowRFC3339(), c.fused, c.ifs, c.hnorm, c.hraw, mu, thr, c.src, c.ptr, c.asn, c.asnName, c.cc,
+                        c.exIP, c.exPort, c.exProto, c.exCnt, c.shape, c.feat)
+                printed++
+        }
+        // clear for next tick
+        candidates = candidates[:0]
+}
 
 // -------- helpers (dst summarization & explanation) --------
 
@@ -441,4 +558,11 @@ func explainShape(v featureVector) []string {
     if v.PktsPerSec >= 500  { r = append(r, "high-pps") }
     if v.BytesPerSec >= 1e8 { r = append(r, "high-bps") } // ~100MB/s
     return r
+}
+
+
+
+// helper used above for HBOS normalization safety
+func isFinite(x float64) bool {
+    return !(x != x || x > 1e308 || x < -1e308)
 }

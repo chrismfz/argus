@@ -89,31 +89,45 @@ type Config struct {
 	DebugDetection bool `yaml:"debug_detection"`
 
         Anomaly struct {
+            // Core on/off + scheduling
             Enabled       bool    `yaml:"enabled"`
-            Window        string  `yaml:"window"`        // "60s"
-            Interval      string  `yaml:"interval"`      // "10s"
+            DebugAll      bool    `yaml:"debug_all"`         // αν true: γράφουμε ΟΛΑ τα scored src στο anomalies.log
+            Window        string  `yaml:"window"`            // π.χ. "60s"
+            Interval      string  `yaml:"interval"`          // π.χ. "10s"
             Label         string  `yaml:"label"`
-            MinScore      float64 `yaml:"min_score"`
-            LogOnly       bool    `yaml:"log_only"`
-            RetrainEvery  string  `yaml:"retrain_every"` // "5m"
+            RetrainEvery  string  `yaml:"retrain_every"`     // π.χ. "30m"
             BaselineMax   int     `yaml:"baseline_max"`
             TopK          int     `yaml:"top_k"`
-	    Debug 	  bool 	  `yaml:"debug"`
+
+            // Model (ίδια με πριν)
             Trees         int     `yaml:"trees"`
             SampleSize    int     `yaml:"sample_size"`
             Contamination float64 `yaml:"contamination"`
 
+            // Προαιρετικό gate: απαιτεί HBOS < τα p-ποσοστημόριο (0 < p < 1). Βάλε 0 για απενεργοποίηση.
+            RequireHBOSPercentile float64 `yaml:"require_hbos_percentile"` // π.χ. 0.99
+
+            // Fusion βάρη & printing κατώφλι
+            Weights struct {
+                IForest float64 `yaml:"iforest"`  // default 0.7
+                HBOS    float64 `yaml:"hbos"`     // default 0.3
+            } `yaml:"weights"`
+            PrintAboveMeanPercent float64 `yaml:"print_above_mean_percent"` // π.χ. 25 = mean * 1.25
+
+            // Απλός προ-φίλτρος για μείωση θορύβου
             Prefilter struct {
                 MinPPS          float64 `yaml:"min_pps"`
                 MinUniqDstPorts float64 `yaml:"min_uniq_dst_ports"`
                 MinUniqDstIPs   float64 `yaml:"min_uniq_dst_ips"`
                 MinSynRatio     float64 `yaml:"min_syn_ratio"`
                 MinICMPShare    float64 `yaml:"min_icmp_share"`
-
             } `yaml:"prefilter"`
+
+            // ── ΠΕΡΙΣΣΕΥΜΑ / Back-compat (προαιρετικά, δεν χρησιμοποιούνται στη νέα λογική)
+            MinScore      float64 `yaml:"min_score"` // παλιό
+            LogOnly       bool    `yaml:"log_only"`  // παλιό
+            Debug         bool    `yaml:"debug"`     // παλιό
         } `yaml:"anomaly"`
-
-
 
 
 

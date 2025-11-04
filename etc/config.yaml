@@ -76,37 +76,52 @@ detection:
   flow_cache_max_window: 60s
   debug_detection: false
 
+# ──────────────────────────────
+  # 🤖 ANOMALY DETECTION (IFOREST + HBOS FUSION)
+  # ──────────────────────────────
+  #
+  # Detects statistically unusual source IPs based on per-minute flow features.
+  # Combines Isolation Forest (iforest) with HBOS (histogram-based outlier score).
+  # Each source IP’s score is fused and compared against a global running mean.
+  #
+  # • If `debug_all: true`, logs every scored IP (very verbose).
+  # • Otherwise, only logs those with fused_score ≥ mean * (1 + print_above_mean_percent/100).
+  #
+  # A typical example: mean=0.12 and print_above_mean_percent=25 → logs IPs ≥ 0.15.
+  #
+  # Logged output goes to `anomalies.log`.  Optionally, the same scores are also
+  # sent to the EWMA “memory” tracker below (for long-term risk accumulation).
+
   anomaly:
-    enabled: true                 # Enable or disable the anomaly detection engine.
-    debug: true
-    window: 60s                   # Duration of each feature window (e.g. 1 minute of traffic per sample).
-    interval: 10s                 # How often to slide the window forward (e.g. every 10s = 6x overlap).
-    label: iforest_anomaly        # Tag used when writing anomaly records to logs or DB.
-    min_score: 0.00               # Minimum Isolation Forest anomaly score (0–1) to consider suspicious.
-    log_only: true                # If true, only log anomalies; if false, take mitigation or alert actions.
-    retrain_every: 30m            # How often the model is retrained on new baseline data (e.g. 30m, 1h).
-    baseline_max: 200000          # Maximum number of feature samples kept for training (acts as a memory buffer).
-    top_k: 10                     # Number of top anomalies per interval to log/report.
+    enabled: true                 # Enable or disable anomaly detection engine.
+    debug_all: false              # Log every source (true) or only those above the dynamic mean (false).
+    window: 60s                   # Duration of feature aggregation window (e.g., 60s per source).
+    interval: 10s                 # How often to score flows (e.g., every 10s = 6 overlapping windows per minute).
+    label: iforest_anomaly        # Tag written to anomalies.log and risk.log.
+    retrain_every: 30m            # How often the Isolation Forest retrains on baseline data.
+    baseline_max: 200000          # Max number of feature vectors kept for training (acts as rolling buffer).
+    top_k: 10                     # Max top anomalies to log each interval (0 = all).
 
-    use_if_label: false
-    require_hbos: true
-    hbos_percentile: 0.995
+    # --- Model hyperparameters ---
+    trees: 256                    # Number of Isolation Forest trees (128–512 typical).
+    sample_size: 1024             # Number of samples per tree (higher = more accuracy, slower).
+    contamination: 0.012          # Expected fraction of anomalies in baseline (0.001–0.02 typical).
 
-  # --- Isolation Forest hyperparameters ---
-    trees: 256                    # Number of decision trees in the forest (128–512 typical; more = smoother).
-    sample_size: 1024             # Number of samples per tree (512–2048 typical; higher = more accurate, slower).
-    contamination: 0.012          # Expected fraction of anomalies in baseline (0.001–0.02). Lower = stricter.
+    # --- HBOS gating & score fusion ---
+    require_hbos_percentile: 0.99 # Skip logging unless HBOS score is below the 99th-percentile threshold (0=disable).
+    weights: { iforest: 0.7, hbos: 0.3 }   # Weighting factors for fused_score = 0.7*iForest + 0.3*HBOS
+    print_above_mean_percent: 25  # Only log if fused_score ≥ mean * 1.25 (mean updated per tick).
 
-  # --- Optional pre-filter to reduce noise ---
-  # Only include flows meeting these conditions in model training/scoring.
+    # --- Optional pre-filter to skip low-activity IPs ---
+    # These filters reduce noise and limit training data to active hosts.
     prefilter:
-      min_pps: 5                  # Minimum packets per second per source (ignore idle/low-volume hosts).
-      min_uniq_dst_ports: 2       # Minimum unique destination ports in window (ignore trivial single-port traffic).
-      min_uniq_dst_ips: 2         # Minimum unique destination IPs (ignore one-to-one sessions).
-      min_syn_ratio: 0.50         # Minimum TCP SYN ratio (helps focus on connection attempts/scans).
-      min_icmp_share: 0.00        # Minimum share of ICMP packets (set >0.3 to focus on ICMP floods, if desired).
+      min_pps: 5                  # Min packets/sec per source (ignore idle sources).
+      min_uniq_dst_ports: 2       # Min unique destination ports (ignore single-port sessions).
+      min_uniq_dst_ips: 2         # Min unique destination IPs (ignore one-to-one flows).
+      min_syn_ratio: 0.50         # Min TCP SYN ratio (focus on scanners/flooders).
+      min_icmp_share: 0.00        # Min ICMP fraction (set >0.3 to focus on ICMP floods).
 
-    AllowASNs: [216285]
+
 
   # ──────────────────────────────
   # 🧠 MEMORY (EWMA Risk & Debt Log)

@@ -103,6 +103,39 @@ func (h *HBOS) Bound(p float64) float64 {
 	return h.trainScores[pos]
 }
 
+
+
+
+
+// QuantileOfScore returns the empirical CDF (percentile) of a raw HBOS score
+// with respect to the training distribution, in [0,1]. Higher = more anomalous.
+func (h *HBOS) QuantileOfScore(raw float64) float64 {
+        n := len(h.trainScores)
+        if n == 0 {
+                // no baseline → treat as normal
+                return 0.0
+        }
+        // index of first training score >= raw
+        idx := sort.Search(n, func(i int) bool { return h.trainScores[i] >= raw })
+        // Use plotting-position smoothing (idx-0.5)/n to avoid hard 0/1
+        q := (float64(idx) - 0.5) / float64(n)
+        if q < 0 { q = 0 }
+        if q > 1 { q = 1 }
+        return q
+}
+
+// ScoreNorm returns a normalized anomaly score in [0,1] where 1 = most anomalous
+// relative to the baseline. It computes HBOS raw score and maps it to its
+// empirical percentile (quantile). This is ideal for fusion with iForest.
+func (h *HBOS) ScoreNorm(v []float64) float64 {
+        raw := h.Score(v)
+        return h.QuantileOfScore(raw)
+}
+
+
+
+
+
 func binSearch(edges []float64, x float64) int {
 	// return k such that edges[k] <= x < edges[k+1]
 	lo, hi := 0, len(edges)-2

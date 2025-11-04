@@ -25,6 +25,15 @@ type AnomalyConfig struct {
 	// optional blackhole escalation (later)
 	BlackholeCount int
 	BlackholeTime  interface{}
+
+  // NEW: noise controls
+  UseIFLabel     bool     // if false, ignore detector's label() and use thresholds only
+  RequireHBOS    bool     // if true, require HBOS to exceed percentile bound too
+  HBOSPercentile float64  // e.g., 0.99 or 0.995
+  // Optional allowlist knobs (cheap, best-effort)
+  AllowASNs      []uint32 // sources with these ASNs are ignored unless very strong
+
+
 }
 
 type Anomaly struct {
@@ -104,6 +113,9 @@ func NewAnomaly(cfg AnomalyConfig, det Detector, store DetectionStore) *Anomaly 
 	if cfg.RetrainEvery <= 0 { cfg.RetrainEvery = 5 * time.Minute }
 	if cfg.BaselineMax <= 0 { cfg.BaselineMax = 50000 }
 	if cfg.MinScore <= 0 { cfg.MinScore = 0.70 }
+        if cfg.HBOSPercentile <= 0 { cfg.HBOSPercentile = 0.99 }
+        // default: keep current behavior unless user opts out
+        if !cfg.UseIFLabel { cfg.UseIFLabel = false } // explicit; zero value is false
 
 	return &Anomaly{
 		bySrc:    make(map[string]*srcWindow),
@@ -221,7 +233,7 @@ if feat.PktsPerSec < 5 &&
                 hbosTau := 0.0
                 if a.hbos != nil {
                         hbosScore = a.hbos.Score(vec)
-                        hbosTau   = a.hbos.Bound(0.99) // 99th-percentile threshold
+                        hbosTau   = a.hbos.Bound(a.cfg.HBOSPercentile)
                 }
 
 
@@ -259,23 +271,47 @@ if feat.PktsPerSec < 5 &&
 //if label == 1 || score >= a.cfg.MinScore {
 
 //BOUND METHOD//
-        // Prefer the model's label; fall back to comparing against the trained bound.
-        fire := (label == 1)
+
+        // Decide whether to fire:
+        // (a) optionally trust iForest label(), otherwise threshold by bound()/MinScore
+        fire := false
+        if a.cfg.UseIFLabel {
+            fire = (label == 1)
+        }
         if !fire {
             if b, ok := a.detector.(interface{ Bound() float64 }); ok {
                 fire = (score >= b.Bound())
             } else {
-                fire = (score >= a.cfg.MinScore) // legacy fallback
+                fire = (score >= a.cfg.MinScore)
             }
         }
+        // (b) optionally AND-gate with HBOS outlier
+        if fire && a.cfg.RequireHBOS && a.hbos != nil {
+            if hbosScore < hbosTau {
+                fire = false
+            }
+        }
+        // (c) optional cheap allowlist by ASN (still lets very strong stuff pass if you wish)
+        if fire && len(a.cfg.AllowASNs) > 0 && enrich.Global != nil && enrich.Global.Geo != nil {
+            asn := enrich.Global.Geo.GetASNNumber(src)
+            for _, allowed := range a.cfg.AllowASNs {
+                if asn == allowed {
+                    // suppress benign bot noise from trusted ASNs
+                    fire = false
+                    break
+                }
+            }
+        }
+
+
         if fire {
 			cnt, _ := a.store.IncrementCount(a.cfg.Label, src)
 
                         asn, asnName, cc, ptr := getEnrichLabels(src) // NEW
                         exIP, exPort, exProto, exCnt := topDstTriple(local)
                         shape := explainShape(feat)
-                        logAnomalyLine("[%s] ANOMALY label=%s if=%.4f hbos=%.2f(τ=%.2f) src=%s PTR=%s ASN=AS%d (%s) CC=%s example_dst=%s:%d/%s x%d shape=%v feats=%v count=%d",
-                            nowRFC3339(), a.cfg.Label, score, hbosScore, hbosTau, src, ptr, asn, asnName, cc,
+            logAnomalyLine("[%s] ANOMALY label=%s if=%.4f hbos=%.2f(τ=%.2f) src=%s PTR=%s ASN=AS%d (%s) CC=%s example_dst=%s:%d/%s x%d shape=%v feats=%v count=%d",
+                nowRFC3339(), a.cfg.Label, score, hbosScore, hbosTau, src, ptr, asn, asnName, cc,
                             exIP, exPort, exProto, exCnt, shape, feat, cnt)
 
 			if !a.cfg.LogOnly && a.engine != nil && a.cfg.BlackholeCount > 0 && cnt >= a.cfg.BlackholeCount {

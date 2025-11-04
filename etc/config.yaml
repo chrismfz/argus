@@ -88,6 +88,10 @@ detection:
     baseline_max: 200000          # Maximum number of feature samples kept for training (acts as a memory buffer).
     top_k: 10                     # Number of top anomalies per interval to log/report.
 
+    use_if_label: false
+    require_hbos: true
+    hbos_percentile: 0.995
+
   # --- Isolation Forest hyperparameters ---
     trees: 256                    # Number of decision trees in the forest (128–512 typical; more = smoother).
     sample_size: 1024             # Number of samples per tree (512–2048 typical; higher = more accurate, slower).
@@ -96,12 +100,13 @@ detection:
   # --- Optional pre-filter to reduce noise ---
   # Only include flows meeting these conditions in model training/scoring.
     prefilter:
-      min_pps: 3                  # Minimum packets per second per source (ignore idle/low-volume hosts).
+      min_pps: 5                  # Minimum packets per second per source (ignore idle/low-volume hosts).
       min_uniq_dst_ports: 2       # Minimum unique destination ports in window (ignore trivial single-port traffic).
       min_uniq_dst_ips: 2         # Minimum unique destination IPs (ignore one-to-one sessions).
-      min_syn_ratio: 0.60         # Minimum TCP SYN ratio (helps focus on connection attempts/scans).
+      min_syn_ratio: 0.50         # Minimum TCP SYN ratio (helps focus on connection attempts/scans).
       min_icmp_share: 0.00        # Minimum share of ICMP packets (set >0.3 to focus on ICMP floods, if desired).
 
+    AllowASNs: [216285]
 
   # ──────────────────────────────
   # 🧠 MEMORY (EWMA Risk & Debt Log)

@@ -212,12 +212,33 @@ if err := clickhouse.EnsureTables(); err != nil {
 
 
 
-// sqlite load
-db, err := sql.Open("sqlite", "detections.sqlite")
+// ── SQLite: open with WAL + busy timeout; serialize writers
+// NOTE: Using 'file:' DSN to set pragmas at connection open.
+dsn := "file:detections.sqlite?mode=rwc" +
+       "&_pragma=journal_mode(WAL)" +
+       "&_pragma=synchronous(NORMAL)" +
+       "&_pragma=busy_timeout(5000)" +
+       "&cache=shared"
+db, err := sql.Open("sqlite", dsn)
 if err != nil {
 	log.Fatal("Failed to open DB:", err)
 }
 defer db.Close()
+
+// Guarantee a single writer connection so we don’t contend inside SQLite.
+db.SetMaxOpenConns(1)
+db.SetMaxIdleConns(1)
+// Optional: no TTL for connections
+// db.SetConnMaxLifetime(0)
+
+// Belt-and-suspenders if DSN pragmas ever change:
+if _, err := db.Exec(`PRAGMA journal_mode=WAL;`); err != nil {
+        log.Printf("[SQLite] set WAL failed: %v", err)
+}
+_, _ = db.Exec(`PRAGMA synchronous=NORMAL;`)
+_, _ = db.Exec(`PRAGMA busy_timeout=5000;`)
+
+
 
 if err := sqlite.InitSQLiteSchema(db); err != nil {
 	log.Fatal("Failed to init schema:", err)
@@ -225,6 +246,11 @@ if err := sqlite.InitSQLiteSchema(db); err != nil {
 
 log.Println("✅ SQLite schema initialized")
 
+
+// Health check: quick no-op to ensure DB is writable after (re)create
+if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS _healthcheck (k TEXT PRIMARY KEY, v TEXT);`); err != nil {
+        log.Fatalf("[SQLite] healthcheck table create failed: %v", err)
+}
 
 // 🧹 Auto-clean expired blackholes on startup
 if err := detection.CleanupExpiredBlackholes(db); err != nil {

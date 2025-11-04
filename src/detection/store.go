@@ -63,25 +63,22 @@ func NewSQLiteStore(db *sql.DB) *SQLiteStore {
 }
 
 func (s *SQLiteStore) IncrementCount(rule, ip string) (int, error) {
+
 	now := time.Now().Format(time.RFC3339)
-	_, err := s.db.Exec(`
+	// Single-statement upsert + return to shorten lock duration.
+	row := s.db.QueryRow(`
 		INSERT INTO detections (ip, rule, count, first_seen, last_seen)
 		VALUES (?, ?, 1, ?, ?)
-		ON CONFLICT(ip, rule)
-		DO UPDATE SET
-			count = count + 1,
+		ON CONFLICT(ip, rule) DO UPDATE SET
+			count = detections.count + 1,
 			last_seen = excluded.last_seen
+		RETURNING count
 	`, ip, rule, now, now)
-	if err != nil {
-		return 0, fmt.Errorf("sqlite increment failed: %w", err)
-	}
 
 	var count int
-	err = s.db.QueryRow(`SELECT count FROM detections WHERE ip = ? AND rule = ?`, ip, rule).Scan(&count)
-	if err != nil {
-		return 0, fmt.Errorf("sqlite select failed: %w", err)
+	if err := row.Scan(&count); err != nil {
+		return 0, fmt.Errorf("sqlite increment failed: %w", err)
 	}
-
 	return count, nil
 }
 

@@ -120,6 +120,25 @@ func StartAnomalyStack(
 
     det := NewIForestDetector(trees, sampleSize, contamination)
     anom := NewAnomaly(anomCfg, det, store)
+
+    // Respect YAML eHBOS params (bins/eps/subspaces/size/agg)
+    {
+        eb := cfg.Detection.Anomaly.EHBOS
+        bins := eb.Bins
+        eps  := eb.Eps
+        subs := eb.Subspaces
+        size := eb.Size
+        agg  := eb.Agg
+        if bins <= 0 { bins = 12 }
+        if eps  <= 0 { eps  = 1e-6 }
+        if subs <= 0 { subs = 12 }
+        if size <= 0 { size = 3 }
+        if agg != "max" && agg != "mean" { agg = "max" }
+        // Our feature space length is 7 (PktsPerSec, BytesPerSec, MeanPktSize, UniqDstIPs, UniqDstPorts, TCPSYNRatio, ICMPShare)
+        anom.ehbos = NewEHBOS(bins, eps, subs, size, agg, 7)
+    }
+
+
     if mem != nil {
         anom.SetMemory(mem)
     }
@@ -192,6 +211,24 @@ func StartAnomalyStack(
                     AllowASNs:             nc.Detection.Anomaly.AllowASNs,
                 }
                 anom.UpdateConfig(nextCfg)
+
+
+                // Also respect YAML eHBOS params on hot-reload
+                {
+                    eb := nc.Detection.Anomaly.EHBOS
+                    bins := eb.Bins
+                    eps  := eb.Eps
+                    subs := eb.Subspaces
+                    size := eb.Size
+                    agg  := eb.Agg
+                    if bins <= 0 { bins = 12 }
+                    if eps  <= 0 { eps  = 1e-6 }
+                    if subs <= 0 { subs = 12 }
+                    if size <= 0 { size = 3 }
+                    if agg != "max" && agg != "mean" { agg = "max" }
+                    anom.ehbos = NewEHBOS(bins, eps, subs, size, agg, 7)
+                }
+
 
                 nTrees := nc.Detection.Anomaly.Trees
                 nSample := nc.Detection.Anomaly.SampleSize

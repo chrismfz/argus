@@ -122,6 +122,8 @@ func (a *Anomaly) isTrained() bool {
     if a.lastTrain.IsZero() { return false }
     // HBOS: trained when it has any training scores
     if a.hbos != nil && len(a.hbos.trainScores) == 0 { return false }
+    // eHBOS: trained when it has any training scores
+    if a.ehbos != nil && len(a.ehbos.trainScores) == 0 { return false }
     return true
 }
 
@@ -298,13 +300,15 @@ if feat.PktsPerSec < 5 &&
                 hbosRaw, hbosNorm, hbosTau := 0.0, 0.0, 0.0
                 ehRaw,  ehNorm,  ehTau    := 0.0, 0.0, 0.0
                 if a.hbos != nil {
-
                         hbosRaw  = a.hbos.Score(vec)
                         hbosNorm = a.hbos.ScoreNorm(vec)
                         hbosTau  = a.hbos.Bound(0.99)
-
                 }
-
+                if a.ehbos != nil {
+                        ehRaw  = a.ehbos.Score(vec)
+                        ehNorm = a.ehbos.ScoreNorm(vec)
+                        ehTau  = a.ehbos.Bound(0.99)
+                }
 
 
                 if score > top.score {
@@ -341,88 +345,111 @@ if feat.PktsPerSec < 5 &&
 
 
 
-        // Decide whether to fire:
-        // (a) optionally trust iForest label(), otherwise threshold by bound()/MinScore
-        fire := false
-        if a.cfg.UseIFLabel {
-            fire = (label == 1)
-        }
-        if !fire {
-            if b, ok := a.detector.(interface{ Bound() float64 }); ok {
-                fire = (score >= b.Bound())
-            } else {
-                fire = (score >= a.cfg.MinScore)
-            }
-        }
-
-        // (b) optionally AND-gate with HBOS/eHBOS percentile (normalized)
-        if fire && a.cfg.RequireHBOSPercentile > 0 && a.hbos != nil {
-            if hbosNorm < a.cfg.RequireHBOSPercentile {
-                fire = false
-            }
-        }
-
-        if fire && a.cfg.RequireEHBOSPercentile > 0 && a.ehbos != nil {
-            if ehNorm < a.cfg.RequireEHBOSPercentile {
-                fire = false
-            }
-        }
 
 
-        // Always collect candidate for mean-based risk logging; optionally log all to anomalies.log
-        asn, asnName, cc, ptr := getEnrichLabels(src)
-        exIP, exPort, exProto, exCnt := topDstTriple(local)
-        shape := explainShape(feat)
 
-        if a.cfg.DebugAll {
-            logAnomalyLine("[%s] ANOMALY label=%s fused=%.4f if=%.4f hbos_norm=%.4f ehbos_norm=%.4f hbos_raw=%.2f(τ=%.2f) ehbos_raw=%.2f(τ=%.2f) src=%s PTR=%s ASN=AS%d (%s) CC=%s example_dst=%s:%d/%s x%d shape=%v feats=%v",
-                a.cfg.Label, fusedPreGate, score, hbosNorm, hbosRaw, hbosTau, src, ptr, asn, asnName, cc,
-                ehNorm, ehRaw, ehTau, exIP, exPort, exProto, exCnt, shape, feat)
-        }
 
-        if fire {
 
-			cnt, _ := a.store.IncrementCount(a.cfg.Label, src)
 
-            logAnomalyLine("[%s] ANOMALY label=%s fused=%.4f if=%.4f hbos_norm=%.4f ehbos_norm=%.4f hbos_raw=%.2f(τ=%.2f) ehbos_raw=%.2f(τ=%.2f) src=%s PTR=%s ASN=AS%d (%s) CC=%s example_dst=%s:%d/%s x%d shape=%v feats=%v count=%d",
-                nowRFC3339(), a.cfg.Label, fusedPreGate, score, hbosNorm, ehNorm, hbosRaw, hbosTau, ehRaw, ehTau,
-                src, ptr, asn, asnName, cc, exIP, exPort, exProto, exCnt, shape, feat, cnt)
 
-			if !a.cfg.LogOnly && a.engine != nil && a.cfg.BlackholeCount > 0 && cnt >= a.cfg.BlackholeCount {
-				// synthesize a minimal rule for consistent TTL/escalation
-				r := DetectionRule{
-					Name:                 a.cfg.Label,
-					TimeWindow:           a.cfg.Window.String(),
-					Action:               "blackhole",
-					BlackholeTime:        a.cfg.BlackholeTime,
-					BlackholeCommunities: []string{"65001:666"},
-				}
-				ex := local[0]
-				a.engine.HandleBlackhole(r, []Flow{ex}, cnt)
+                // Decide whether to fire:
+                // (a) optionally trust iForest label(), otherwise threshold by bound()/MinScore
+                fire := false
+                if a.cfg.UseIFLabel {
+                        fire = (label == 1)
+                }
+                if !fire {
+                        if b, ok := a.detector.(interface{ Bound() float64 }); ok {
+                                fire = (score >= b.Bound())
+                        } else {
+                                fire = (score >= a.cfg.MinScore)
+                        }
+                }
+
+                // (b) optionally AND-gate with HBOS/eHBOS percentile (normalized)
+                if fire && a.cfg.RequireHBOSPercentile > 0 && a.hbos != nil {
+                        if hbosNorm < a.cfg.RequireHBOSPercentile {
+                                fire = false
+                        }
+                }
+                if fire && a.cfg.RequireEHBOSPercentile > 0 && a.ehbos != nil {
+                        if ehNorm < a.cfg.RequireEHBOSPercentile {
+                                fire = false
+                        }
+                }
+
+                // Always collect candidate for mean-based risk logging; optionally log all to anomalies.log
+                asn, asnName, cc, ptr := getEnrichLabels(src)
+                exIP, exPort, exProto, exCnt := topDstTriple(local)
+                shape := explainShape(feat)
+
+                if a.cfg.DebugAll {
+                        wIF, wHB, wEH := a.cfg.Weights.IForest, a.cfg.Weights.HBOS, a.cfg.Weights.EHBOS
+                        logAnomalyLine("[%s] ANOMALY label=%s fused=%.4f iforest=%.4f hbos_norm=%.4f ehbos_norm=%.4f if_w=%.4f hbos_w=%.4f ehbos_w=%.4f hbos_raw=%.2f(τ=%.2f) ehbos_raw=%.2f(τ=%.2f) src=%s PTR=%s ASN=AS%d (%s) CC=%s example_dst=%s:%d/%s x%d shape=%v feats=%v",
+                                nowRFC3339(), a.cfg.Label, fusedPreGate, score, hbosNorm, ehNorm,
+                                wIF*score, wHB*hbosNorm, wEH*ehNorm,
+                                hbosRaw, hbosTau, ehRaw, ehTau,
+                                src, ptr, asn, asnName, cc, exIP, exPort, exProto, exCnt, shape, feat)
+                }
+
+                if fire {
+                        cnt, _ := a.store.IncrementCount(a.cfg.Label, src)
+                        // show each model’s weighted contribution used in fusion
+                        wIF, wHB, wEH := a.cfg.Weights.IForest, a.cfg.Weights.HBOS, a.cfg.Weights.EHBOS
+                        if_w  := wIF * score
+                        hbos_w := wHB * hbosNorm
+                        ehbos_w := wEH * ehNorm
+                        logAnomalyLine("[%s] ANOMALY label=%s fused=%.4f iforest=%.4f hbos_norm=%.4f ehbos_norm=%.4f if_w=%.4f hbos_w=%.4f ehbos_w=%.4f hbos_raw=%.2f(τ=%.2f) ehbos_raw=%.2f(τ=%.2f) src=%s PTR=%s ASN=AS%d (%s) CC=%s example_dst=%s:%d/%s x%d shape=%v feats=%v count=%d",
+                                nowRFC3339(), a.cfg.Label, fusedPreGate, score, hbosNorm, ehNorm,
+                                if_w, hbos_w, ehbos_w,
+                                hbosRaw, hbosTau, ehRaw, ehTau,
+                                src, ptr, asn, asnName, cc, exIP, exPort, exProto, exCnt, shape, feat, cnt)
+
+                        if !a.cfg.LogOnly && a.engine != nil && a.cfg.BlackholeCount > 0 && cnt >= a.cfg.BlackholeCount {
+                                // synthesize a minimal rule for consistent TTL/escalation
+                                r := DetectionRule{
+                                        Name:                 a.cfg.Label,
+                                        TimeWindow:           a.cfg.Window.String(),
+                                        Action:               "blackhole",
+                                        BlackholeTime:        a.cfg.BlackholeTime,
+                                        BlackholeCommunities: []string{"65001:666"},
+                                }
+                                ex := local[0]
+                                a.engine.HandleBlackhole(r, []Flow{ex}, cnt)
                                 logAnomalyLine("ESCALATE blackhole src=%s count=%d", src, cnt)
-			}
-		}
+                        }
+                }
 
-                // Collect candidate for mean-based risk logging
-        // Collect candidate for mean-based risk logging (skip allowlisted ASNs entirely)
-        if !a.isAllowedASN(asn) {
-            candidates = append(candidates, cand{
-                        src:   src,
-                        fused: fusedPreGate,
-                        ifs:   score,
-                        hraw:  hbosRaw,
-                        hnorm: hbosNorm,
-                        ehr:   ehRaw,
-                        ehn:   ehNorm,
-                        feat:  feat,
-                        flows: local,
-                        asn:   asn, asnName: asnName, cc: cc, ptr: ptr,
-                        exIP: exIP, exPort: exPort, exProto: exProto, exCnt: exCnt,
-                        shape: shape,
-                })
+                // collect candidate (skip allowlisted ASNs entirely)
+                if !a.isAllowedASN(asn) {
+                        candidates = append(candidates, cand{
+                                src:   src,
+                                fused: fusedPreGate,
+                                ifs:   score,
+                                hraw:  hbosRaw,
+                                hnorm: hbosNorm,
+                                ehr:   ehRaw,
+                                ehn:   ehNorm,
+                                feat:  feat,
+                                flows: local,
+                                asn:   asn, asnName: asnName, cc: cc, ptr: ptr,
+                                exIP: exIP, exPort: exPort, exProto: exProto, exCnt: exCnt,
+                                shape: shape,
+                        })
+                }
+        } // <-- end for each src
 
- }
-	}
+
+
+
+
+
+
+
+
+
+
+
 
 
   // --- add this debug line at the end of tick() ---

@@ -98,7 +98,7 @@ detection:
     window: 60s                   # Duration of feature aggregation window (e.g., 60s per source).
     interval: 10s                 # How often to score flows (e.g., every 10s = 6 overlapping windows per minute).
     label: iforest_anomaly        # Tag written to anomalies.log and risk.log.
-    retrain_every: 45m            # How often the Isolation Forest retrains on baseline data.
+    retrain_every: 35m            # How often the Isolation Forest retrains on baseline data.
     baseline_max: 250000          # Max number of feature vectors kept for training (acts as rolling buffer).
     top_k: 10                     # Max top anomalies to log each interval (0 = all).
 

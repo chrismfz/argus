@@ -459,13 +459,22 @@ if feat.PktsPerSec < 5 &&
                         if a.hbos != nil { a.hbos.Train(b) }
                         if a.ehbos != nil { a.ehbos.Train(b) }
                         if wb, ok := a.detector.(interface{ Bound() float64 }); ok {
-                                if a.hbos != nil {
-                                        logAnomalyLine("TRAIN baseline=%d if_bound=%.4f hbos_tau99=%.2f",
-                                                len(b), wb.Bound(), a.hbos.Bound(0.99))
-                                } else {
-                                        logAnomalyLine("TRAIN baseline=%d if_bound=%.4f",
-                                                len(b), wb.Bound())
-                                }
+
+       switch {
+       case a.hbos != nil && a.ehbos != nil:
+           logAnomalyLine("TRAIN baseline=%d if_bound=%.4f hbos_tau99=%.2f ehbos_tau99=%.2f",
+               len(b), wb.Bound(), a.hbos.Bound(0.99), a.ehbos.Bound(0.99))
+       case a.hbos != nil:
+           logAnomalyLine("TRAIN baseline=%d if_bound=%.4f hbos_tau99=%.2f",
+               len(b), wb.Bound(), a.hbos.Bound(0.99))
+       case a.ehbos != nil:
+           logAnomalyLine("TRAIN baseline=%d if_bound=%.4f ehbos_tau99=%.2f",
+               len(b), wb.Bound(), a.ehbos.Bound(0.99))
+       default:
+           logAnomalyLine("TRAIN baseline=%d if_bound=%.4f",
+               len(b), wb.Bound())
+       }
+
                         } else {
                                 logAnomalyLine("TRAIN baseline=%d", len(b))
                         }

@@ -103,6 +103,17 @@ func getEnrichLabels(ip string) (asn uint32, asnName, cc, ptr string) {
 }
 
 
+// helper: check if an ASN is allowlisted
+func (a *Anomaly) isAllowedASN(asn uint32) bool {
+    if len(a.cfg.AllowASNs) == 0 { return false }
+    for _, allowed := range a.cfg.AllowASNs {
+        if asn == allowed { return true }
+    }
+    return false
+}
+
+
+
 func (a *Anomaly) RebuildDetector(trees, sample int, contamination float64) {
     a.mu.Lock()
     // swap detector & force retrain on next tick from baseline
@@ -221,6 +232,16 @@ func (a *Anomaly) tick() {
 		if len(local) == 0 {
 			continue
 		}
+
+
+                // --- EARLY ALLOWLIST: skip entirely (no anomalies.log, no risk) ---
+                if enrich.Global != nil && enrich.Global.Geo != nil {
+                        if a.isAllowedASN(enrich.Global.Geo.GetASNNumber(src)) {
+                                continue
+                        }
+                }
+
+
 		feat := buildFeatures(local, windowSec)
 		vec := log1pVec(feat.slice())
 
@@ -250,23 +271,12 @@ if feat.PktsPerSec < 5 &&
                 hbosRaw, hbosNorm, hbosTau := 0.0, 0.0, 0.0
                 if a.hbos != nil {
 
-                        hbosRaw = a.hbos.Score(vec)
-                        // choose a tau (bound) to normalize against
-                        if a.cfg.RequireHBOSPercentile > 0 {
-                                hbosTau = a.hbos.Bound(a.cfg.RequireHBOSPercentile)
-                        } else {
-                                hbosTau = a.hbos.Bound(0.99)
-                        }
-                        // normalize HBOS roughly into [0..1] by dividing by tau and clamping
-                        if hbosTau <= 0 || !isFinite(hbosTau) {
-                                hbosNorm = 0
-                        } else {
-                                v := hbosRaw / hbosTau
-                                if v < 0 { v = 0 }
-                                if v > 1 { v = 1 }
-                                hbosNorm = v
-                        }
 
+                        // compute raw score and map to empirical percentile (quantile in [0,1])
+                        hbosRaw  = a.hbos.Score(vec)
+                        hbosNorm = a.hbos.ScoreNorm(vec)
+                        // for visibility only, keep a reference tau (p99) in logs
+                        hbosTau  = a.hbos.Bound(0.99)
 
                 }
 
@@ -274,9 +284,9 @@ if feat.PktsPerSec < 5 &&
                     top = scored{src: src, score: score, fv: feat, flows: local}
                 }
 
-                // FUSION: fused = w_iforest * ifScore + w_hbos * hbosNorm
+                // FUSION (pre-gate): fused = w_iforest * ifScore + w_hbos * hbosNorm
                 fused := a.cfg.Weights.IForest*score + a.cfg.Weights.HBOS*hbosNorm
-
+                fusedPreGate := fused
 
                 // ---- EWMA / Risk memory runs for every scored source ----
                 if a.memory != nil {
@@ -323,17 +333,6 @@ if feat.PktsPerSec < 5 &&
             }
         }
 
-        // (c) optional cheap allowlist by ASN (still lets very strong stuff pass if you wish)
-        if fire && len(a.cfg.AllowASNs) > 0 && enrich.Global != nil && enrich.Global.Geo != nil {
-            asn := enrich.Global.Geo.GetASNNumber(src)
-            for _, allowed := range a.cfg.AllowASNs {
-                if asn == allowed {
-                    // suppress benign bot noise from trusted ASNs
-                    fire = false
-                    break
-                }
-            }
-        }
 
 
         // Always collect candidate for mean-based risk logging; optionally log all to anomalies.log
@@ -343,7 +342,7 @@ if feat.PktsPerSec < 5 &&
 
         if a.cfg.DebugAll {
             logAnomalyLine("[%s] ANOMALY label=%s fused=%.4f if=%.4f hbos_norm=%.4f hbos_raw=%.2f(τ=%.2f) src=%s PTR=%s ASN=AS%d (%s) CC=%s example_dst=%s:%d/%s x%d shape=%v feats=%v",
-                nowRFC3339(), a.cfg.Label, fused, score, hbosNorm, hbosRaw, hbosTau, src, ptr, asn, asnName, cc,
+                nowRFC3339(), a.cfg.Label, fusedPreGate, score, hbosNorm, hbosRaw, hbosTau, src, ptr, asn, asnName, cc,
                 exIP, exPort, exProto, exCnt, shape, feat)
         }
 
@@ -352,7 +351,7 @@ if feat.PktsPerSec < 5 &&
 			cnt, _ := a.store.IncrementCount(a.cfg.Label, src)
 
             logAnomalyLine("[%s] ANOMALY label=%s fused=%.4f if=%.4f hbos_norm=%.4f hbos_raw=%.2f(τ=%.2f) src=%s PTR=%s ASN=AS%d (%s) CC=%s example_dst=%s:%d/%s x%d shape=%v feats=%v count=%d",
-                nowRFC3339(), a.cfg.Label, fused, score, hbosNorm, hbosRaw, hbosTau, src, ptr, asn, asnName, cc,
+                nowRFC3339(), a.cfg.Label, fusedPreGate, score, hbosNorm, hbosRaw, hbosTau, src, ptr, asn, asnName, cc,
                 exIP, exPort, exProto, exCnt, shape, feat, cnt)
 
 			if !a.cfg.LogOnly && a.engine != nil && a.cfg.BlackholeCount > 0 && cnt >= a.cfg.BlackholeCount {
@@ -373,7 +372,7 @@ if feat.PktsPerSec < 5 &&
                 // Collect candidate for mean-based risk logging
                 candidates = append(candidates, cand{
                         src:   src,
-                        fused: fused,
+                        fused: fusedPreGate,
                         ifs:   score,
                         hraw:  hbosRaw,
                         hnorm: hbosNorm,

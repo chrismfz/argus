@@ -113,6 +113,15 @@ func (a *Anomaly) isAllowedASN(asn uint32) bool {
 }
 
 
+// helper: are models trained at least once?
+func (a *Anomaly) isTrained() bool {
+    // iForest: trained when lastTrain is non-zero
+    if a.lastTrain.IsZero() { return false }
+    // HBOS: trained when it has any training scores
+    if a.hbos != nil && len(a.hbos.trainScores) == 0 { return false }
+    return true
+}
+
 
 func (a *Anomaly) RebuildDetector(trees, sample int, contamination float64) {
     a.mu.Lock()
@@ -264,6 +273,11 @@ if feat.PktsPerSec < 5 &&
 		}
 		a.mu.Unlock()
 
+                // --- COLD START / WARM-UP: skip scoring & logging until first training ---
+                if !a.isTrained() {
+                        continue
+                }
+
 		label, score := a.detector.Score(vec)
 
 
@@ -341,8 +355,9 @@ if feat.PktsPerSec < 5 &&
         shape := explainShape(feat)
 
         if a.cfg.DebugAll {
-            logAnomalyLine("[%s] ANOMALY label=%s fused=%.4f if=%.4f hbos_norm=%.4f hbos_raw=%.2f(τ=%.2f) src=%s PTR=%s ASN=AS%d (%s) CC=%s example_dst=%s:%d/%s x%d shape=%v feats=%v",
-                nowRFC3339(), a.cfg.Label, fusedPreGate, score, hbosNorm, hbosRaw, hbosTau, src, ptr, asn, asnName, cc,
+            // NOTE: no extra timestamp here; rely on Go logger's timestamp to avoid duplicates.
+            logAnomalyLine("ANOMALY label=%s fused=%.4f if=%.4f hbos_norm=%.4f hbos_raw=%.2f(τ=%.2f) src=%s PTR=%s ASN=AS%d (%s) CC=%s example_dst=%s:%d/%s x%d shape=%v feats=%v",
+                a.cfg.Label, fusedPreGate, score, hbosNorm, hbosRaw, hbosTau, src, ptr, asn, asnName, cc,
                 exIP, exPort, exProto, exCnt, shape, feat)
         }
 
@@ -350,8 +365,8 @@ if feat.PktsPerSec < 5 &&
 
 			cnt, _ := a.store.IncrementCount(a.cfg.Label, src)
 
-            logAnomalyLine("[%s] ANOMALY label=%s fused=%.4f if=%.4f hbos_norm=%.4f hbos_raw=%.2f(τ=%.2f) src=%s PTR=%s ASN=AS%d (%s) CC=%s example_dst=%s:%d/%s x%d shape=%v feats=%v count=%d",
-                nowRFC3339(), a.cfg.Label, fusedPreGate, score, hbosNorm, hbosRaw, hbosTau, src, ptr, asn, asnName, cc,
+            logAnomalyLine("ANOMALY label=%s fused=%.4f if=%.4f hbos_norm=%.4f hbos_raw=%.2f(τ=%.2f) src=%s PTR=%s ASN=AS%d (%s) CC=%s example_dst=%s:%d/%s x%d shape=%v feats=%v count=%d",
+                a.cfg.Label, fusedPreGate, score, hbosNorm, hbosRaw, hbosTau, src, ptr, asn, asnName, cc,
                 exIP, exPort, exProto, exCnt, shape, feat, cnt)
 
 			if !a.cfg.LogOnly && a.engine != nil && a.cfg.BlackholeCount > 0 && cnt >= a.cfg.BlackholeCount {
@@ -365,7 +380,7 @@ if feat.PktsPerSec < 5 &&
 				}
 				ex := local[0]
 				a.engine.HandleBlackhole(r, []Flow{ex}, cnt)
-				logAnomalyLine("[%s] ESCALATE blackhole src=%s count=%d", nowRFC3339(), src, cnt)
+                                logAnomalyLine("ESCALATE blackhole src=%s count=%d", src, cnt)
 			}
 		}
 
@@ -400,8 +415,8 @@ if feat.PktsPerSec < 5 &&
                 topHBOS = a.hbos.Score(log1pVec(top.fv.slice()))
                 topTau  = a.hbos.Bound(0.99)
             }
-            logAnomalyLine("[%s] DEBUG top_if=%.4f top_hbos=%.2f(τ=%.2f) top_src=%s PTR=%s ASN=AS%d (%s) CC=%s example_dst=%s:%d/%s x%d tops=%v shape=%v feats={PktsPerSec:%.1f,BytesPerSec:%.1f,MeanPkt:%.1f,UniqDstIPs:%.0f,UniqDstPorts:%.0f,TCPSYNRatio:%.2f,ICMPShare:%.2f}",
-                nowRFC3339(), top.score, topHBOS, topTau, top.src, ptr, asn, asnName, cc,
+            logAnomalyLine("DEBUG top_if=%.4f top_hbos=%.2f(τ=%.2f) top_src=%s PTR=%s ASN=AS%d (%s) CC=%s example_dst=%s:%d/%s x%d tops=%v shape=%v feats={PktsPerSec:%.1f,BytesPerSec:%.1f,MeanPkt:%.1f,UniqDstIPs:%.0f,UniqDstPorts:%.0f,TCPSYNRatio:%.2f,ICMPShare:%.2f}",
+                top.score, topHBOS, topTau, top.src, ptr, asn, asnName, cc,
                 exIP, exPort, exProto, exCnt, tops, shape,
                 top.fv.PktsPerSec, top.fv.BytesPerSec, top.fv.MeanPktSize,
                 top.fv.UniqDstIPs, top.fv.UniqDstPorts, top.fv.TCPSYNRatio, top.fv.ICMPShare)
@@ -421,14 +436,14 @@ if feat.PktsPerSec < 5 &&
                         if a.hbos != nil { a.hbos.Train(b) }
                         if wb, ok := a.detector.(interface{ Bound() float64 }); ok {
                                 if a.hbos != nil {
-                                        logAnomalyLine("[%s] TRAIN baseline=%d if_bound=%.4f hbos_tau99=%.2f",
-                                                nowRFC3339(), len(b), wb.Bound(), a.hbos.Bound(0.99))
+                                        logAnomalyLine("TRAIN baseline=%d if_bound=%.4f hbos_tau99=%.2f",
+                                                len(b), wb.Bound(), a.hbos.Bound(0.99))
                                 } else {
-                                        logAnomalyLine("[%s] TRAIN baseline=%d if_bound=%.4f",
-                                                nowRFC3339(), len(b), wb.Bound())
+                                        logAnomalyLine("TRAIN baseline=%d if_bound=%.4f",
+                                                len(b), wb.Bound())
                                 }
                         } else {
-                                logAnomalyLine("[%s] TRAIN baseline=%d", nowRFC3339(), len(b))
+                                logAnomalyLine("TRAIN baseline=%d", len(b))
                         }
 
 
@@ -490,8 +505,9 @@ func (a *Anomaly) afterTickPrintInteresting(now time.Time) {
                 if c.fused < thr {
                         break
                 }
-                logRiskLine("[%s] RISK fused=%.4f if=%.4f hbos_norm=%.4f hbos_raw=%.2f mu=%.4f thr=%.4f src=%s PTR=%s ASN=AS%d (%s) CC=%s example_dst=%s:%d/%s x%d shape=%v feats=%v",
-                        nowRFC3339(), c.fused, c.ifs, c.hnorm, c.hraw, mu, thr, c.src, c.ptr, c.asn, c.asnName, c.cc,
+                // NOTE: rely on Go logger timestamp; no inner timestamp here.
+                logRiskLine("RISK fused=%.4f if=%.4f hbos_norm=%.4f hbos_raw=%.2f mu=%.4f thr=%.4f src=%s PTR=%s ASN=AS%d (%s) CC=%s example_dst=%s:%d/%s x%d shape=%v feats=%v",
+                        c.fused, c.ifs, c.hnorm, c.hraw, mu, thr, c.src, c.ptr, c.asn, c.asnName, c.cc,
                         c.exIP, c.exPort, c.exProto, c.exCnt, c.shape, c.feat)
                 printed++
         }

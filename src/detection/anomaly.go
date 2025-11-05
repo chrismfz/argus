@@ -385,7 +385,9 @@ if feat.PktsPerSec < 5 &&
 		}
 
                 // Collect candidate for mean-based risk logging
-                candidates = append(candidates, cand{
+        // Collect candidate for mean-based risk logging (skip allowlisted ASNs entirely)
+        if !a.isAllowedASN(asn) {
+            candidates = append(candidates, cand{
                         src:   src,
                         fused: fusedPreGate,
                         ifs:   score,
@@ -398,7 +400,7 @@ if feat.PktsPerSec < 5 &&
                         shape: shape,
                 })
 
-
+ }
 	}
 
 
@@ -489,19 +491,29 @@ func meanFused(xs []cand) float64 {
 
 func (a *Anomaly) afterTickPrintInteresting(now time.Time) {
         if len(candidates) == 0 { return }
-        mu := meanFused(candidates)
+        // build a filtered slice without allowlisted ASNs
+        filtered := candidates[:0]
+        for _, c := range candidates {
+            if a.isAllowedASN(c.asn) { continue }
+            filtered = append(filtered, c)
+        }
+        if len(filtered) == 0 {
+            candidates = candidates[:0]
+            return
+        }
+        mu := meanFused(filtered)
         thr := mu * (1.0 + a.cfg.PrintAboveMeanPercent/100.0)
 
         // sort by fused desc
-        sort.Slice(candidates, func(i, j int) bool { return candidates[i].fused > candidates[j].fused })
+        sort.Slice(filtered, func(i, j int) bool { return filtered[i].fused > filtered[j].fused })
 
-        limit := len(candidates)
+        limit := len(filtered)
         if a.cfg.TopK > 0 && a.cfg.TopK < limit {
                 limit = a.cfg.TopK
         }
         printed := 0
         for i := 0; i < limit; i++ {
-                c := candidates[i]
+                c := filtered[i]
                 if c.fused < thr {
                         break
                 }

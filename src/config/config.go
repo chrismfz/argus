@@ -114,6 +114,9 @@ type Config struct {
             } `yaml:"weights"`
             PrintAboveMeanPercent float64 `yaml:"print_above_mean_percent"` // π.χ. 25 = mean * 1.25
 
+            // Allowlist of source ASNs to suppress (e.g. Cloudflare 13335, your ASN, etc.)
+            AllowASNs []uint32 `yaml:"allow_asns"`
+
             // Απλός προ-φίλτρος για μείωση θορύβου
             Prefilter struct {
                 MinPPS          float64 `yaml:"min_pps"`

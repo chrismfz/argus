@@ -98,8 +98,8 @@ detection:
     window: 60s                   # Duration of feature aggregation window (e.g., 60s per source).
     interval: 10s                 # How often to score flows (e.g., every 10s = 6 overlapping windows per minute).
     label: iforest_anomaly        # Tag written to anomalies.log and risk.log.
-    retrain_every: 30m            # How often the Isolation Forest retrains on baseline data.
-    baseline_max: 200000          # Max number of feature vectors kept for training (acts as rolling buffer).
+    retrain_every: 45m            # How often the Isolation Forest retrains on baseline data.
+    baseline_max: 250000          # Max number of feature vectors kept for training (acts as rolling buffer).
     top_k: 10                     # Max top anomalies to log each interval (0 = all).
 
     # --- Model hyperparameters ---
@@ -107,9 +107,18 @@ detection:
     sample_size: 1024             # Number of samples per tree (higher = more accuracy, slower).
     contamination: 0.012          # Expected fraction of anomalies in baseline (0.001–0.02 typical).
 
-    # --- HBOS gating & score fusion ---
+    # --- HBOS and eHBOS gating & score fusion ---
+    require_ehbos_percentile: 0.98     # 0=disable; else gate on eHBOS normalized percentile
     require_hbos_percentile: 0.99 # Skip logging unless HBOS score is below the 99th-percentile threshold (0=disable).
-    weights: { iforest: 0.7, hbos: 0.3 }   # Weighting factors for fused_score = 0.7*iForest + 0.3*HBOS
+
+    weights: { iforest: 0.55, ehbos: 0.30, hbos: 0.15 }
+    ehbos:
+      bins: 12
+      eps: 1e-6
+      subspaces: 12      # how many random subspaces
+      size: 3            # features per subspace
+      agg: max           # max|mean
+
     print_above_mean_percent: 25  # Only log if fused_score ≥ mean * 1.25 (mean updated per tick).
 
     # --- Optional pre-filter to skip low-activity IPs ---
@@ -122,6 +131,7 @@ detection:
       min_icmp_share: 0.00        # Min ICMP fraction (set >0.3 to focus on ICMP floods).
 
 
+    allow_asns: [13335, 216285, 8075, 15169, 29247, 6799, 3329 ]
 
   # ──────────────────────────────
   # 🧠 MEMORY (EWMA Risk & Debt Log)

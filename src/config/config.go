@@ -107,12 +107,27 @@ type Config struct {
             // Προαιρετικό gate: απαιτεί HBOS < τα p-ποσοστημόριο (0 < p < 1). Βάλε 0 για απενεργοποίηση.
             RequireHBOSPercentile float64 `yaml:"require_hbos_percentile"` // π.χ. 0.99
 
+            // Προαιρετικό gate για eHBOS
+            RequireEHBOSPercentile float64 `yaml:"require_ehbos_percentile"` // π.χ. 0.98
+
+
             // Fusion βάρη & printing κατώφλι
             Weights struct {
-                IForest float64 `yaml:"iforest"`  // default 0.7
-                HBOS    float64 `yaml:"hbos"`     // default 0.3
+                IForest float64 `yaml:"iforest"`  // e.g. 0.55
+                HBOS    float64 `yaml:"hbos"`     // e.g. 0.15
+                EHBOS   float64 `yaml:"ehbos"`    // e.g. 0.30
             } `yaml:"weights"`
             PrintAboveMeanPercent float64 `yaml:"print_above_mean_percent"` // π.χ. 25 = mean * 1.25
+
+            // (Προαιρετικό) Παράμετροι eHBOS ensemble — αν δεν οριστούν, χρησιμοποιούνται default από τον ανιχνευτή.
+            EHBOS struct {
+                Bins       int     `yaml:"bins"`        // π.χ. 12
+                Eps        float64 `yaml:"eps"`         // π.χ. 1e-6
+                Subspaces  int     `yaml:"subspaces"`   // π.χ. 12
+                Size       int     `yaml:"size"`        // π.χ. 3 (features per subspace)
+                Agg        string  `yaml:"agg"`         // "max" | "mean"
+            } `yaml:"ehbos"`
+
 
             // Allowlist of source ASNs to suppress (e.g. Cloudflare 13335, your ASN, etc.)
             AllowASNs []uint32 `yaml:"allow_asns"`

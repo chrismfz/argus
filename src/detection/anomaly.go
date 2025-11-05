@@ -29,11 +29,13 @@ type AnomalyConfig struct {
 
         // NEW: noise controls / fusion
         UseIFLabel              bool     // if false, ignore detector's label() and use thresholds only
-        RequireHBOSPercentile   float64  // e.g., 0.99 means require HBOS >= 99th pct (as normalized percentile)
-        // Fusion weights (fused = w_iforest*ifScore + w_hbos*hbNorm)
+        RequireHBOSPercentile   float64  // HBOS gate on normalized percentile
+        RequireEHBOSPercentile  float64  // eHBOS gate on normalized percentile
+        // Fusion weights (fused = w_iforest*if + w_hbos*hbos_norm + w_ehbos*ehbos_norm)
         Weights struct {
                 IForest float64
                 HBOS    float64
+		EHBOS   float64
         }
         // Mean-based printing to risk.log (percent above mean of fused in this tick)
         PrintAboveMeanPercent float64 // e.g., 25 -> mean*1.25 threshold for risk.log
@@ -51,6 +53,7 @@ type Anomaly struct {
 	cfg       AnomalyConfig
 	detector  Detector
         hbos      *HBOS
+        ehbos     *EHBOS
 	store     DetectionStore
 	engine    *Engine
 
@@ -144,9 +147,17 @@ func NewAnomaly(cfg AnomalyConfig, det Detector, store DetectionStore) *Anomaly 
 	if cfg.MinScore <= 0 { cfg.MinScore = 0.70 }
         // sensible defaults
         if cfg.RequireHBOSPercentile < 0 { cfg.RequireHBOSPercentile = 0 }
-        if cfg.Weights.IForest == 0 && cfg.Weights.HBOS == 0 {
-                cfg.Weights.IForest, cfg.Weights.HBOS = 0.7, 0.3
+        if cfg.Weights.IForest == 0 && cfg.Weights.HBOS == 0 && cfg.Weights.EHBOS == 0 {
+                cfg.Weights.IForest, cfg.Weights.EHBOS, cfg.Weights.HBOS = 0.55, 0.30, 0.15
         }
+        // normalize weights
+        wsum := cfg.Weights.IForest + cfg.Weights.HBOS + cfg.Weights.EHBOS
+        if wsum > 0 {
+                cfg.Weights.IForest /= wsum
+                cfg.Weights.HBOS    /= wsum
+                cfg.Weights.EHBOS   /= wsum
+        }
+
         if cfg.PrintAboveMeanPercent < 0 {
                 cfg.PrintAboveMeanPercent = 0
         }
@@ -160,6 +171,8 @@ func NewAnomaly(cfg AnomalyConfig, det Detector, store DetectionStore) *Anomaly 
 		cfg:      cfg,
 		detector: det,
                 hbos:     NewHBOS(15, 1e-6),
+                // default eHBOS: 12 subspaces of size 3, agg="max"
+                ehbos:    NewEHBOS(12, 1e-6, 12, 3, "max", 7),
 		store:    store,
 		cfgUpdate: make(chan AnomalyConfig, 1),
 	}
@@ -281,25 +294,27 @@ if feat.PktsPerSec < 5 &&
 		label, score := a.detector.Score(vec)
 
 
-                // HBOS: raw + normalized percentile [0..1]
+                // HBOS/eHBOS: raw + normalized percentile [0..1]
                 hbosRaw, hbosNorm, hbosTau := 0.0, 0.0, 0.0
+                ehRaw,  ehNorm,  ehTau    := 0.0, 0.0, 0.0
                 if a.hbos != nil {
 
-
-                        // compute raw score and map to empirical percentile (quantile in [0,1])
                         hbosRaw  = a.hbos.Score(vec)
                         hbosNorm = a.hbos.ScoreNorm(vec)
-                        // for visibility only, keep a reference tau (p99) in logs
                         hbosTau  = a.hbos.Bound(0.99)
 
                 }
+
+
 
                 if score > top.score {
                     top = scored{src: src, score: score, fv: feat, flows: local}
                 }
 
-                // FUSION (pre-gate): fused = w_iforest * ifScore + w_hbos * hbosNorm
-                fused := a.cfg.Weights.IForest*score + a.cfg.Weights.HBOS*hbosNorm
+                // FUSION (pre-gate): IF + HBOS + eHBOS (normalized)
+                fused := a.cfg.Weights.IForest*score +
+                         a.cfg.Weights.HBOS   *hbosNorm +
+                         a.cfg.Weights.EHBOS  *ehNorm
                 fusedPreGate := fused
 
                 // ---- EWMA / Risk memory runs for every scored source ----
@@ -340,13 +355,18 @@ if feat.PktsPerSec < 5 &&
             }
         }
 
-        // (b) optionally AND-gate with HBOS percentile (normalized)
+        // (b) optionally AND-gate with HBOS/eHBOS percentile (normalized)
         if fire && a.cfg.RequireHBOSPercentile > 0 && a.hbos != nil {
             if hbosNorm < a.cfg.RequireHBOSPercentile {
                 fire = false
             }
         }
 
+        if fire && a.cfg.RequireEHBOSPercentile > 0 && a.ehbos != nil {
+            if ehNorm < a.cfg.RequireEHBOSPercentile {
+                fire = false
+            }
+        }
 
 
         // Always collect candidate for mean-based risk logging; optionally log all to anomalies.log
@@ -355,19 +375,18 @@ if feat.PktsPerSec < 5 &&
         shape := explainShape(feat)
 
         if a.cfg.DebugAll {
-            // NOTE: no extra timestamp here; rely on Go logger's timestamp to avoid duplicates.
-            logAnomalyLine("ANOMALY label=%s fused=%.4f if=%.4f hbos_norm=%.4f hbos_raw=%.2f(τ=%.2f) src=%s PTR=%s ASN=AS%d (%s) CC=%s example_dst=%s:%d/%s x%d shape=%v feats=%v",
+            logAnomalyLine("[%s] ANOMALY label=%s fused=%.4f if=%.4f hbos_norm=%.4f ehbos_norm=%.4f hbos_raw=%.2f(τ=%.2f) ehbos_raw=%.2f(τ=%.2f) src=%s PTR=%s ASN=AS%d (%s) CC=%s example_dst=%s:%d/%s x%d shape=%v feats=%v",
                 a.cfg.Label, fusedPreGate, score, hbosNorm, hbosRaw, hbosTau, src, ptr, asn, asnName, cc,
-                exIP, exPort, exProto, exCnt, shape, feat)
+                ehNorm, ehRaw, ehTau, exIP, exPort, exProto, exCnt, shape, feat)
         }
 
         if fire {
 
 			cnt, _ := a.store.IncrementCount(a.cfg.Label, src)
 
-            logAnomalyLine("ANOMALY label=%s fused=%.4f if=%.4f hbos_norm=%.4f hbos_raw=%.2f(τ=%.2f) src=%s PTR=%s ASN=AS%d (%s) CC=%s example_dst=%s:%d/%s x%d shape=%v feats=%v count=%d",
-                a.cfg.Label, fusedPreGate, score, hbosNorm, hbosRaw, hbosTau, src, ptr, asn, asnName, cc,
-                exIP, exPort, exProto, exCnt, shape, feat, cnt)
+            logAnomalyLine("[%s] ANOMALY label=%s fused=%.4f if=%.4f hbos_norm=%.4f ehbos_norm=%.4f hbos_raw=%.2f(τ=%.2f) ehbos_raw=%.2f(τ=%.2f) src=%s PTR=%s ASN=AS%d (%s) CC=%s example_dst=%s:%d/%s x%d shape=%v feats=%v count=%d",
+                nowRFC3339(), a.cfg.Label, fusedPreGate, score, hbosNorm, ehNorm, hbosRaw, hbosTau, ehRaw, ehTau,
+                src, ptr, asn, asnName, cc, exIP, exPort, exProto, exCnt, shape, feat, cnt)
 
 			if !a.cfg.LogOnly && a.engine != nil && a.cfg.BlackholeCount > 0 && cnt >= a.cfg.BlackholeCount {
 				// synthesize a minimal rule for consistent TTL/escalation
@@ -393,6 +412,8 @@ if feat.PktsPerSec < 5 &&
                         ifs:   score,
                         hraw:  hbosRaw,
                         hnorm: hbosNorm,
+                        ehr:   ehRaw,
+                        ehn:   ehNorm,
                         feat:  feat,
                         flows: local,
                         asn:   asn, asnName: asnName, cc: cc, ptr: ptr,
@@ -436,6 +457,7 @@ if feat.PktsPerSec < 5 &&
                 if len(b) >= 128 { // ensure enough samples
                         _ = a.detector.Train(b)
                         if a.hbos != nil { a.hbos.Train(b) }
+                        if a.ehbos != nil { a.ehbos.Train(b) }
                         if wb, ok := a.detector.(interface{ Bound() float64 }); ok {
                                 if a.hbos != nil {
                                         logAnomalyLine("TRAIN baseline=%d if_bound=%.4f hbos_tau99=%.2f",
@@ -467,7 +489,8 @@ a.afterTickPrintInteresting(now)
 type cand struct {
         src         string
         fused, ifs  float64
-       hraw, hnorm float64
+        hraw, hnorm float64
+        ehr,  ehn   float64
         feat        featureVector
         flows       []Flow
         asn         uint32
@@ -518,8 +541,8 @@ func (a *Anomaly) afterTickPrintInteresting(now time.Time) {
                         break
                 }
                 // NOTE: rely on Go logger timestamp; no inner timestamp here.
-                logRiskLine("RISK fused=%.4f if=%.4f hbos_norm=%.4f hbos_raw=%.2f mu=%.4f thr=%.4f src=%s PTR=%s ASN=AS%d (%s) CC=%s example_dst=%s:%d/%s x%d shape=%v feats=%v",
-                        c.fused, c.ifs, c.hnorm, c.hraw, mu, thr, c.src, c.ptr, c.asn, c.asnName, c.cc,
+                logRiskLine("[%s] RISK fused=%.4f if=%.4f hbos_norm=%.4f ehbos_norm=%.4f hbos_raw=%.2f mu=%.4f thr=%.4f src=%s PTR=%s ASN=AS%d (%s) CC=%s example_dst=%s:%d/%s x%d shape=%v feats=%v",
+                        nowRFC3339(), c.fused, c.ifs, c.hnorm, c.ehn, c.hraw, mu, thr, c.src, c.ptr, c.asn, c.asnName, c.cc,
                         c.exIP, c.exPort, c.exProto, c.exCnt, c.shape, c.feat)
                 printed++
         }

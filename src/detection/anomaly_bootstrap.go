@@ -41,7 +41,7 @@ func log1pVec(x []float64) []float64 {
 
 // startAnomalyStack wires:
 //   - Memory layer (EWMA/debt risk)
-//   - Anomaly (iForest + HBOS fusion)
+// ---- Anomaly (iForest + HBOS + eHBOS fusion) ----
 //   - fsnotify hot-reloads from the same config file
 //
 // It also binds the anomaly to the detection engine.
@@ -97,12 +97,15 @@ func StartAnomalyStack(
         TopK:         cfg.Detection.Anomaly.TopK,
         // HBOS gating / fusion / mean printer / allowlist
         RequireHBOSPercentile: cfg.Detection.Anomaly.RequireHBOSPercentile,
+        RequireEHBOSPercentile: cfg.Detection.Anomaly.RequireEHBOSPercentile,
         Weights: struct {
             IForest float64
             HBOS    float64
+            EHBOS   float64
         }{
             IForest: cfg.Detection.Anomaly.Weights.IForest,
             HBOS:    cfg.Detection.Anomaly.Weights.HBOS,
+            EHBOS:   cfg.Detection.Anomaly.Weights.EHBOS,
         },
         PrintAboveMeanPercent: cfg.Detection.Anomaly.PrintAboveMeanPercent,
         AllowASNs:             cfg.Detection.Anomaly.AllowASNs,
@@ -174,13 +177,16 @@ func StartAnomalyStack(
                     RetrainEvery: nretr,
                     BaselineMax:  nc.Detection.Anomaly.BaselineMax,
                     TopK:         nc.Detection.Anomaly.TopK,
-                    RequireHBOSPercentile: nc.Detection.Anomaly.RequireHBOSPercentile,
+                    RequireHBOSPercentile:  nc.Detection.Anomaly.RequireHBOSPercentile,
+                    RequireEHBOSPercentile: nc.Detection.Anomaly.RequireEHBOSPercentile,
                     Weights: struct {
                         IForest float64
                         HBOS    float64
+                        EHBOS   float64
                     }{
                         IForest: nc.Detection.Anomaly.Weights.IForest,
                         HBOS:    nc.Detection.Anomaly.Weights.HBOS,
+                        EHBOS:   nc.Detection.Anomaly.Weights.EHBOS,
                     },
                     PrintAboveMeanPercent: nc.Detection.Anomaly.PrintAboveMeanPercent,
                     AllowASNs:             nc.Detection.Anomaly.AllowASNs,

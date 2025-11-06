@@ -136,6 +136,16 @@ func StartAnomalyStack(
         if agg != "max" && agg != "mean" { agg = "max" }
         // Our feature space length is 7 (PktsPerSec, BytesPerSec, MeanPktSize, UniqDstIPs, UniqDstPorts, TCPSYNRatio, ICMPShare)
         anom.ehbos = NewEHBOS(bins, eps, subs, size, agg, 7)
+
+
+        // --- Print eHBOS + fusion/gate config on startup ---
+        log.Printf("[CFG] anomaly: require_hbos_percentile=%.3f require_ehbos_percentile=%.3f weights={iforest:%.2f,ehbos:%.2f,hbos:%.2f} print_above_mean_percent=%v allow_asns=%v",
+            anomCfg.RequireHBOSPercentile, anomCfg.RequireEHBOSPercentile,
+            anomCfg.Weights.IForest, anomCfg.Weights.EHBOS, anomCfg.Weights.HBOS,
+            anomCfg.PrintAboveMeanPercent, anomCfg.AllowASNs)
+        log.Printf("[CFG] anomaly.ehbos: bins=%d eps=%g subspaces=%d size=%d agg=%s",
+            bins, eps, subs, size, agg)
+
     }
 
 
@@ -227,6 +237,14 @@ func StartAnomalyStack(
                     if size <= 0 { size = 3 }
                     if agg != "max" && agg != "mean" { agg = "max" }
                     anom.ehbos = NewEHBOS(bins, eps, subs, size, agg, 7)
+                    // --- Print eHBOS + fusion/gate config on reload ---
+                    log.Printf("[CFG] anomaly: require_hbos_percentile=%.3f require_ehbos_percentile=%.3f weights={iforest:%.2f,ehbos:%.2f,hbos:%.2f} print_above_mean_percent=%v allow_asns=%v",
+                        nextCfg.RequireHBOSPercentile, nextCfg.RequireEHBOSPercentile,
+                        nextCfg.Weights.IForest, nextCfg.Weights.EHBOS, nextCfg.Weights.HBOS,
+                        nextCfg.PrintAboveMeanPercent, nextCfg.AllowASNs)
+                    log.Printf("[CFG] anomaly.ehbos: bins=%d eps=%g subspaces=%d size=%d agg=%s",
+                        bins, eps, subs, size, agg)
+
                 }
 
 

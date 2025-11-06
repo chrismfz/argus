@@ -91,27 +91,24 @@ detection:
   #
   # Logged output goes to `anomalies.log`.  Optionally, the same scores are also
   # sent to the EWMA “memory” tracker below (for long-term risk accumulation).
-
   anomaly:
     enabled: true                 # Enable or disable anomaly detection engine.
     debug_all: false              # Log every source (true) or only those above the dynamic mean (false).
     window: 60s                   # Duration of feature aggregation window (e.g., 60s per source).
     interval: 10s                 # How often to score flows (e.g., every 10s = 6 overlapping windows per minute).
     label: iforest_anomaly        # Tag written to anomalies.log and risk.log.
-    retrain_every: 35m            # How often the Isolation Forest retrains on baseline data.
-    baseline_max: 250000          # Max number of feature vectors kept for training (acts as rolling buffer).
+    retrain_every: 40m            # How often the Isolation Forest retrains on baseline data.
+    baseline_max: 300000          # Max number of feature vectors kept for training (acts as rolling buffer).
     top_k: 10                     # Max top anomalies to log each interval (0 = all).
-
     # --- Model hyperparameters ---
     trees: 256                    # Number of Isolation Forest trees (128–512 typical).
     sample_size: 1024             # Number of samples per tree (higher = more accuracy, slower).
     contamination: 0.012          # Expected fraction of anomalies in baseline (0.001–0.02 typical).
-
     # --- HBOS and eHBOS gating & score fusion ---
     require_ehbos_percentile: 0.98     # 0=disable; else gate on eHBOS normalized percentile
     require_hbos_percentile: 0.99 # Skip logging unless HBOS score is below the 99th-percentile threshold (0=disable).
 
-    weights: { iforest: 0.55, ehbos: 0.30, hbos: 0.15 }
+    weights: { iforest: 0.20, ehbos: 0.50, hbos: 0.40 }
     ehbos:
       bins: 12
       eps: 1e-6
@@ -130,8 +127,7 @@ detection:
       min_syn_ratio: 0.50         # Min TCP SYN ratio (focus on scanners/flooders).
       min_icmp_share: 0.00        # Min ICMP fraction (set >0.3 to focus on ICMP floods).
 
-
-    allow_asns: [13335, 216285, 8075, 15169, 29247, 6799, 3329 ]
+    allow_asns: [13335, 216285, 8075, 15169, 29247, 6799, 3329, 20940, 16625, 54113, 32934, 36459, 2635, 19836, 10515, 5927 ]
 
   # ──────────────────────────────
   # 🧠 MEMORY (EWMA Risk & Debt Log)
@@ -159,15 +155,14 @@ detection:
   # The resulting `risk.log` shows IPs with their EWMA risk, debt, and flags
   # along with ASN, PTR, and country enrichment for easier triage.
 
-
   memory:
     enabled: true
     interval: 10s          # should match anomaly.interval
     log_path: /opt/flowenricher/risk.log
 
     alpha: 0.30            # EWMA smoothing for risk (↑ = shorter memory)
-    theta: 0.60            # pivot for “above-normal” debt accumulation
-    tau_risk: 0.70         # risk (EWMA) considered high
+    theta: 0.65            # pivot for “above-normal” debt accumulation
+    tau_risk: 0.75         # risk (EWMA) considered high
 
     debt:
       decay_per_tick: 0.10

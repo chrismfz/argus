@@ -207,7 +207,7 @@ func getPrefixFromNlri(nlri *anypb.Any) (*net.IPNet, error) {
 
 func (b *BGPListener) watchUpdates() {
     var f *os.File
-    if config.AppConfig != nil && config.AppConfig.BGP.DumpEnabled {
+    if config.AppConfig != nil && config.AppConfig.BGP.Listener.DumpEnabled {
         var err error
         f, err = os.Create("bgp_dump.jsonl")
         if err != nil {
@@ -254,21 +254,23 @@ func (b *BGPListener) watchUpdates() {
                             for _, c := range v.Value {
                                 communities = append(communities, c)
                             }
-                        case *bgp.PathAttributeAsPath:
-                            if config.AppConfig != nil && config.AppConfig.BGP.StoreASPath {
-                                for _, seg := range v.Value {
-                                    switch p := seg.(type) {
-                                    case *bgp.AsPathParam:
-                                        for _, asn := range p.AS {
-                                            asPath = append(asPath, fmt.Sprintf("%d", asn))
-                                        }
-                                    case *bgp.As4PathParam:
-                                        for _, asn := range p.AS {
-                                            asPath = append(asPath, fmt.Sprintf("%d", asn))
-                                        }
-                                    }
-                                }
-                            }
+
+        case *bgp.PathAttributeAsPath:
+            // ✅ ΠΑΝΤΑ κάνουμε parse το AS path για να βρούμε origin ASN
+            for _, seg := range v.Value {
+                switch p := seg.(type) {
+                case *bgp.AsPathParam:
+                    for _, asn := range p.AS {
+                        asPath = append(asPath, fmt.Sprintf("%d", asn))
+                    }
+                case *bgp.As4PathParam:
+                    for _, asn := range p.AS {
+                        asPath = append(asPath, fmt.Sprintf("%d", asn))
+                    }
+                }
+            }
+
+
                         case *bgp.PathAttributeLocalPref:
                             localPref = v.Value
                         default:
@@ -288,9 +290,10 @@ func (b *BGPListener) watchUpdates() {
                     LocalPref: localPref,
                     ASN:       originASN,
                 }
-                if config.AppConfig != nil && config.AppConfig.BGP.StoreASPath {
-                    entry.ASPath = asPath
-                }
+
+    if config.AppConfig != nil && config.AppConfig.BGP.Listener.StoreASPath {
+        entry.ASPath = asPath
+    }
 
                 if err := b.Ranger.Insert(entry); err == nil {
                     totalPaths++

@@ -467,16 +467,15 @@ if enrichEnabled(cfg, "ptr") {
         dlog("ClickHouse connection established.")
 
         batcher := NewInsertFlowBatcher(
-        inserter,
-        cfg.Insert.BatchSize,
-        time.Duration(cfg.Insert.FlushIntervalMs)*time.Millisecond,
-        listener.Ranger,
-        cfg.MyASN,
-        myNets,
-        ifNameCache,
-	cfg.BGP.StoreASPath,
+                inserter,
+                cfg.Insert.BatchSize,
+                time.Duration(cfg.Insert.FlushIntervalMs)*time.Millisecond,
+                listener.Ranger,
+                cfg.MyASN,
+                myNets,
+                ifNameCache,
+                cfg.BGP.Listener.StoreASPath, // ✅ πάρε το flag από το bgp_listener
         )
-
         defer batcher.Close()
 
 

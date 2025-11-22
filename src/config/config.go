@@ -9,25 +9,23 @@ import (
 
 )
 
-// 🔧 Αυτά είναι έξω από το Config struct
 type BGPListenerConfig struct {
-    Enabled    bool   `yaml:"enabled"`
-    ListenIP   string `yaml:"listen_ip"`
-    ASN        uint32 `yaml:"asn"`
+    Enabled     bool   `yaml:"enabled"`
+    ListenIP    string `yaml:"listen_ip"`
+    ASN         uint32 `yaml:"asn"`
     RemoteASN   uint32 `yaml:"remote_asn"`   // Το ASN του peer (π.χ. MikroTik)
-    LocalASN   uint32 `yaml:"local_asn"`
-    RouterID   string `yaml:"router_id"`
-    PeerIP     string `yaml:"peer_ip"`      // the MikroTik’s IP
-    MaxPeers   int    `yaml:"max_peers"`
+    LocalASN    uint32 `yaml:"local_asn"`
+    RouterID    string `yaml:"router_id"`
+    PeerIP      string `yaml:"peer_ip"`      // the MikroTik’s IP
+    MaxPeers    int    `yaml:"max_peers"`
+    DumpEnabled bool   `yaml:"dump_enabled"`
+    StoreASPath bool   `yaml:"store_aspath"`
 }
 
 type BGPConfig struct {
-    TableFile string             `yaml:"table_file"`
-    Listener  BGPListenerConfig  `yaml:"bgp_listener"`
-    DumpEnabled bool `yaml:"dump_enabled"`
-    StoreASPath  bool `yaml:"store_aspath"`
+    TableFile string            `yaml:"table_file"`
+    Listener  BGPListenerConfig `yaml:"bgp_listener"`
 }
-
 
 
 type FrontendConfig struct {

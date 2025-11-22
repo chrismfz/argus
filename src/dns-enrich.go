@@ -79,23 +79,27 @@ func processPTRBatch(resolver *enrich.DNSResolver, batchSize, lookbackMin, maxTh
     }
 
     query := fmt.Sprintf(`
-        SELECT s.ip
+        SELECT ip
         FROM (
             SELECT src_host AS ip
             FROM %s
             WHERE timestamp_start >= now() - INTERVAL %d MINUTE
+
             UNION ALL
+
             SELECT dst_host AS ip
             FROM %s
             WHERE timestamp_start >= now() - INTERVAL %d MINUTE
         ) AS s
-        LEFT JOIN ptr_cache AS p ON s.ip = p.ip
-        WHERE p.ip IS NULL
-          AND s.ip != '' %s
-        GROUP BY s.ip
+        WHERE ip != ''
+          AND match(ip, '^[0-9.]+$')  -- μόνο IPv4
+          %s                          -- optional private filter (έχει ήδη AND μέσα)
+          AND ip NOT IN (SELECT ip FROM ptr_cache)
+        GROUP BY ip
         LIMIT %d
         SETTINGS max_threads=%d
     `, table, lookbackMin, table, lookbackMin, privateFilter, batchSize, maxThreads)
+
 
     rows, err := clickhouse.Global.Query(ctx, query)
     if err != nil {

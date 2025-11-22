@@ -22,40 +22,51 @@ func StartPTRResolver(cfg *config.Config) {
     }
 
     // === NEW: read from config with sensible defaults ===
-
-bs := cfg.DNS.BatchSize
-if bs <= 0 { bs = 200 }
-
-interval := time.Duration(cfg.DNS.SecondsInterval) * time.Second
-if interval <= 0 { interval = 2 * time.Second }
-
-lookback := cfg.DNS.LookbackMinutes
-if lookback <= 0 { lookback = 60 }
-
-maxThreads := cfg.DNS.MaxThreads
-if maxThreads <= 0 { maxThreads = 2 }
-
-skipPrivate := cfg.DNS.SkipPrivate
-
-go func() {
-    ticker := time.NewTicker(interval)
-    defer ticker.Stop()
-    for {
-        processPTRBatch(resolver, bs, lookback, maxThreads, skipPrivate)
-        <-ticker.C
+    bs := cfg.DNS.BatchSize
+    if bs <= 0 {
+        bs = 200
     }
-}()
 
+    interval := time.Duration(cfg.DNS.SecondsInterval) * time.Second
+    if interval <= 0 {
+        interval = 2 * time.Second
+    }
 
+    lookback := cfg.DNS.LookbackMinutes
+    if lookback <= 0 {
+        lookback = 60
+    }
+
+    maxThreads := cfg.DNS.MaxThreads
+    if maxThreads <= 0 {
+        maxThreads = 2
+    }
+
+    skipPrivate := cfg.DNS.SkipPrivate
+
+    go func() {
+        ticker := time.NewTicker(interval)
+        defer ticker.Stop()
+        for {
+            processPTRBatch(resolver, bs, lookback, maxThreads, skipPrivate)
+            <-ticker.C
+        }
+    }()
 }
-
 
 func processPTRBatch(resolver *enrich.DNSResolver, batchSize, lookbackMin, maxThreads int, skipPrivate bool) {
     ctx := context.Background()
     table := fmt.Sprintf("%s.%s", config.AppConfig.ClickHouse.Database, config.AppConfig.ClickHouse.Table)
-    if batchSize <= 0 { batchSize = 200 }
-    if lookbackMin <= 0 { lookbackMin = 60 }
-    if maxThreads <= 0 { maxThreads = 2 }
+
+    if batchSize <= 0 {
+        batchSize = 200
+    }
+    if lookbackMin <= 0 {
+        lookbackMin = 60
+    }
+    if maxThreads <= 0 {
+        maxThreads = 2
+    }
 
     // Προαιρετικό φίλτρο για private/LL IPs
     privateFilter := ""
@@ -67,26 +78,24 @@ func processPTRBatch(resolver *enrich.DNSResolver, batchSize, lookbackMin, maxTh
         `
     }
 
-    // Ένα DISTINCT συνολικά, anti-join με ptr_cache, φίλτρο χρόνου για pruning
-query := fmt.Sprintf(`
-    SELECT s.ip
-    FROM (
-        SELECT src_host AS ip
-        FROM %s
-        WHERE timestamp_start >= now() - INTERVAL %d MINUTE
-        UNION ALL
-        SELECT dst_host AS ip
-        FROM %s
-        WHERE timestamp_start >= now() - INTERVAL %d MINUTE
-    ) AS s
-    LEFT JOIN ptr_cache AS p ON s.ip = p.ip
-    WHERE p.ip IS NULL
-      AND s.ip != '' %s
-    GROUP BY s.ip
-    LIMIT %d
-    SETTINGS max_threads=%d
-`, table, lookbackMin, table, lookbackMin, privateFilter, batchSize, maxThreads)
-
+    query := fmt.Sprintf(`
+        SELECT s.ip
+        FROM (
+            SELECT src_host AS ip
+            FROM %s
+            WHERE timestamp_start >= now() - INTERVAL %d MINUTE
+            UNION ALL
+            SELECT dst_host AS ip
+            FROM %s
+            WHERE timestamp_start >= now() - INTERVAL %d MINUTE
+        ) AS s
+        LEFT JOIN ptr_cache AS p ON s.ip = p.ip
+        WHERE p.ip IS NULL
+          AND s.ip != '' %s
+        GROUP BY s.ip
+        LIMIT %d
+        SETTINGS max_threads=%d
+    `, table, lookbackMin, table, lookbackMin, privateFilter, batchSize, maxThreads)
 
     rows, err := clickhouse.Global.Query(ctx, query)
     if err != nil {
@@ -104,9 +113,14 @@ query := fmt.Sprintf(`
         }
         ipList = append(ipList, ip)
     }
+
     if len(ipList) == 0 {
+        log.Printf("[PTR] No candidate IPs for PTR in last %d minutes", lookbackMin)
         return
     }
+
+    log.Printf("[PTR] Resolving PTR for %d IPs (lookback=%d min, skipPrivate=%v)",
+        len(ipList), lookbackMin, skipPrivate)
 
     records := make([]clickhouse.PTRRecord, 0, len(ipList))
     for _, ip := range ipList {
@@ -114,16 +128,28 @@ query := fmt.Sprintf(`
         if ptr == "" {
             ptr = enrich.NoPTR
         }
+
+        // 🔐 SAFE χρήση του geo: μπορεί να είναι nil αν δεν είναι ενεργό το "geoip"
+        var asn uint32
+        var asnName, country string
+        if geo != nil {
+            asn = geo.GetASNNumber(ip)
+            asnName = geo.GetASNName(ip)
+            country = geo.GetCountry(ip)
+        }
+
         records = append(records, clickhouse.PTRRecord{
             IP:      ip,
             PTR:     ptr,
-            ASN:     geo.GetASNNumber(ip),
-            ASNName: geo.GetASNName(ip),
-            Country: geo.GetCountry(ip),
+            ASN:     asn,
+            ASNName: asnName,
+            Country: country,
         })
     }
 
     if err := clickhouse.InsertPTRBatch(records); err != nil {
         log.Printf("[PTR][ERROR] batch insert failed: %v", err)
+    } else {
+        log.Printf("[PTR] Inserted %d PTR records into ptr_cache", len(records))
     }
 }

@@ -114,13 +114,20 @@ func processPTRBatch(resolver *enrich.DNSResolver, batchSize, lookbackMin, maxTh
         ipList = append(ipList, ip)
     }
 
+    // Quiet mode unless --debug is enabled
     if len(ipList) == 0 {
-        log.Printf("[PTR] No candidate IPs for PTR in last %d minutes", lookbackMin)
+        if debug {
+            log.Printf("[PTR] No candidate IPs for PTR in last %d minutes", lookbackMin)
+        }
         return
     }
 
+
+    // 🔍 Summary when we actually have work
+if debug {
     log.Printf("[PTR] Resolving PTR for %d IPs (lookback=%d min, skipPrivate=%v)",
         len(ipList), lookbackMin, skipPrivate)
+}
 
     records := make([]clickhouse.PTRRecord, 0, len(ipList))
     for _, ip := range ipList {
@@ -129,7 +136,8 @@ func processPTRBatch(resolver *enrich.DNSResolver, batchSize, lookbackMin, maxTh
             ptr = enrich.NoPTR
         }
 
-        // 🔐 SAFE χρήση του geo: μπορεί να είναι nil αν δεν είναι ενεργό το "geoip"
+
+        // 🔐 Safe usage of geo (may be nil)
         var asn uint32
         var asnName, country string
         if geo != nil {
@@ -145,6 +153,7 @@ func processPTRBatch(resolver *enrich.DNSResolver, batchSize, lookbackMin, maxTh
             ASNName: asnName,
             Country: country,
         })
+
     }
 
     if err := clickhouse.InsertPTRBatch(records); err != nil {

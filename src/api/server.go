@@ -52,6 +52,7 @@ func Start() {
     mainMux.HandleFunc("/aspathviz",   WithAuth(handleASPathViz))
     mainMux.HandleFunc("/bgpstatus",   WithAuth(handleBGPStatus))
     mainMux.HandleFunc("/blackhole-list", WithAuth(handleBlackholeList))
+    mainMux.HandleFunc("/blackhole-search", WithAuth(handleBlackholeSearch)) // specific IP
     mainMux.HandleFunc("/flush",       WithAuth(handleFlush))
     mainMux.HandleFunc("/snmp/interfaces", WithAuth(handleSNMPInterfaces))
 

@@ -47,6 +47,7 @@ function main_menu() {
         echo "10. /blackhole-list"
         echo "11. /flush"
 	echo "12. /snmp/interfaces"
+        echo "13. /blackhole-search"
         echo "0. Exit"
         echo "============================="
         read -rp "Select option: " opt
@@ -84,6 +85,14 @@ function main_menu() {
             10) curl_api "blackhole-list" ;;
             11) curl_api "flush" ;;
             12) curl_api "snmp/interfaces" ;;
+            13)
+                read -rp "IP to search in blackhole-list: " ip
+                if [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                    curl_api "blackhole-search?ip=$ip"
+                else
+                    echo "❌ Invalid IPv4 format"
+                fi
+                ;;
             0) echo "👋 Bye!"; exit 0 ;;
             *) echo "❌ Invalid option";;
         esac

@@ -454,6 +454,108 @@ func handleBlackholeList(w http.ResponseWriter, r *http.Request) {
 
 
 
+func handleBlackholeSearch(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Content-Type", "application/json")
+
+    if DB == nil {
+        http.Error(w, "DB not initialized", http.StatusInternalServerError)
+        return
+    }
+
+    ipStr := r.URL.Query().Get("ip")
+    if ipStr == "" {
+        http.Error(w, "Missing ?ip= parameter", http.StatusBadRequest)
+        return
+    }
+
+    if net.ParseIP(ipStr) == nil {
+        http.Error(w, "Invalid IP", http.StatusBadRequest)
+        return
+    }
+
+    // Θα ψάξουμε prefix που να ξεκινάει με την IP π.χ. "1.2.3.4/%"
+    like := ipStr + "/%"
+
+    var b BlackholeList
+    var ts, expires sql.NullString
+    var rule, reason, asn, asnName, country, ptr sql.NullString
+
+    err := DB.QueryRow(`
+        SELECT prefix, timestamp, expires_at, rule, reason, asn, asn_name, country, ptr
+        FROM blackholes
+        WHERE prefix LIKE ?
+        LIMIT 1
+    `, like).Scan(
+        &b.Prefix,
+        &ts, &expires,
+        &rule, &reason,
+        &asn, &asnName, &country, &ptr,
+    )
+
+    if err == sql.ErrNoRows {
+        w.WriteHeader(http.StatusNotFound)
+        _ = json.NewEncoder(w).Encode(map[string]any{
+            "found":   false,
+            "ip":      ipStr,
+            "message": "not blackholed",
+        })
+        return
+    } else if err != nil {
+        log.Printf("[ERROR] DB error in blackhole-search: %v", err)
+        http.Error(w, "DB error", http.StatusInternalServerError)
+        return
+    }
+
+    if ts.Valid {
+        if t, err := time.Parse(time.RFC3339, ts.String); err == nil {
+            b.Timestamp = t
+        }
+    }
+    if expires.Valid {
+        if exp, err := time.Parse(time.RFC3339, expires.String); err == nil {
+            b.ExpiresAt = &exp
+        }
+    }
+    if rule.Valid {
+        b.Rule = rule.String
+    }
+    if reason.Valid {
+        b.Reason = reason.String
+    }
+
+    // ASN parsing όπως ήδη κάνεις στο handleBlackholeList
+    if asn.Valid {
+        asnStr := strings.TrimPrefix(asn.String, "AS")
+        if val, err := strconv.ParseUint(asnStr, 10, 32); err == nil {
+            b.ASN = uint32(val)
+        } else {
+            log.Printf("[ERROR] Failed to parse ASN in blackhole-search: %v", err)
+        }
+    }
+
+    if asnName.Valid {
+        b.ASNName = asnName.String
+    }
+    if country.Valid {
+        b.Country = country.String
+    }
+    if ptr.Valid {
+        b.PTR = ptr.String
+    }
+
+    // Επιτυχία – επιστρέφουμε ένα single BlackholeList object
+    _ = json.NewEncoder(w).Encode(b)
+}
+
+
+
+
+
+
+
+
+
+
 // handleFlush clears the database and BGP announcements for a fresh start.
 func handleFlush(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")

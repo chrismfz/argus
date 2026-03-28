@@ -1,4 +1,4 @@
-package main
+package flow
 
 import (
 	"argus/internal/fields"

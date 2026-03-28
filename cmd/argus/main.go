@@ -24,6 +24,7 @@ import (
 	"argus/internal/sqlite"
 	"argus/internal/clickhouse"
 	"path/filepath"
+	"argus/internal/flow"
 
 )
 
@@ -40,6 +41,9 @@ var detectionRules []detection.DetectionRule // MOVED THIS DECLARATION TO GLOBAL
 var anom *detection.Anomaly
 // memory lane
 var mem *detection.MemoryLayer
+
+var f *flow.FlowRecord
+
 
 func dlog(msg string, args ...interface{}) {
         if debug {
@@ -502,7 +506,7 @@ if enrichEnabled(cfg, "ptr") {
                                         dlog("Received raw flow from collector. Raw data (first few fields): Proto=%v, SrcIP=%v, DstIP=%v",
                                                 raw[fields.PROTOCOL], raw[fields.IPV4_SRC_ADDR], raw[fields.IPV4_DST_ADDR])
 
-                                        flow := ConvertToFlowRecord(raw)
+                                        flow := flow.ConvertToFlowRecord(raw)
                                         batcher.Add(flow)
 
                                         if engine != nil {

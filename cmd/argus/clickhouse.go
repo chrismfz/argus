@@ -4,6 +4,7 @@ import (
 	"time"
 	"argus/internal/config"
 	ch "github.com/ClickHouse/clickhouse-go/v2"
+"argus/internal/flow"
 )
 
 type ClickHouseInserter struct {

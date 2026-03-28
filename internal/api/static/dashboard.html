@@ -371,8 +371,8 @@ function app() { return {
   bhSearch: { ip:'', result:null, loading:false },
   blackholes: [],
   bhLoading: false,
-  announcements: [],
-  annLoading: false,
+  bhFilter: { ip:'', asn:'', country:'' },
+
   announceForm: { prefix:'', next_hop:'192.0.2.1', communities:'65001:666', ttl:14400 },
   announceMsg: '',
   flushConfirm: false,
@@ -384,6 +384,16 @@ function app() { return {
   snapMsg: '',
 
   // ── computed helpers ──
+  get filteredBlackholes() {
+    const { ip, asn, country } = this.bhFilter
+    return this.blackholes.filter(b => {
+      if (ip && !b.prefix.includes(ip) && !(b.ptr||'').toLowerCase().includes(ip.toLowerCase())) return false
+      if (asn && !String(b.asn).includes(asn) && !(b.asn_name||'').toLowerCase().includes(asn.toLowerCase())) return false
+      if (country && (b.country||'').toUpperCase() !== country.toUpperCase()) return false
+      return true
+    })
+  },
+
   get maxAsnIn()  { return Math.max(...(this.asnData.top_in  ?? []).map(a=>a.bytes_in),  1) },
   get maxAsnOut() { return Math.max(...(this.asnData.top_out ?? []).map(a=>a.bytes_out), 1) },
 
@@ -459,7 +469,7 @@ function app() { return {
   loadControl() {
     this.loadBGPStatus()
     this.loadBlackholes()
-    this.loadAnnouncements()
+
   },
 
   authHeaders() {
@@ -486,21 +496,12 @@ function app() { return {
     finally { this.bhLoading = false }
   },
 
-  async loadAnnouncements() {
-    this.annLoading = true
-    try {
-      const d = await this.apiCall('/announcements')
-      this.announcements = Object.values(d).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp))
-    } catch(e) { this.announcements = [] }
-    finally { this.annLoading = false }
-  },
 
   async doWithdraw(prefix) {
     if (!confirm('Withdraw ' + prefix + '?')) return
     try {
       await this.apiCall('/withdraw', { method:'POST', body: JSON.stringify({prefix}) })
       await this.loadBlackholes()
-      await this.loadAnnouncements()
     } catch(e) { alert('Withdraw failed: ' + e.message) }
   },
 
@@ -552,8 +553,13 @@ function app() { return {
       this.flushResult = await this.apiCall('/flush', { method:'POST' })
       this.flushConfirm = false
       await this.loadBlackholes()
-      await this.loadAnnouncements()
     } catch(e) { this.flushResult = { error: e.message } }
+  },
+
+  countryFlag(cc) {
+    if (!cc || cc.length !== 2) return ''
+    // Convert country code to regional indicator emoji (flag)
+    return [...cc.toUpperCase()].map(c => String.fromCodePoint(0x1F1E6 + c.charCodeAt(0) - 65)).join('')
   },
 
   fmtExpiry(exp) {
@@ -1002,28 +1008,47 @@ function fmtBytes(b) { return fmtBytesS(b) }
 
   <!-- Active blackholes -->
   <div class="card" style="margin-bottom:16px">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
       <div class="card-title" style="margin:0">active blackholes</div>
-      <span style="font-size:12px;color:var(--muted)" x-text="'(' + blackholes.length + ')'"></span>
-      <button class="btn secondary" style="font-size:11px;margin-left:auto" @click="loadBlackholes()">↻</button>
+      <span style="font-size:12px;color:var(--muted)" x-text="filteredBlackholes.length + ' / ' + blackholes.length"></span>
+      <div style="display:flex;gap:6px;flex:1;flex-wrap:wrap;margin-left:8px">
+        <input x-model="bhFilter.ip" placeholder="🔍 IP / PTR"
+               style="width:140px;font-size:12px;font-family:monospace;padding:3px 8px">
+        <input x-model="bhFilter.asn" placeholder="🔍 ASN / name"
+               style="width:130px;font-size:12px;font-family:monospace;padding:3px 8px">
+        <input x-model="bhFilter.country" placeholder="🔍 CC (e.g. RU)"
+               style="width:110px;font-size:12px;font-family:monospace;padding:3px 8px">
+        <button class="btn secondary" style="font-size:11px;padding:3px 10px"
+          @click="bhFilter={ip:'',asn:'',country:''}" x-show="bhFilter.ip||bhFilter.asn||bhFilter.country">✕ clear</button>
+      </div>
+      <button class="btn secondary" style="font-size:11px" @click="loadBlackholes()">↻</button>
     </div>
     <template x-if="bhLoading"><div style="color:var(--muted);font-size:13px"><span class="spinner"></span> loading…</div></template>
     <template x-if="!bhLoading && blackholes.length === 0">
       <p class="notice">No active blackholes.</p>
     </template>
-    <template x-if="blackholes.length > 0">
+    <template x-if="!bhLoading && blackholes.length > 0 && filteredBlackholes.length === 0">
+      <p class="notice">No blackholes match the current filter.</p>
+    </template>
+    <template x-if="filteredBlackholes.length > 0">
       <table>
         <thead>
           <tr>
-            <th>Prefix</th><th>ASN / Name</th><th>Rule</th><th>Expires</th><th>PTR</th><th></th>
+            <th>Prefix</th><th>CC</th><th>ASN / Name</th><th>Rule</th><th>Expires</th><th>PTR</th><th></th>
           </tr>
         </thead>
         <tbody>
-          <template x-for="b in blackholes" :key="b.prefix">
+          <template x-for="b in filteredBlackholes" :key="b.prefix">
             <tr>
               <td style="font-family:monospace;color:var(--accent)" x-text="b.prefix"></td>
               <td>
-                <span class="asn-num" x-text="'AS'+b.asn"></span>
+                <span style="font-size:13px" x-text="countryFlag(b.country)"></span>
+                <span style="font-size:11px;color:var(--muted)" x-text="b.country||'—'"></span>
+              </td>
+              <td>
+                <span class="asn-num" x-text="'AS'+b.asn"
+                  style="cursor:pointer;text-decoration:underline dotted"
+                  @click="bhFilter.asn=String(b.asn)"></span>
                 <span style="color:var(--muted);font-size:12px;margin-left:4px" x-text="b.asn_name"></span>
               </td>
               <td><span class="tag-pill" style="color:var(--yellow);font-size:11px" x-text="b.rule"></span></td>
@@ -1040,36 +1065,6 @@ function fmtBytes(b) { return fmtBytesS(b) }
     </template>
   </div>
 
-  <!-- Active announcements (non-blackhole) -->
-  <div class="card" style="margin-bottom:16px">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-      <div class="card-title" style="margin:0">all active announcements</div>
-      <span style="font-size:12px;color:var(--muted)" x-text="'(' + announcements.length + ')'"></span>
-      <button class="btn secondary" style="font-size:11px;margin-left:auto" @click="loadAnnouncements()">↻</button>
-    </div>
-    <template x-if="announcements.length > 0">
-      <table>
-        <thead><tr><th>Prefix</th><th>Next-hop</th><th>Communities</th><th>Since</th><th></th></tr></thead>
-        <tbody>
-          <template x-for="a in announcements" :key="a.prefix">
-            <tr>
-              <td style="font-family:monospace;color:var(--accent)" x-text="a.prefix"></td>
-              <td style="font-family:monospace;font-size:12px" x-text="a.next_hop"></td>
-              <td style="font-size:12px;color:var(--muted)" x-text="(a.communities||[]).join(', ')||'—'"></td>
-              <td style="font-size:12px;color:var(--muted)" x-text="new Date(a.timestamp).toLocaleTimeString()"></td>
-              <td>
-                <button style="background:none;border:1px solid var(--red);color:var(--red);border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer"
-                  @click="doWithdraw(a.prefix)">✕</button>
-              </td>
-            </tr>
-          </template>
-        </tbody>
-      </table>
-    </template>
-    <template x-if="announcements.length === 0 && !annLoading">
-      <p class="notice">No active announcements.</p>
-    </template>
-  </div>
 
   <!-- Emergency flush -->
   <div class="card" style="border-color:rgba(243,139,168,.3)">

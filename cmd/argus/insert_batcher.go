@@ -9,12 +9,13 @@ import (
 	"github.com/yl2chen/cidranger"
 	"argus/internal/enrich"
         "argus/internal/bgp"
+	"argus/internal/clickhouse"
 flowpkg "argus/internal/flow"
 
 )
 
 type InsertFlowBatcher struct {
-	inserter      *ClickHouseInserter
+	inserter      *clickhouse.Inserter
 	batchSize     int
 	flushInterval time.Duration
 	ranger        cidranger.Ranger
@@ -32,7 +33,7 @@ type InsertFlowBatcher struct {
 
 
 func NewInsertFlowBatcher(
-    inserter *ClickHouseInserter,
+    inserter *clickhouse.Inserter,
     batchSize int,
     flushInterval time.Duration,
     ranger cidranger.Ranger,

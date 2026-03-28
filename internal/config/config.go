@@ -2,6 +2,7 @@ package config
 
 import (
     "fmt"
+	"log"
     "os"
     "path/filepath"
     "gopkg.in/yaml.v3"
@@ -304,4 +305,25 @@ func EnrichEnabled(cfg *Config, name string) bool {
 		}
 	}
 	return false
+}
+
+// LogStartup prints the effective configuration at startup.
+func LogStartup(cfg *Config) {
+	ac := cfg.Detection.Anomaly
+	pf := ac.Prefilter
+	log.Printf("[CFG] anomaly: enabled=%v window=%s interval=%s label=%s min_score=%.3f log_only=%v",
+		ac.Enabled, ac.Window, ac.Interval, ac.Label, ac.MinScore, ac.LogOnly)
+	log.Printf("[CFG] anomaly: retrain_every=%s baseline_max=%d top_k=%d trees=%d sample_size=%d contamination=%.3f",
+		ac.RetrainEvery, ac.BaselineMax, ac.TopK, ac.Trees, ac.SampleSize, ac.Contamination)
+	log.Printf("[CFG] anomaly: require_hbos_percentile=%.3f weights={iforest:%.2f,hbos:%.2f} print_above_mean_percent=%.0f allow_asns=%v",
+		ac.RequireHBOSPercentile, ac.Weights.IForest, ac.Weights.HBOS, ac.PrintAboveMeanPercent, ac.AllowASNs)
+	log.Printf("[CFG] anomaly.prefilter: pps>=%.1f uniq_ports>=%.0f uniq_ips>=%.0f syn_ratio>=%.2f icmp_share>=%.2f",
+		pf.MinPPS, pf.MinUniqDstPorts, pf.MinUniqDstIPs, pf.MinSynRatio, pf.MinICMPShare)
+
+	mc := cfg.Detection.Memory
+	log.Printf("[CFG] memory: enabled=%v interval=%s log_path=%s alpha=%.2f theta=%.2f tau_risk=%.2f",
+		mc.Enabled, mc.Interval, mc.LogPath, mc.Alpha, mc.Theta, mc.TauRisk)
+	log.Printf("[CFG] memory: debt(decay=%.2f warn=%.2f) flags(spike=%.2f consec=%d d5m=%.3f d30m=%.3f) ttl=%s top_k_enrich=%d state_changes_only=%v",
+		mc.Debt.DecayPerTick, mc.Debt.WarnThreshold, mc.Flags.SpikeThreshold, mc.Flags.ConsecHighWarn,
+		mc.Flags.Decay5m, mc.Flags.Decay30m, mc.TTL, mc.TopKEnrich, mc.LogStateChangesOnly)
 }

@@ -141,6 +141,9 @@ func Start() {
 mainMux.HandleFunc("/debug/flows",      WithMainIPOnly(handleFlowsDebug))
 mainMux.HandleFunc("/tel/flows/stream", WithMainIPOnly(handleFlowsStream))
 
+mainMux.HandleFunc("/debug/rawflows",      WithMainIPOnly(handleRawFlowsDebug))
+mainMux.HandleFunc("/tel/rawflows/stream", WithMainIPOnly(handleRawFlowsStream))
+
 	apiAddr := fmt.Sprintf("%s:%d", config.AppConfig.API.ListenAddress, config.AppConfig.API.Port)
 	mainSrv := &http.Server{
 		Addr:              apiAddr,

@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>argus — raw flow debug</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f1117;--bg2:#161b27;--bg3:#1e2535;
+  --border:#2a3147;--text:#cdd6f4;--muted:#6c7086;
+  --accent:#89b4fa;--green:#a6e3a1;--yellow:#f9e2af;--red:#f38ba8;
+  --purple:#cba6f7;--teal:#94e2d5;--orange:#fab387;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:monospace;font-size:13px}
+header{display:flex;align-items:center;gap:12px;padding:10px 16px;background:var(--bg2);border-bottom:1px solid var(--border);flex-wrap:wrap}
+header h1{font-size:14px;font-weight:600;color:var(--accent);font-family:system-ui,sans-serif}
+.badge{font-size:11px;padding:2px 8px;border-radius:4px;background:var(--bg3)}
+.badge.live{color:var(--green)}
+.badge.paused{color:var(--yellow)}
+.controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto}
+select,input[type=text]{background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:4px 8px;font-size:12px;font-family:monospace}
+input[type=text]{width:140px}
+input:focus,select:focus{outline:none;border-color:var(--accent)}
+button{background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:4px 12px;font-size:12px;cursor:pointer;font-family:system-ui,sans-serif}
+button:hover{border-color:var(--accent);color:var(--accent)}
+button.active{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+.stats{display:flex;gap:16px;padding:6px 16px;background:var(--bg2);border-bottom:1px solid var(--border);font-size:12px;color:var(--muted)}
+.stats b{color:var(--text)}
+
+/* layout: left=flow list, right=field detail */
+.layout{display:flex;height:calc(100vh - 88px)}
+#flow-list{width:420px;min-width:280px;overflow-y:auto;border-right:1px solid var(--border);flex-shrink:0}
+#field-view{flex:1;overflow-y:auto;padding:0}
+
+/* flow list */
+.flow-item{padding:7px 10px;border-bottom:1px solid var(--border);cursor:pointer;display:grid;grid-template-columns:70px 1fr 1fr auto;gap:4px;align-items:center}
+.flow-item:hover{background:var(--bg3)}
+.flow-item.selected{background:var(--bg3);border-left:2px solid var(--accent)}
+.flow-item .t{color:var(--muted);font-size:11px}
+.flow-item .src{color:var(--purple)}
+.flow-item .dst{color:var(--teal)}
+.flow-item .cnt{color:var(--muted);font-size:11px;text-align:right}
+
+/* field detail */
+#field-view table{width:100%;border-collapse:collapse}
+#field-view thead{position:sticky;top:0;background:var(--bg2);z-index:5}
+#field-view thead th{padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);text-align:left;border-bottom:1px solid var(--border)}
+#field-view tbody td{padding:5px 10px;border-bottom:1px solid rgba(42,49,71,.4);vertical-align:middle}
+#field-view tbody tr:hover{background:var(--bg3)}
+.fid{color:var(--muted);font-size:11px;width:40px}
+.fname{color:var(--accent);width:200px}
+.fname.unknown{color:var(--muted)}
+.fval{color:var(--text);font-family:monospace}
+.fval.highlight{color:var(--yellow);font-weight:600}
+.fval.ip{color:var(--teal)}
+.fval.asn{color:var(--purple)}
+.fval.dir{padding:2px 8px;border-radius:3px;font-weight:600}
+.fval.dir-0{background:rgba(249,226,175,.15);color:var(--yellow)}
+.fval.dir-1{background:rgba(166,227,161,.15);color:var(--green)}
+.fdesc{font-size:11px;color:var(--muted);padding-left:8px}
+.empty{padding:40px;text-align:center;color:var(--muted)}
+.src-badge{font-size:11px;padding:2px 6px;border-radius:3px;background:var(--bg3);color:var(--muted);margin-left:auto}
+</style>
+</head>
+<body>
+<header>
+  <h1>raw flow debug</h1>
+  <a href="/debug/flows" style="color:var(--muted);font-size:12px;text-decoration:none">← back to flow debug</a>
+  <span id="conn-badge" class="badge live">● connecting…</span>
+  <div class="controls">
+    <input type="text" id="filter-ip" placeholder="filter IP…" oninput="applyFilter()">
+    <button id="btn-pause" onclick="togglePause()">⏸ pause</button>
+    <button onclick="clearAll()">🗑 clear</button>
+    <select id="max-rows" onchange="trimList()">
+      <option value="100">100 flows</option>
+      <option value="200" selected>200 flows</option>
+      <option value="500">500 flows</option>
+    </select>
+  </div>
+</header>
+<div class="stats">
+  <span>received <b id="s-total">0</b></span>
+  <span>field 61 (DIRECTION) seen <b id="s-dir">0</b> times</span>
+  <span>sources <b id="s-src">0</b></span>
+  <span>dropped (slow) <b id="s-drop">0</b></span>
+</div>
+
+<div class="layout">
+  <div id="flow-list"><div class="empty" id="list-empty">Waiting for flows…</div></div>
+  <div id="field-view"><div class="empty" id="fv-empty">← click a flow to inspect its fields</div></div>
+</div>
+
+<script>
+// ── IANA / Cisco NetFlow v9 field name map ────────────────────────────────────
+const FIELD_NAMES = {
+  1:'IN_BYTES', 2:'IN_PKTS', 3:'FLOWS', 4:'PROTOCOL',
+  5:'SRC_TOS', 6:'TCP_FLAGS', 7:'L4_SRC_PORT', 8:'IPV4_SRC_ADDR',
+  9:'SRC_MASK', 10:'INPUT_SNMP', 11:'L4_DST_PORT', 12:'IPV4_DST_ADDR',
+  13:'DST_MASK', 14:'OUTPUT_SNMP', 15:'IPV4_NEXT_HOP', 16:'SRC_AS',
+  17:'DST_AS', 18:'BGP_IPV4_NEXT_HOP', 21:'LAST_SWITCHED', 22:'FIRST_SWITCHED',
+  23:'OUT_BYTES', 24:'OUT_PKTS', 27:'IPV6_SRC_ADDR', 28:'IPV6_DST_ADDR',
+  32:'ICMP_TYPE', 34:'SAMPLING_INTERVAL', 35:'SAMPLING_ALGORITHM',
+  36:'FLOW_ACTIVE_TIMEOUT', 37:'FLOW_INACTIVE_TIMEOUT',
+  38:'ENGINE_TYPE', 39:'ENGINE_ID',
+  56:'IN_SRC_MAC', 57:'OUT_DST_MAC', 58:'SRC_VLAN', 59:'DST_VLAN',
+  // THE KEY FIELD:
+  61:'DIRECTION',
+  62:'IPV6_NEXT_HOP', 70:'MPLS_LABEL_1',
+  80:'IN_DST_MAC', 81:'OUT_SRC_MAC',
+  85:'FLOWS_TOTAL', 86:'FLOWS_SAMPLED',
+  88:'FRAGMENT_OFFSET', 89:'FORWARDING_STATUS',
+  95:'APPLICATION_ID',
+  // IPFIX enterprise common
+  148:'FLOW_ID', 150:'FLOW_START_SECONDS', 151:'FLOW_END_SECONDS',
+  152:'FLOW_START_MILLISECONDS', 153:'FLOW_END_MILLISECONDS',
+  176:'ICMP_TYPE_IPV4', 177:'ICMP_CODE_IPV4',
+  192:'IP_VERSION', 210:'PADDING_OCTETS',
+  // Custom / vendor
+  65001:'CUSTOM_TIMESTAMP', 65002:'CUSTOM_TIMESTAMP_START',
+}
+
+const FIELD_DESCRIPTIONS = {
+  1:'Incoming bytes', 2:'Incoming packets', 4:'Protocol number (6=TCP,17=UDP)',
+  6:'TCP flags bitmask', 7:'Source port', 8:'Source IPv4 address',
+  10:'Ingress SNMP interface index', 11:'Destination port',
+  12:'Destination IPv4 address', 14:'Egress SNMP interface index',
+  16:'Source BGP AS number', 17:'Destination BGP AS number',
+  61:'⚠️ Flow direction — 0=ingress, 1=egress (check if MikroTik sends this!)',
+  27:'Source IPv6 address', 28:'Destination IPv6 address',
+}
+
+// Fields to highlight specially
+const IP_FIELDS   = new Set([8,12,15,18,27,28,62])
+const ASN_FIELDS  = new Set([16,17])
+const DIR_FIELDS  = new Set([61])
+const KEY_FIELDS  = new Set([1,2,4,6,7,8,10,11,12,14,16,17,21,22,61])
+
+let flows = []       // [{ts, source, fields}]
+let selected = null
+let total = 0, dirSeen = 0, dropped = 0
+let sources = new Set()
+let paused = false
+let filterIP = ''
+let es = null
+
+function connect() {
+  es = new EventSource('/tel/rawflows/stream')
+  es.onopen = () => {
+    document.getElementById('conn-badge').textContent = '● live'
+    document.getElementById('conn-badge').className = 'badge live'
+  }
+  es.onerror = () => {
+    document.getElementById('conn-badge').textContent = '○ reconnecting…'
+    document.getElementById('conn-badge').className = 'badge paused'
+  }
+  es.onmessage = e => {
+    let f
+    try { f = JSON.parse(e.data) } catch { return }
+    // convert string keys back to numbers
+    const fields = {}
+    for (const [k, v] of Object.entries(f.fields)) {
+      fields[parseInt(k)] = v
+    }
+    f.fields = fields
+
+    total++
+    sources.add(f.source)
+    if (fields[61] !== undefined) dirSeen++
+    document.getElementById('s-total').textContent = total
+    document.getElementById('s-dir').textContent   = dirSeen
+    document.getElementById('s-src').textContent   = sources.size
+
+    if (paused) { dropped++; document.getElementById('s-drop').textContent = dropped; return }
+
+    // apply filter
+    if (filterIP) {
+      const src = fields[8]  || fields[27] || ''
+      const dst = fields[12] || fields[28] || ''
+      if (!src.includes(filterIP) && !dst.includes(filterIP)) return
+    }
+
+    addFlow(f)
+  }
+}
+
+function addFlow(f) {
+  flows.unshift(f)
+  document.getElementById('list-empty').style.display = 'none'
+
+  const src = f.fields[8]  || f.fields[27] || '?'
+  const dst = f.fields[12] || f.fields[28] || '?'
+  const t   = new Date(f.ts * 1000).toLocaleTimeString()
+  const cnt = Object.keys(f.fields).length
+
+  const item = document.createElement('div')
+  item.className = 'flow-item'
+  item.dataset.idx = 0
+  item.innerHTML = `
+    <span class="t">${t}</span>
+    <span class="src">${src}</span>
+    <span class="dst">${dst}</span>
+    <span class="cnt">${cnt} fields</span>
+  `
+  item.onclick = () => selectFlow(0, item)
+
+  const list = document.getElementById('flow-list')
+  list.insertBefore(item, list.firstChild)
+
+  // reindex
+  Array.from(list.querySelectorAll('.flow-item')).forEach((el, i) => el.dataset.idx = i)
+
+  trimList()
+  if (selected === null) selectFlow(0, item)
+}
+
+function selectFlow(idx, el) {
+  document.querySelectorAll('.flow-item').forEach(e => e.classList.remove('selected'))
+  if (el) el.classList.add('selected')
+  selected = idx
+
+  const f = flows[idx]
+  if (!f) return
+
+  document.getElementById('fv-empty').style.display = 'none'
+  const tbody = []
+
+  // sort: key fields first, then by field ID
+  const ids = Object.keys(f.fields).map(Number)
+  ids.sort((a, b) => {
+    const aKey = KEY_FIELDS.has(a) ? 0 : 1
+    const bKey = KEY_FIELDS.has(b) ? 0 : 1
+    return aKey !== bKey ? aKey - bKey : a - b
+  })
+
+  for (const id of ids) {
+    const val   = f.fields[id]
+    const name  = FIELD_NAMES[id]
+    const desc  = FIELD_DESCRIPTIONS[id] || ''
+    const nameClass = name ? 'fname' + (KEY_FIELDS.has(id) ? '' : '') : 'fname unknown'
+    const displayName = name || `field_${id}`
+
+    let valClass = 'fval'
+    let displayVal = val
+    if (DIR_FIELDS.has(id)) {
+      valClass = `fval dir dir-${val}`
+      displayVal = val === '0' ? '0 — ingress (sent by MikroTik)' : '1 — egress'
+    } else if (IP_FIELDS.has(id)) {
+      valClass = 'fval ip'
+    } else if (ASN_FIELDS.has(id)) {
+      valClass = 'fval asn'
+    } else if (KEY_FIELDS.has(id)) {
+      valClass = 'fval highlight'
+    }
+
+    tbody.push(`<tr>
+      <td class="fid">${id}</td>
+      <td class="${nameClass}">${displayName}</td>
+      <td class="${valClass}">${displayVal}</td>
+      <td class="fdesc">${desc}</td>
+    </tr>`)
+  }
+
+  const src = f.fields[8] || f.fields[27] || '?'
+  const dst = f.fields[12] || f.fields[28] || '?'
+  const t   = new Date(f.ts * 1000).toLocaleTimeString()
+
+  document.getElementById('field-view').innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th style="width:40px">ID</th>
+          <th style="width:200px">field name</th>
+          <th>value</th>
+          <th>description</th>
+          <th style="text-align:right;padding-right:12px">
+            <span style="color:var(--purple)">${src}</span>
+            <span style="color:var(--muted)"> → </span>
+            <span style="color:var(--teal)">${dst}</span>
+            <span class="src-badge">${f.source} @ ${t}</span>
+          </th>
+        </tr>
+      </thead>
+      <tbody>${tbody.join('')}</tbody>
+    </table>
+  `
+}
+
+function trimList() {
+  const max = parseInt(document.getElementById('max-rows').value)
+  const list = document.getElementById('flow-list')
+  const items = list.querySelectorAll('.flow-item')
+  while (items.length > max) {
+    list.removeChild(list.lastChild)
+    flows.pop()
+  }
+}
+
+function clearAll() {
+  flows = []
+  selected = null
+  document.getElementById('flow-list').innerHTML = '<div class="empty" id="list-empty">Waiting for flows…</div>'
+  document.getElementById('field-view').innerHTML = '<div class="empty" id="fv-empty">← click a flow to inspect its fields</div>'
+}
+
+function togglePause() {
+  paused = !paused
+  const btn = document.getElementById('btn-pause')
+  if (paused) {
+    btn.textContent = '▶ resume'; btn.classList.add('active')
+    document.getElementById('conn-badge').textContent = '⏸ paused'
+    document.getElementById('conn-badge').className = 'badge paused'
+  } else {
+    btn.textContent = '⏸ pause'; btn.classList.remove('active')
+    document.getElementById('conn-badge').textContent = '● live'
+    document.getElementById('conn-badge').className = 'badge live'
+  }
+}
+
+function applyFilter() {
+  filterIP = document.getElementById('filter-ip').value.trim()
+}
+
+connect()
+</script>
+</body>
+</html>

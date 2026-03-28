@@ -397,6 +397,15 @@ telemetry.Init(uint32(cfg.MyASN), myName, myNets)
 					dlog("Flow: Proto=%v Src=%v Dst=%v",
 						raw[fields.PROTOCOL], raw[fields.IPV4_SRC_ADDR], raw[fields.IPV4_DST_ADDR])
 
+// publish raw record before any conversion
+telemetry.RawTap.Publish("mikrotik", func() map[uint16]string {
+    m := make(map[uint16]string, len(raw))
+    for k, v := range raw {
+        m[k] = v.ToString()
+    }
+    return m
+}())
+
 					fr := flow.ConvertToFlowRecord(raw)
 					batcher.Add(fr)
 

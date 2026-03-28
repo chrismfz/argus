@@ -61,20 +61,18 @@ func handleSignals(cancel context.CancelFunc) {
 // ── main ────────────────────────────────────────────────────────────────────
 
 func main() {
-	// subsystem handles
 	var (
-		configPath    string
-		listener      *bgp.BGPListener
-		engine        *detection.Engine
+		configPath     string
+		listener       *bgp.BGPListener
+		engine         *detection.Engine
 		detectionRules []detection.DetectionRule
 	)
 
-	// context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go handleSignals(cancel)
 
-	// ── CLI flags ────────────────────────────────────────────────────────────
+	// ── CLI flags ─────────────────────────────────────────────────────────────
 	for i := 1; i < len(os.Args); i++ {
 		switch os.Args[i] {
 		case "--help", "-h":
@@ -101,7 +99,7 @@ func main() {
 
 	fmt.Printf("Starting argus %s (built at %s)\n", Version, BuildTime)
 
-	// ── Config ───────────────────────────────────────────────────────────────
+	// ── Config ────────────────────────────────────────────────────────────────
 	if configPath == "" {
 		var err error
 		configPath, err = config.GetDefaultConfigPath()
@@ -117,7 +115,7 @@ func main() {
 	debug = debug || cfg.Debug
 	config.LogStartup(cfg)
 
-	// ── CFM client ───────────────────────────────────────────────────────────
+	// ── CFM client ────────────────────────────────────────────────────────────
 	var cfm *cfmapi.Client
 	if cfg.CFM.Enabled && cfg.CFM.URL != "" && cfg.CFM.Token != "" {
 		cfm = &cfmapi.Client{BaseURL: cfg.CFM.URL, Token: cfg.CFM.Token}
@@ -146,7 +144,7 @@ func main() {
 			cfg.CFM.Enabled, cfg.CFM.URL, len(cfg.CFM.Token))
 	}
 
-	// ── ClickHouse ───────────────────────────────────────────────────────────
+	// ── ClickHouse ────────────────────────────────────────────────────────────
 	if err := clickhouse.Init(*cfg); err != nil {
 		log.Fatalf("[FATAL] ClickHouse init failed: %v", err)
 	}
@@ -154,7 +152,7 @@ func main() {
 		log.Fatalf("[FATAL] EnsureTables failed: %v", err)
 	}
 
-	// ── SQLite ───────────────────────────────────────────────────────────────
+	// ── SQLite ────────────────────────────────────────────────────────────────
 	dsn := "file:detections.sqlite?mode=rwc" +
 		"&_pragma=journal_mode(WAL)" +
 		"&_pragma=synchronous(NORMAL)" +
@@ -197,17 +195,7 @@ func main() {
 		}
 	}()
 
-
-    // ── Telemetry ─────────────────────────────────────────────────────────
-    if err := telemetry.InitSchema(db); err != nil {
-        log.Printf("[telemetry] schema init failed: %v", err)
-    }
-    telemetry.Init(uint32(cfg.MyASN), myNets)
-    telemetry.StartScheduler(ctx, db)
-    log.Printf("[telemetry] aggregator ready (myASN=%d nets=%d)", cfg.MyASN, len(myNets))
-
-
-	// ── Enrichment ───────────────────────────────────────────────────────────
+	// ── Enrichment ────────────────────────────────────────────────────────────
 	enrichers, err := enrich.Init(cfg)
 	if err != nil {
 		log.Fatalf("Failed to initialize enrichment modules: %v", err)
@@ -215,7 +203,7 @@ func main() {
 	geo      := enrichers.Geo
 	resolver := enrichers.DNS
 
-	// ── My prefixes ──────────────────────────────────────────────────────────
+	// ── My prefixes ───────────────────────────────────────────────────────────
 	var myNets []*net.IPNet
 	for _, s := range cfg.MyPrefixes {
 		_, n, err := net.ParseCIDR(s)
@@ -230,7 +218,16 @@ func main() {
 		log.Printf("[INFO]   %s", n.String())
 	}
 
-	// ── Protection list ──────────────────────────────────────────────────────
+	// ── Telemetry ─────────────────────────────────────────────────────────────
+	// Must be after myNets is built (Init needs it) and after SQLite is ready.
+	if err := telemetry.InitSchema(db); err != nil {
+		log.Printf("[telemetry] schema init failed: %v", err)
+	}
+	telemetry.Init(uint32(cfg.MyASN), myNets)
+	telemetry.StartScheduler(ctx, db)
+	log.Printf("[telemetry] aggregator ready (myASN=%d nets=%d)", cfg.MyASN, len(myNets))
+
+	// ── Protection list ───────────────────────────────────────────────────────
 	protPath := filepath.Join("etc", "exclude.detections.conf")
 	if err := detection.LoadProtectedFromFile(protPath); err != nil {
 		log.Printf("[SAFEGUARD] protection list not loaded (%s): %v", protPath, err)
@@ -279,7 +276,7 @@ func main() {
 	dlog("ClickHouse Host: %s", cfg.ClickHouse.Host)
 	dlog("GeoIP ASN DB: %s", cfg.GeoIP.ASNDB)
 
-	// ── SNMP ─────────────────────────────────────────────────────────────────
+	// ── SNMP ──────────────────────────────────────────────────────────────────
 	var ifNameCache *enrich.IFNameCache
 	if config.EnrichEnabled(cfg, "snmp") && cfg.SNMP.Enabled {
 		log.Printf("[INFO] SNMP enrichment enabled (target=%s)", cfg.SNMP.Target)
@@ -297,7 +294,7 @@ func main() {
 		log.Printf("[INFO] SNMP enrichment disabled")
 	}
 
-	// ── BGP ──────────────────────────────────────────────────────────────────
+	// ── BGP ───────────────────────────────────────────────────────────────────
 	if config.EnrichEnabled(cfg, "bgp") && cfg.BGP.Listener.Enabled {
 		listener = bgp.NewBGPListener(cfg.BGP.Listener)
 		bgp.SetMyASN(cfg.BGP.Listener.ASN)
@@ -329,13 +326,13 @@ func main() {
 		}
 	}
 
-	// ── PTR resolver ─────────────────────────────────────────────────────────
+	// ── PTR resolver ──────────────────────────────────────────────────────────
 	if config.EnrichEnabled(cfg, "ptr") {
 		log.Println("[INFO] PTR enrichment enabled")
 		enrich.StartPTRResolver(cfg, geo, debug)
 	}
 
-	// ── Flow pipeline ────────────────────────────────────────────────────────
+	// ── Flow pipeline ─────────────────────────────────────────────────────────
 	inserter := clickhouse.NewInserter(cfg.ClickHouse.Table)
 	batcher := flow.NewInsertFlowBatcher(
 		inserter,
@@ -393,7 +390,7 @@ func main() {
 		}
 	}
 
-	// ── Detection engine ─────────────────────────────────────────────────────
+	// ── Detection engine ──────────────────────────────────────────────────────
 	if cfg.Detection.Enabled {
 		detection.InitDebugDetection(cfg.Detection.DebugDetection)
 		log.Print("[INFO] Detection engine enabled")
@@ -438,7 +435,7 @@ func main() {
 		log.Print("[INFO] Detection engine disabled")
 	}
 
-	// ── API ──────────────────────────────────────────────────────────────────
+	// ── API ───────────────────────────────────────────────────────────────────
 	go func() {
 		api.Geo = geo
 		api.DB = db
@@ -454,3 +451,4 @@ func main() {
 	<-ctx.Done()
 	log.Println("Shutdown complete.")
 }
+

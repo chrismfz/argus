@@ -5,8 +5,6 @@ import (
 	"sort"
 	"sync"
 	"time"
-
-	"argus/internal/flow"
 )
 
 // RingSize is 24 h × 60 min = 1440 one-minute buckets.
@@ -15,11 +13,27 @@ const RingSize = 1440
 // Global is the process-wide aggregator. Set by Init().
 var Global *Aggregator
 
+// Record is a telemetry-local view of an enriched flow.
+// batcher.go converts *flow.FlowRecord → Record before calling Ingest,
+// which breaks the flow↔telemetry import cycle.
+type Record struct {
+	SrcHost       string
+	DstHost       string
+	PeerSrcAS     uint32
+	PeerDstAS     uint32
+	PeerSrcASName string
+	PeerDstASName string
+	Bytes         uint64
+	Packets       uint64
+	FlowDirection uint8 // 0 = ingress, 1 = egress
+	DstPort       uint16
+}
+
 // ── public types (used by API handlers and snapshotter) ──────────────────────
 
 // MinuteBucket holds aggregated counters for one calendar minute.
 type MinuteBucket struct {
-	Ts       int64  `json:"ts"`        // unix epoch, minute-boundary
+	Ts       int64  `json:"ts"`       // unix epoch, minute-boundary
 	BytesIn  uint64 `json:"bytes_in"`
 	BytesOut uint64 `json:"bytes_out"`
 	FlowsIn  uint64 `json:"flows_in"`
@@ -63,7 +77,6 @@ type PortStat struct {
 
 // ── internal types ────────────────────────────────────────────────────────────
 
-// asnMinCount is the per-minute per-ASN counter stored in the ring.
 type asnMinCount struct {
 	name     string
 	bytesIn  uint64
@@ -72,10 +85,8 @@ type asnMinCount struct {
 	flowsOut uint64
 }
 
-// pairKey identifies a directed ASN pair for Sankey edges.
 type pairKey struct{ SrcASN, DstASN uint32 }
 
-// pairAccum accumulates traffic for a Sankey edge between snapshots.
 type pairAccum struct {
 	srcName, dstName string
 	bytes, flows     uint64
@@ -83,28 +94,24 @@ type pairAccum struct {
 
 // ── Aggregator ────────────────────────────────────────────────────────────────
 
-// Aggregator is the in-memory telemetry engine.
-// All public methods are safe for concurrent use.
 type Aggregator struct {
 	mu     sync.RWMutex
 	myASN  uint32
 	myNets []*net.IPNet
 
-	// 24 h rolling minute ring (time-series throughput)
 	ring    [RingSize]MinuteBucket
-	asnRing [RingSize]map[uint32]*asnMinCount // per-minute ASN data
+	asnRing [RingSize]map[uint32]*asnMinCount
 
-	// Accumulated since last daily reset (Sankey, hosts, ports)
 	pairsIn  map[pairKey]*pairAccum
 	pairsOut map[pairKey]*pairAccum
-	hostsIn  map[string]uint64 // dst_ip → bytes (inbound)
-	hostsOut map[string]uint64 // src_ip → bytes (outbound)
-	ports    map[uint16]uint64 // dst_port → flow count
+	hostsIn  map[string]uint64
+	hostsOut map[string]uint64
+	ports    map[uint16]uint64
 
 	lastReset time.Time
 }
 
-// Init creates the global aggregator. Call once from main before flows arrive.
+// Init creates the global aggregator. Call once from main after myNets is built.
 func Init(myASN uint32, myNets []*net.IPNet) {
 	a := &Aggregator{
 		myASN:     myASN,
@@ -132,10 +139,10 @@ func minEpoch(t time.Time) int64 {
 	return (t.Unix() / 60) * 60
 }
 
-// isInbound returns true when the flow is carrying traffic INTO our network.
-// Primary signal: FlowDirection (0 = ingress into router, 1 = egress from router).
+// isInbound returns true when the flow carries traffic INTO our network.
+// Primary signal: FlowDirection (0 = ingress, 1 = egress).
 // Fallback: dst IP in myNets → inbound.
-func (a *Aggregator) isInbound(rec *flow.FlowRecord) bool {
+func (a *Aggregator) isInbound(rec *Record) bool {
 	switch rec.FlowDirection {
 	case 0:
 		return true
@@ -154,10 +161,8 @@ func (a *Aggregator) isInbound(rec *flow.FlowRecord) bool {
 
 // ── Ingest ────────────────────────────────────────────────────────────────────
 
-// Ingest processes one enriched FlowRecord. Called from batcher.enrichAndFlush
-// after GeoIP/BGP enrichment and before (or alongside) the ClickHouse insert.
-// It is fast: one mutex lock, O(1) map ops.
-func (a *Aggregator) Ingest(rec *flow.FlowRecord) {
+// Ingest processes one enriched Record. Called from batcher.enrichAndFlush.
+func (a *Aggregator) Ingest(rec *Record) {
 	now := time.Now()
 	slot := slotFor(now)
 	ts := minEpoch(now)
@@ -166,10 +171,9 @@ func (a *Aggregator) Ingest(rec *flow.FlowRecord) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	// ── time-series ring ──────────────────────────────────────────────────────
+	// ── time-series ring ──────────────────────────────────────────────────
 	b := &a.ring[slot]
 	if b.Ts != ts {
-		// New minute: zero the slot and evict the old ASN minute map.
 		*b = MinuteBucket{Ts: ts}
 		a.asnRing[slot] = make(map[uint32]*asnMinCount)
 	}
@@ -183,9 +187,7 @@ func (a *Aggregator) Ingest(rec *flow.FlowRecord) {
 		b.PktsOut += rec.Packets
 	}
 
-	// ── ASN ring ──────────────────────────────────────────────────────────────
-	// For inbound flows, the interesting ASN is the source (who is sending to us).
-	// For outbound flows, the interesting ASN is the destination (where we send to).
+	// ── ASN ring ──────────────────────────────────────────────────────────
 	asn, asnName := rec.PeerSrcAS, rec.PeerSrcASName
 	if !inbound {
 		asn, asnName = rec.PeerDstAS, rec.PeerDstASName
@@ -208,7 +210,7 @@ func (a *Aggregator) Ingest(rec *flow.FlowRecord) {
 		}
 	}
 
-	// ── Sankey pairs ──────────────────────────────────────────────────────────
+	// ── Sankey pairs ──────────────────────────────────────────────────────
 	srcASN, dstASN := rec.PeerSrcAS, rec.PeerDstAS
 	srcName, dstName := rec.PeerSrcASName, rec.PeerDstASName
 
@@ -233,8 +235,7 @@ func (a *Aggregator) Ingest(rec *flow.FlowRecord) {
 		p.flows++
 	}
 
-	// ── Top hosts ─────────────────────────────────────────────────────────────
-	// Cap at 50 000 unique IPs to prevent unbounded growth between resets.
+	// ── Top hosts ─────────────────────────────────────────────────────────
 	if inbound {
 		if len(a.hostsIn) < 50000 {
 			a.hostsIn[rec.DstHost] += rec.Bytes
@@ -245,7 +246,7 @@ func (a *Aggregator) Ingest(rec *flow.FlowRecord) {
 		}
 	}
 
-	// ── Port heatmap ──────────────────────────────────────────────────────────
+	// ── Port heatmap ──────────────────────────────────────────────────────
 	if rec.DstPort != 0 {
 		a.ports[rec.DstPort]++
 	}
@@ -253,8 +254,6 @@ func (a *Aggregator) Ingest(rec *flow.FlowRecord) {
 
 // ── ResetAccumulators ─────────────────────────────────────────────────────────
 
-// ResetAccumulators clears the daily-window maps (pairs, hosts, ports).
-// Called by the snapshotter after each daily snapshot is saved.
 func (a *Aggregator) ResetAccumulators() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -268,7 +267,6 @@ func (a *Aggregator) ResetAccumulators() {
 
 // ── Query methods ─────────────────────────────────────────────────────────────
 
-// QueryTimeSeries returns up to `minutes` minute buckets sorted oldest→newest.
 func (a *Aggregator) QueryTimeSeries(minutes int) []MinuteBucket {
 	if minutes > RingSize {
 		minutes = RingSize
@@ -287,8 +285,6 @@ func (a *Aggregator) QueryTimeSeries(minutes int) []MinuteBucket {
 	return result
 }
 
-// QueryTopASN returns the top-N ASNs by bytes_in and bytes_out over the last
-// `minutes` minutes (max 1440). The two slices are independent sorted views.
 func (a *Aggregator) QueryTopASN(n, minutes int) (topIn, topOut []ASNStat) {
 	if minutes > RingSize {
 		minutes = RingSize
@@ -341,7 +337,6 @@ func (a *Aggregator) QueryTopASN(n, minutes int) (topIn, topOut []ASNStat) {
 	return in, out
 }
 
-// QuerySankey returns the top-N Sankey edges for incoming and outgoing traffic.
 func (a *Aggregator) QuerySankey(limit int) (sankeyIn, sankeyOut []PairStat) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -367,7 +362,6 @@ func (a *Aggregator) QuerySankey(limit int) (sankeyIn, sankeyOut []PairStat) {
 	return in, out
 }
 
-// QueryTopHosts returns the top-N hosts by bytes, split by direction.
 func (a *Aggregator) QueryTopHosts(n int) (topIn, topOut []HostStat) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -393,7 +387,6 @@ func (a *Aggregator) QueryTopHosts(n int) (topIn, topOut []HostStat) {
 	return in, out
 }
 
-// QueryPorts returns the top-N destination ports by flow count.
 func (a *Aggregator) QueryPorts(n int) []PortStat {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -411,7 +404,6 @@ func (a *Aggregator) QueryPorts(n int) []PortStat {
 
 // ── Snapshot payload ──────────────────────────────────────────────────────────
 
-// SnapshotData is the JSON blob stored in SQLite for each snapshot.
 type SnapshotData struct {
 	TopASNIn    []ASNStat      `json:"asn_in"`
 	TopASNOut   []ASNStat      `json:"asn_out"`
@@ -423,8 +415,6 @@ type SnapshotData struct {
 	TopPorts    []PortStat     `json:"ports"`
 }
 
-// BuildSnapshot captures a complete point-in-time summary.
-// minutes controls how many minutes of time-series to include (max 1440).
 func (a *Aggregator) BuildSnapshot(minutes int) SnapshotData {
 	topIn, topOut := a.QueryTopASN(100, minutes)
 	sankeyIn, sankeyOut := a.QuerySankey(100)
@@ -443,3 +433,4 @@ func (a *Aggregator) BuildSnapshot(minutes int) SnapshotData {
 		TopPorts:    ports,
 	}
 }
+

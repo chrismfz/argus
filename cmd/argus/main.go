@@ -61,18 +61,6 @@ func handleSignals(cancel context.CancelFunc) {
         cancel()
 }
 
-func enrichEnabled(cfg *config.Config, name string) bool {
-        if strings.ToLower(cfg.Enrich) == "none" {
-                return false
-        }
-        parts := strings.Split(strings.ToLower(cfg.Enrich), ",")
-        for _, p := range parts {
-                if strings.TrimSpace(p) == name {
-                        return true
-                }
-        }
-        return false
-}
 
 
 
@@ -377,7 +365,7 @@ for _, n := range myNets {
 // Start SNMP
 
 var ifNameCache *enrich.IFNameCache
-if enrichEnabled(cfg, "snmp") && cfg.SNMP.Enabled {
+if config.EnrichEnabled(cfg, "snmp") && cfg.SNMP.Enabled {
     fmt.Printf("[INFO] SNMP enrichment is ENABLED (target = %s)\n", cfg.SNMP.Target)
     snmpClient, err := enrich.InitSNMPClient(cfg.SNMP)
     if err != nil {
@@ -398,7 +386,7 @@ enrich.StartSNMPStatsCollector() // ✅ ξεκινά το async writer
 
 
 // BGP Listener
-if enrichEnabled(cfg, "bgp") && cfg.BGP.Listener.Enabled {
+if config.EnrichEnabled(cfg, "bgp") && cfg.BGP.Listener.Enabled {
     listener = bgp.NewBGPListener(cfg.BGP.Listener)
 //bgp.SetMyASN(cfg.MyASN) //chris test local ASN
 bgp.SetMyASN(cfg.BGP.Listener.ASN)
@@ -417,7 +405,7 @@ bgp.LocalBGPAddress = cfg.BGP.Listener.ListenIP
 
 
 //  Restore active blackholes from SQLite into BGP -- AFTER BGP
-if enrichEnabled(cfg, "bgp") {
+if config.EnrichEnabled(cfg, "bgp") {
 	if err := detection.RestoreActiveBlackholes(db); err != nil {
 		log.Printf("[WARN] Failed to restore active blackholes: %v", err)
 	}
@@ -443,7 +431,7 @@ if enrichEnabled(cfg, "bgp") {
 
 
 // PTR Resolver
-if enrichEnabled(cfg, "ptr") {
+if config.EnrichEnabled(cfg, "ptr") {
 	log.Println("[INFO] PTR enrichment is ENABLED")
 	// start the async PTR resolver
 	enrich.StartPTRResolver(cfg, geo, debug)

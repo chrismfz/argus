@@ -6,6 +6,7 @@ import (
     "path/filepath"
     "gopkg.in/yaml.v3"
     "argus/internal/collectors"
+    "strings"
 
 )
 
@@ -290,4 +291,17 @@ func GetLocalASN() uint32 {
         return AppConfig.BGP.Listener.LocalASN
     }
     return 0
+}
+
+// EnrichEnabled reports whether a named enrichment module is active.
+func EnrichEnabled(cfg *Config, name string) bool {
+	if strings.ToLower(cfg.Enrich) == "none" {
+		return false
+	}
+	for _, p := range strings.Split(strings.ToLower(cfg.Enrich), ",") {
+		if strings.TrimSpace(p) == name {
+			return true
+		}
+	}
+	return false
 }

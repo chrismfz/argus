@@ -34,7 +34,7 @@ function curl_api() {
 function main_menu() {
     while true; do
         echo ""
-        echo "==== 🌐 FlowEnricher CLI ===="
+        echo "==== 🌐 Argus CLI ===="
         echo "1. /status"
         echo "2. /infoip"
         echo "3. /communities"

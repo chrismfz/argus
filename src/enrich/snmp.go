@@ -6,9 +6,9 @@ import (
     "strings"
     "sync"
     "time"
-    "flowenricher/config"
+    "argus/config"
     "github.com/gosnmp/gosnmp"
-    "flowenricher/clickhouse"
+    "argus/clickhouse"
 )
 
 type IFNameCache struct {

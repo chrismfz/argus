@@ -8,7 +8,7 @@ import (
 	"time"
 
 	ch "github.com/ClickHouse/clickhouse-go/v2"
-	"flowenricher/config"
+	"argus/config"
 )
 
 var (

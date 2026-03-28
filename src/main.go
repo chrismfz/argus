@@ -11,18 +11,18 @@ import (
         "syscall"
         "time"
 	"github.com/fsnotify/fsnotify"
-        "flowenricher/fields"
-        "flowenricher/config"
-        "flowenricher/collectors"
-        "flowenricher/detection"
-        "flowenricher/enrich"
-        "flowenricher/api"
-        "flowenricher/bgp"
-	"flowenricher/internal/cfmapi"
+        "argus/fields"
+        "argus/config"
+        "argus/collectors"
+        "argus/detection"
+        "argus/enrich"
+        "argus/api"
+        "argus/bgp"
+	"argus/internal/cfmapi"
 	"database/sql"
 	_ "modernc.org/sqlite"
-	"flowenricher/internal/sqlite"
-	"flowenricher/clickhouse"
+	"argus/internal/sqlite"
+	"argus/clickhouse"
 	"path/filepath"
 
 )
@@ -48,7 +48,7 @@ func dlog(msg string, args ...interface{}) {
 }
 
 func printHelp() {
-        fmt.Println(`Usage: ./flowenricher [options]
+        fmt.Println(`Usage: ./argus [options]
 
 Options:
   -h, --help           Show this help message
@@ -102,7 +102,7 @@ func main() {
                         printHelp()
                         return
                 case "--version", "-v":
-                fmt.Printf("flowenricher version %s (built at %s)\n", Version, BuildTime)
+                fmt.Printf("argus version %s (built at %s)\n", Version, BuildTime)
                 return
                 case "--debug":
                         debug = true
@@ -121,7 +121,7 @@ func main() {
         }
 
 
-fmt.Printf("Starting flowenricher %s (built at %s)\n", Version, BuildTime)
+fmt.Printf("Starting argus %s (built at %s)\n", Version, BuildTime)
 
         // load config
         if configPath == "" {
@@ -175,7 +175,7 @@ if cfg.CFM.Enabled && cfg.CFM.URL != "" && cfg.CFM.Token != "" {
     log.Printf("[CFM] enabled url=%s", cfg.CFM.URL)
 
     // Send one heartbeat now
-    if err := cfm.Heartbeat(ctx, Version, "flowenricher"); err != nil {
+    if err := cfm.Heartbeat(ctx, Version, "argus"); err != nil {
         log.Printf("[CFM] heartbeat (startup) failed: %v", err)
     } else {
         log.Printf("[CFM] heartbeat (startup) ok")
@@ -190,7 +190,7 @@ if cfg.CFM.Enabled && cfg.CFM.URL != "" && cfg.CFM.Token != "" {
             case <-ctx.Done():
                 return
             case <-t.C:
-                if err := cfm.Heartbeat(ctx, Version, "flowenricher"); err != nil {
+                if err := cfm.Heartbeat(ctx, Version, "argus"); err != nil {
                     log.Printf("[CFM] heartbeat failed: %v", err)
                 }
             }

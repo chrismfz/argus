@@ -6,8 +6,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/pprof"
-	"flowenricher/enrich"
-        "flowenricher/bgp"
+	"argus/enrich"
+        "argus/bgp"
 	"github.com/yl2chen/cidranger"
 	"log"
 	"fmt"
@@ -15,8 +15,8 @@ import (
 	"time"
 	apipb "github.com/osrg/gobgp/v3/api"
 	"database/sql"
-	"flowenricher/config"
-	"flowenricher/internal/cfmapi"
+	"argus/config"
+	"argus/internal/cfmapi"
 )
 
 type GeoIPResponse struct {

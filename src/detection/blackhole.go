@@ -5,9 +5,9 @@ import (
 	"log"
 	"time"
 	"strings"
-	"flowenricher/config"
-	"flowenricher/bgp"
-        "flowenricher/enrich"
+	"argus/config"
+	"argus/bgp"
+        "argus/enrich"
 
 )
 

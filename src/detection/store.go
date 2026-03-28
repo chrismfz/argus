@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 	"log"
-	"flowenricher/bgp"
+	"argus/bgp"
 )
 
 type DetectionStore interface {

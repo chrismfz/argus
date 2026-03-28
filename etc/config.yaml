@@ -45,7 +45,7 @@ timezone: "Europe/Athens"
 
 debug: false
 
-enrich: "geoip, bgp, snmp, ptr"
+enrich: "geoip, bgp, snmp"
 # could be geoip, bgp, ptr, smtp or none #
 # surely, none fucks the purpose of doing all this program :-) #
 # ptr hammers the system be careful
@@ -72,7 +72,7 @@ snmp:
 
 detection:
   enable_detection_engine: true
-  rules_config: /opt/flowenricher/etc/detection.yml
+  rules_config: /opt/argus/etc/detection.yml
   flow_cache_max_window: 60s
   debug_detection: false
 
@@ -158,7 +158,7 @@ detection:
   memory:
     enabled: true
     interval: 10s          # should match anomaly.interval
-    log_path: /opt/flowenricher/risk.log
+    log_path: /opt/argus/risk.log
 
     alpha: 0.30            # EWMA smoothing for risk (↑ = shorter memory)
     theta: 0.65            # pivot for “above-normal” debt accumulation

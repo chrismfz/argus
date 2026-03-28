@@ -3,7 +3,7 @@ package api
 import (
     "encoding/json"
     "net/http"
-    "flowenricher/enrich"
+    "argus/enrich"
 )
 
 func handleSNMPInterfaces(w http.ResponseWriter, r *http.Request) {

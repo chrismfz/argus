@@ -1,7 +1,7 @@
 package main
 
 import (
-	"flowenricher/fields"
+	"argus/fields"
 	"time"
 )
 

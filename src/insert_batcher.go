@@ -8,8 +8,8 @@ import (
 	"time"
 //	"fmt"
 	"github.com/yl2chen/cidranger"
-	"flowenricher/enrich"
-        "flowenricher/bgp"
+	"argus/enrich"
+        "argus/bgp"
 
 )
 

@@ -7,9 +7,9 @@ import (
     "log"
     "time"
 
-    "flowenricher/config"
-    "flowenricher/enrich"
-    "flowenricher/clickhouse"
+    "argus/config"
+    "argus/enrich"
+    "argus/clickhouse"
 )
 
 func StartPTRResolver(cfg *config.Config) {

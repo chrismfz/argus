@@ -12,7 +12,7 @@ import (
 	"github.com/osrg/gobgp/v3/pkg/packet/bgp"
 	gobgpserver "github.com/osrg/gobgp/v3/pkg/server"
 	"google.golang.org/protobuf/types/known/anypb"
-	"flowenricher/config"
+	"argus/config"
 )
 
 var AnnounceServer *gobgpserver.BgpServer

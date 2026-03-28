@@ -6,7 +6,7 @@ import (
 	"sort"
 	"sync"
 	"time"
-	"flowenricher/enrich"
+	"argus/enrich"
 )
 
 type AnomalyConfig struct {

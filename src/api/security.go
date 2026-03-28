@@ -4,7 +4,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
-	"flowenricher/config"
+	"argus/config"
 )
 
 // IP + Token Auth Middleware

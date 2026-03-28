@@ -3,8 +3,8 @@ package main
 import (
     "log"
     "time"
-    "flowenricher/enrich"
-    "flowenricher/clickhouse"
+    "argus/enrich"
+    "argus/clickhouse"
 )
 
 func StartSNMPStatsCollector() {

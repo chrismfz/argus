@@ -1,7 +1,7 @@
 package enrich
 
 import (
-    "flowenricher/config"
+    "argus/config"
 )
 
 type Enrichers struct {

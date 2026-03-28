@@ -1,20 +1,20 @@
 [Unit]
-Description=FlowEnricher Service
+Description=Argus Panoptes
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=/opt/flowenricher/bin/flowenricher
-WorkingDirectory=/opt/flowenricher
+ExecStart=/opt/argus/bin/argus
+WorkingDirectory=/opt/argus
 Restart=on-failure
 RestartSec=5
 User=root
 Group=root
 
 # Logs
-LogsDirectory=flowenricher
-StandardOutput=append:/var/log/flowenricher/output.log
-StandardError=append:/var/log/flowenricher/error.log
+LogsDirectory=argus
+StandardOutput=append:/var/log/argus/output.log
+StandardError=append:/var/log/argus/error.log
 
 [Install]
 WantedBy=multi-user.target

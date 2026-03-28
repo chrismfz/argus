@@ -27,7 +27,7 @@ func (c *Client) doPOST(path string, form url.Values) ([]byte, error) {
 	req.Header.Set("Token", c.Token)
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("X-Agent-Version", "FlowEnricher-Go")
+	req.Header.Set("X-Agent-Version", "Argus")
 
 	resp, err := c.http().Do(req)
 	if err != nil { return nil, err }

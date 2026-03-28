@@ -4,7 +4,7 @@ import (
     "fmt"
     "net"
     "sync"
-//    "flowenricher/detection"
+//    "argus/detection"
     "github.com/oschwald/geoip2-golang"
 )
 

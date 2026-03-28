@@ -7,8 +7,8 @@ import (
 	"net"
 	"time"
 
-	"flowenricher/clickhouse"
-	"flowenricher/config"
+	"argus/clickhouse"
+	"argus/config"
 )
 
 type ClickHouseWriter struct{}

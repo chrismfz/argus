@@ -3,7 +3,7 @@ package collectors
 import (
 	"encoding/binary"
 	"fmt"
-	"flowenricher/fields"
+	"argus/fields"
 	"io" // Import for io.Writer
 	"log" // Import for logging
 	"net"

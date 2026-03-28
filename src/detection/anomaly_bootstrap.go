@@ -6,7 +6,7 @@ import (
     "log"
     "time"
     "github.com/fsnotify/fsnotify"
-    "flowenricher/config"
+    "argus/config"
 )
 
 type featureVector struct {

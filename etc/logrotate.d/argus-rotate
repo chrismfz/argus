@@ -1,4 +1,4 @@
-/var/log/flowenricher/*.log {
+/var/log/argus/*.log {
     daily
     rotate 14
     compress
@@ -9,6 +9,6 @@
     sharedscripts
     postrotate
         # Tell systemd to reopen the log files after rotation
-        systemctl kill -s SIGUSR1 flowenricher.service >/dev/null 2>&1 || true
+        systemctl kill -s SIGUSR1 argus.service >/dev/null 2>&1 || true
     endscript
 }

@@ -10,7 +10,7 @@ import (
 	"os"
 	"time"
 	// "io" // REMOVED: "io" imported and not used
-	"flowenricher/config"
+	"argus/config"
 	"github.com/yl2chen/cidranger"
 
 	api "github.com/osrg/gobgp/v3/api"

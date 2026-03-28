@@ -5,7 +5,7 @@ import (
     "os"
     "path/filepath"
     "gopkg.in/yaml.v3"
-    "flowenricher/collectors"
+    "argus/collectors"
 
 )
 

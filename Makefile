@@ -1,6 +1,6 @@
 BIN_DIR := bin
 SRC_DIR := src
-BINARY := $(BIN_DIR)/flowenricher
+BINARY := $(BIN_DIR)/argus
 
 .PHONY: help setup update build run clean
 

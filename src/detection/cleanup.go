@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 //	"time"
-	"flowenricher/bgp"
+	"argus/bgp"
 )
 
 // Κάνει withdraw και διαγράφει expired blackholes

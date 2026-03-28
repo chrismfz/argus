@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 	"os"
-	"flowenricher/enrich"
+	"argus/enrich"
 )
 
 

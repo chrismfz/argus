@@ -2,7 +2,7 @@ package main
 import (
 	"context"
 	"time"
-	"flowenricher/config"
+	"argus/config"
 	ch "github.com/ClickHouse/clickhouse-go/v2"
 )
 

@@ -1,9 +1,9 @@
-# flowenricher
+# argus panoptes
 
-`flowenricher` is a real-time NetFlow/IPFIX enrichment, detection, and mitigation engine written in Go.
+`argus` is a real-time NetFlow/IPFIX enrichment, detection, and mitigation engine written in Go.
 It processes live traffic or JSON flow logs, enriches them with ASN, GeoIP, BGP AS paths, reverse DNS, and SNMP interface data — then stores them in ClickHouse for blazing-fast analytics.
 
-In addition to enrichment, `flowenricher` includes a built-in detection engine that can trigger alerts or take automated action such as BGP blackholing based on customizable flow rules.
+In addition to enrichment, `argus` includes a built-in detection engine that can trigger alerts or take automated action such as BGP blackholing based on customizable flow rules.
 
 ---
 
@@ -29,7 +29,7 @@ In addition to enrichment, `flowenricher` includes a built-in detection engine t
 ## 📦 Architecture Overview
 
 New:
-[Netflow v9/IPFIX] → [flowenricher] → [BGP/GeoIP/PTR] → [ClickHouse]
+[Netflow v9/IPFIX] → [argus] → [BGP/GeoIP/PTR] → [ClickHouse]
 
 ---
 
@@ -138,7 +138,7 @@ kafka:
   brokers:
     - "localhost:9092"
   topic: "netflow"
-  group_id: "flowenricher-group"
+  group_id: "argus-group"
 
 dns:
   nameserver: "1.1.1.1"
@@ -172,7 +172,7 @@ snmp:
 
 detection:
   enable_detection_engine: true
-  rules_config: /opt/flowenricher/etc/detection.yml
+  rules_config: /opt/argus/etc/detection.yml
   flow_cache_max_window: 60s
   debug_detection: false
 
@@ -266,8 +266,8 @@ SETTINGS index_granularity = 8192;
 ## 🚀 Running
 
 ```bash
-go build -o flowenricher
-./flowenricher --config config.yaml --rules detection.yml
+go build -o argus
+./argus --config config.yaml --rules detection.yml
 ```
 
 
@@ -279,21 +279,21 @@ Goals
 
 Add an unsupervised anomaly score (Isolation Forest) to help detect scans/stealthy floods that rule-based detectors miss.
 
-Keep the core flowenricher in Go, avoid shipping heavy ML libs
+Keep the core argus in Go, avoid shipping heavy ML libs
 
 
 ### High-level architecture
-NetFlow/IPFIX --> flowenricher (Go)
+NetFlow/IPFIX --> argus (Go)
 - enrichment (ASN/GeoIP/PTR/SNMP) -> ClickHouse
 - feature extraction per window -> POST to ML scorer /score
 - receives ml_score -> feed into detection engine
 - detection rules can use Isolation Forest alongside rule conditions
 
 
-# Teaching FlowEnricher to Spot Weirdos: Isolation Forest Joins the Party
+# Teaching argus to Spot Weirdos: Isolation Forest Joins the Party
 
 --- 
-We added unsupervised anomaly detection to FlowEnricher using an Isolation Forest microservice. 
+We added unsupervised anomaly detection to argus using an Isolation Forest microservice. 
 It scores per-IP behavior in real time and helps catch stealthy port scans and low-and-slow DoS bursts that signatures miss. ```
 
 
@@ -304,11 +304,11 @@ Isolation Forest learns what’s normal for your network and flags outliers—no
 
 How it works
 
-FlowEnricher aggregates flows per source and builds compact feature vectors (packets/sec, bytes/sec, unique destinations, SYN ratio, entropies…).
+argus aggregates flows per source and builds compact feature vectors (packets/sec, bytes/sec, unique destinations, SYN ratio, entropies…).
 
 Vectors are POSTed to a tiny Python service (FastAPI + scikit-learn). It maintains an Isolation Forest model.
 
-The service replies with an anomaly score (0..1). FlowEnricher can log it, visualize it in ClickHouse, or use it directly in rules.
+The service replies with an anomaly score (0..1). argus can log it, visualize it in ClickHouse, or use it directly in rules.
 
 
 

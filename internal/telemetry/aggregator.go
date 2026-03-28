@@ -12,19 +12,20 @@ const RingSize = 1440
 var Global *Aggregator
 
 // Record is a telemetry-local view of an enriched flow.
-// batcher.go converts *flow.FlowRecord → Record before calling Ingest,
-// breaking the flow↔telemetry import cycle.
+// batcher.go converts *flow.FlowRecord → Record before calling Ingest.
 type Record struct {
-	SrcHost       string
-	DstHost       string
-	PeerSrcAS     uint32
-	PeerDstAS     uint32
-	PeerSrcASName string
-	PeerDstASName string
-	Bytes         uint64
-	Packets       uint64
-	FlowDirection uint8 // MikroTik often sends 0 for all — don't trust alone
-	DstPort       uint16
+	SrcHost         string
+	DstHost         string
+	PeerSrcAS       uint32
+	PeerDstAS       uint32
+	PeerSrcASName   string
+	PeerDstASName   string
+	Bytes           uint64
+	Packets         uint64
+	FlowDirection   uint8  // raw MikroTik field — always 0, not trusted
+	DstPort         uint16
+	InputInterface  uint32 // INPUT_SNMP  — ingress interface index
+	OutputInterface uint32 // OUTPUT_SNMP — egress interface index
 }
 
 // ── public types ──────────────────────────────────────────────────────────────
@@ -93,6 +94,11 @@ type Aggregator struct {
 	myName string
 	myNets []*net.IPNet
 
+	// upstreamIfaces is the set of interface indices that face outside
+	// (transit + IX). If INPUT_SNMP is in this set → inbound.
+	// If OUTPUT_SNMP is in this set → outbound.
+	upstreamIfaces map[uint32]bool
+
 	ring    [RingSize]MinuteBucket
 	asnRing [RingSize]map[uint32]*asnMinCount
 
@@ -106,19 +112,27 @@ type Aggregator struct {
 }
 
 // Init creates the global aggregator.
-// myName should come from geo.GetASNName(myNets[0].IP.String()) in main.go.
+//   - myName: from geo.GetASNName(myNets[0].IP.String())
+//   - upstreamIfaces: SNMP interface indices that face outside
+//     (e.g. [2, 3, 9] for Synapsecom, GRIX, failover on your CCR2004)
+//
 // Call after myNets is built and geo is initialised.
-func Init(myASN uint32, myName string, myNets []*net.IPNet) {
+func Init(myASN uint32, myName string, myNets []*net.IPNet, upstreamIfaces []uint32) {
+	ifSet := make(map[uint32]bool, len(upstreamIfaces))
+	for _, idx := range upstreamIfaces {
+		ifSet[idx] = true
+	}
 	a := &Aggregator{
-		myASN:     myASN,
-		myName:    myName,
-		myNets:    myNets,
-		pairsIn:   make(map[pairKey]*pairAccum),
-		pairsOut:  make(map[pairKey]*pairAccum),
-		hostsIn:   make(map[string]uint64),
-		hostsOut:  make(map[string]uint64),
-		ports:     make(map[uint16]uint64),
-		lastReset: time.Now(),
+		myASN:          myASN,
+		myName:         myName,
+		myNets:         myNets,
+		upstreamIfaces: ifSet,
+		pairsIn:        make(map[pairKey]*pairAccum),
+		pairsOut:       make(map[pairKey]*pairAccum),
+		hostsIn:        make(map[string]uint64),
+		hostsOut:       make(map[string]uint64),
+		ports:          make(map[uint16]uint64),
+		lastReset:      time.Now(),
 	}
 	for i := range a.asnRing {
 		a.asnRing[i] = make(map[uint32]*asnMinCount)
@@ -136,10 +150,29 @@ func minEpoch(t time.Time) int64 {
 	return (t.Unix() / 60) * 60
 }
 
-// classifyDirection returns inbound + debug booleans for src/dst prefix match.
-// Primary: IP matching against my_prefixes.
-// Fallback: FlowDirection (MikroTik often exports 0 for everything).
+// classifyDirection returns:
+//   inbound  — traffic arriving into our network
+//   srcInMy  — src IP matched my_prefixes (debug)
+//   dstInMy  — dst IP matched my_prefixes (debug)
+//
+// Priority order (highest confidence first):
+//  1. SNMP interface index — most reliable, no MikroTik bugs
+//  2. IP prefix matching  — reliable for all traffic to/from our prefixes
+//  3. FlowDirection field — last resort, MikroTik sends 0 for everything
 func (a *Aggregator) classifyDirection(rec *Record) (inbound, srcInMy, dstInMy bool) {
+	// ── 1. Interface-based (most reliable) ───────────────────────────────
+	if len(a.upstreamIfaces) > 0 {
+		if rec.InputInterface != 0 && a.upstreamIfaces[rec.InputInterface] {
+			// packet arrived on an upstream/IX interface → inbound
+			return true, false, false
+		}
+		if rec.OutputInterface != 0 && a.upstreamIfaces[rec.OutputInterface] {
+			// packet left via an upstream/IX interface → outbound
+			return false, false, false
+		}
+	}
+
+	// ── 2. IP prefix matching ─────────────────────────────────────────────
 	if len(a.myNets) > 0 {
 		if ip := net.ParseIP(rec.DstHost); ip != nil {
 			for _, n := range a.myNets {
@@ -164,13 +197,13 @@ func (a *Aggregator) classifyDirection(rec *Record) (inbound, srcInMy, dstInMy b
 			return false, srcInMy, dstInMy
 		}
 	}
-	// Fallback: trust FlowDirection only when IP matching was inconclusive
+
+	// ── 3. FlowDirection fallback ─────────────────────────────────────────
 	return rec.FlowDirection == 0, srcInMy, dstInMy
 }
 
 // ── Ingest ────────────────────────────────────────────────────────────────────
 
-// Ingest processes one enriched Record. Called from batcher.enrichAndFlush.
 func (a *Aggregator) Ingest(rec *Record) {
 	now := time.Now()
 	slot := slotFor(now)
@@ -178,7 +211,7 @@ func (a *Aggregator) Ingest(rec *Record) {
 
 	inbound, srcInMy, dstInMy := a.classifyDirection(rec)
 
-	// Feed the live debug tap (non-blocking, runs outside the main lock)
+	// Feed debug tap (non-blocking, outside main lock)
 	Tap.ingest(rec, inbound, srcInMy, dstInMy)
 
 	a.mu.Lock()
@@ -201,9 +234,6 @@ func (a *Aggregator) Ingest(rec *Record) {
 	}
 
 	// ── ASN ring ──────────────────────────────────────────────────────────
-	// Inbound → interesting peer is who sends to us (PeerSrcAS).
-	// Outbound → interesting peer is where we send to (PeerDstAS).
-	// Skip our own ASN — it must never appear as a remote peer.
 	asn, asnName := rec.PeerSrcAS, rec.PeerSrcASName
 	if !inbound {
 		asn, asnName = rec.PeerDstAS, rec.PeerDstASName
@@ -449,4 +479,3 @@ func (a *Aggregator) BuildSnapshot(minutes int) SnapshotData {
 		TopPorts:    ports,
 	}
 }
-

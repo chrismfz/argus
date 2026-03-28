@@ -255,7 +255,7 @@ myName := ""
 if len(myNets) > 0 {
     myName = geo.GetASNName(myNets[0].IP.String())
 }
-telemetry.Init(uint32(cfg.MyASN), myName, myNets)
+telemetry.Init(uint32(cfg.MyASN), myName, myNets, cfg.UpstreamInterfaces)
 
 	telemetry.StartScheduler(ctx, db)
 	log.Printf("[telemetry] aggregator ready (myASN=%d nets=%d)", cfg.MyASN, len(myNets))

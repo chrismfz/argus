@@ -79,6 +79,7 @@ GeoIP struct {
 
     MyASN     uint32   `yaml:"my_asn"`
     MyPrefixes []string `yaml:"my_prefixes"`
+    UpstreamInterfaces  []uint32 `yaml:"upstream_interfaces"`
 
     SNMP SNMPConfig `yaml:"snmp"`
 

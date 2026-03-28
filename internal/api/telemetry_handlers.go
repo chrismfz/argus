@@ -263,3 +263,16 @@ func handleTelInterfaces(w http.ResponseWriter, r *http.Request) {
 	minutes := queryInt(r, "minutes", 1440, 1, 1440)
 	telJSON(w, telemetry.Global.QueryInterfaces(minutes))
 }
+
+
+func handleTelIfaceSankey(w http.ResponseWriter, r *http.Request) {
+	if !telReady(w) {
+		return
+	}
+	limit := queryInt(r, "limit", 30, 1, 200)
+	sankeyIn, sankeyOut := telemetry.Global.QueryIfaceASNSankey(limit)
+	telJSON(w, map[string]any{
+		"incoming": sankeyIn,
+		"outgoing": sankeyOut,
+	})
+}

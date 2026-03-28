@@ -150,7 +150,7 @@ button.btn.secondary{background:var(--bg3);color:var(--text);border:1px solid va
     <div class="card">
       <div class="card-title">top inbound ASNs (last 24h)</div>
       <table>
-        <thead><tr><th>ASN</th><th>Name</th><th>In</th><th style="width:80px"></th></tr></thead>
+        <thead><tr><th>ASN</th><th>Name</th><th>In</th><th style="width:80px"></th><th style="width:120px">via</th></tr></thead>
         <tbody>
           <template x-for="a in (asnData.top_in ?? [])" :key="a.asn">
             <tr>
@@ -158,6 +158,7 @@ button.btn.secondary{background:var(--bg3);color:var(--text);border:1px solid va
               <td x-text="a.name || '—'"></td>
               <td class="bytes" x-text="fmtBytes(a.bytes_in)"></td>
               <td><div class="bar-bg"><div class="bar-fill" :style="'width:'+pct(a.bytes_in, maxAsnIn)+'%'"></div></div></td>
+              <td><span class="tag-pill" x-show="a.via" x-text="a.via" style="color:var(--teal);font-size:11px"></span></td>
             </tr>
           </template>
         </tbody>
@@ -166,7 +167,7 @@ button.btn.secondary{background:var(--bg3);color:var(--text);border:1px solid va
     <div class="card">
       <div class="card-title">top outbound ASNs (last 24h)</div>
       <table>
-        <thead><tr><th>ASN</th><th>Name</th><th>Out</th><th style="width:80px"></th></tr></thead>
+        <thead><tr><th>ASN</th><th>Name</th><th>Out</th><th style="width:80px"></th><th style="width:120px">via</th></tr></thead>
         <tbody>
           <template x-for="a in (asnData.top_out ?? [])" :key="a.asn">
             <tr>
@@ -174,6 +175,7 @@ button.btn.secondary{background:var(--bg3);color:var(--text);border:1px solid va
               <td x-text="a.name || '—'"></td>
               <td class="bytes" x-text="fmtBytes(a.bytes_out)"></td>
               <td><div class="bar-bg"><div class="bar-fill out" :style="'width:'+pct(a.bytes_out, maxAsnOut)+'%'"></div></div></td>
+              <td><span class="tag-pill" x-show="a.via" x-text="a.via" style="color:var(--orange);font-size:11px"></span></td>
             </tr>
           </template>
         </tbody>
@@ -362,6 +364,8 @@ function app() { return {
 
   snapshots: [],
   upstreamsData: [],
+  ifaceSankeyIn: [],
+  ifaceSankeyOut: [],
   upstreamMinutes: 1440,
   snapNote: '',
   snapLoading: false,
@@ -443,12 +447,51 @@ function app() { return {
   async loadUpstreams() {
     this.loading = true
     try {
-      const r = await fetch(`/tel/interfaces?minutes=${this.upstreamMinutes}`)
-      if (!r.ok) return
-      this.upstreamsData = await r.json() ?? []
-      // charts are drawn by x-init on each card after data loads
-    } catch(e) {}
+      const [r1, r2] = await Promise.all([
+        fetch(`/tel/interfaces?minutes=${this.upstreamMinutes}`),
+        fetch(`/tel/iface-sankey?limit=30`),
+      ])
+      this.upstreamsData = r1.ok ? (await r1.json() ?? []) : []
+      const sk = r2.ok ? await r2.json() : {}
+      this.ifaceSankeyIn  = sk.incoming ?? []
+      this.ifaceSankeyOut = sk.outgoing ?? []
+      this.$nextTick(() => {
+        this.drawIfaceSankeyChart('chart-iface-sankey-out', this.ifaceSankeyOut, false)
+        this.drawIfaceSankeyChart('chart-iface-sankey-in',  this.ifaceSankeyIn,  true)
+      })
+    } catch(e) { console.error(e) }
     finally { this.loading = false }
+  },
+
+  drawIfaceSankeyChart(id, pairs, inbound) {
+    const el = document.getElementById(id)
+    if (!el || !pairs.length) return
+    if (!charts[id]) charts[id] = echarts.init(el, 'dark')
+    const nodeSet = new Set()
+    pairs.forEach(p => {
+      nodeSet.add(p.iface_name || ('if'+p.iface_idx))
+      nodeSet.add(p.asn_name   || ('AS'+p.asn))
+    })
+    const nodes = [...nodeSet].map(name => ({name}))
+    const links = pairs.map(p => ({
+      source: inbound ? (p.iface_name||'if'+p.iface_idx) : (p.iface_name||'if'+p.iface_idx),
+      target: inbound ? (p.asn_name||'AS'+p.asn)         : (p.asn_name||'AS'+p.asn),
+      value:  p.bytes,
+    }))
+    charts[id].setOption({
+      backgroundColor:'transparent',
+      tooltip:{trigger:'item',formatter:p=>{
+        if(p.dataType==='edge') return `${p.data.source} → ${p.data.target}: ${fmtBytesS(p.data.value)}`
+        return p.name
+      }},
+      series:[{
+        type:'sankey', layout:'none', emphasis:{focus:'adjacency'},
+        data:nodes, links,
+        lineStyle:{color:'gradient',opacity:.4},
+        label:{color:'#cdd6f4',fontSize:12},
+        nodeWidth:12, nodeGap:8,
+      }]
+    })
   },
 
   drawIfaceChart(iface) {
@@ -630,7 +673,10 @@ function fmtBytes(b) { return fmtBytesS(b) }
   <div class="grid" :style="'grid-template-columns:repeat('+Math.min(upstreamsData.length||1,4)+',1fr);margin-bottom:16px'">
     <template x-for="iface in upstreamsData" :key="iface.index">
       <div class="card">
-        <div class="card-title" x-text="iface.name || ('if'+iface.index)"></div>
+        <div class="card-title">
+          <span x-text="iface.name || ('interface '+iface.index)"></span>
+          <span class="tag-pill" style="margin-left:6px;font-size:10px" x-text="'idx '+iface.index"></span>
+        </div>
         <div style="display:flex;gap:12px;margin-top:4px">
           <div>
             <div style="font-size:11px;color:var(--muted)">IN</div>
@@ -650,7 +696,7 @@ function fmtBytes(b) { return fmtBytesS(b) }
   <!-- per-interface time-series charts -->
   <template x-for="(iface, i) in upstreamsData" :key="iface.index">
     <div class="card" style="margin-bottom:16px">
-      <div class="card-title" x-text="(iface.name || ('if'+iface.index)) + ' — throughput (bytes/min)'"></div>
+      <div class="card-title" x-text="(iface.name || ('interface '+iface.index)) + ' — throughput (bytes/min)'"></div>
       <div :id="'chart-iface-'+iface.index" class="chart" x-init="$nextTick(()=>drawIfaceChart(iface))"></div>
     </div>
   </template>
@@ -658,6 +704,15 @@ function fmtBytes(b) { return fmtBytesS(b) }
   <template x-if="upstreamsData.length === 0">
     <p class="notice">No interface data yet — traffic accumulates per minute. Check that upstream_interfaces is set in config.yaml.</p>
   </template>
+
+  <div class="card" style="margin-bottom:16px" x-show="ifaceSankeyOut.length > 0">
+    <div class="card-title">outgoing traffic — upstream × AS sankey</div>
+    <div id="chart-iface-sankey-out" class="chart-tall"></div>
+  </div>
+  <div class="card" x-show="ifaceSankeyIn.length > 0">
+    <div class="card-title">incoming traffic — upstream × AS sankey</div>
+    <div id="chart-iface-sankey-in" class="chart-tall"></div>
+  </div>
 </div>
 
 </body>

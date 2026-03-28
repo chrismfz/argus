@@ -132,6 +132,7 @@ func Start() {
 	mainMux.HandleFunc("/tel/snapshot",   WithMainIPOnly(handleTelSnapshotGet))
 	mainMux.HandleFunc("/tel/history",    WithMainIPOnly(handleTelHistory))
 	mainMux.HandleFunc("/tel/interfaces", WithMainIPOnly(handleTelInterfaces))
+        mainMux.HandleFunc("/tel/iface-sankey", WithMainIPOnly(handleTelIfaceSankey))
 
 	// Dashboard HTML — IP-only, no token
 	mainMux.HandleFunc("/dashboard", WithMainIPOnly(func(w http.ResponseWriter, r *http.Request) {

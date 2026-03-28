@@ -11,7 +11,6 @@ const RingSize = 1440
 
 var Global *Aggregator
 
-// Record is a telemetry-local view of an enriched flow.
 type Record struct {
 	SrcHost             string
 	DstHost             string
@@ -41,6 +40,7 @@ type MinuteBucket struct {
 	PktsOut  uint64 `json:"pkts_out"`
 }
 
+// ASNStat includes Via — the interface name that carried the most traffic.
 type ASNStat struct {
 	ASN      uint32 `json:"asn"`
 	Name     string `json:"name"`
@@ -48,6 +48,7 @@ type ASNStat struct {
 	BytesOut uint64 `json:"bytes_out"`
 	FlowsIn  uint64 `json:"flows_in"`
 	FlowsOut uint64 `json:"flows_out"`
+	Via      string `json:"via"` // dominant upstream interface name
 }
 
 type PairStat struct {
@@ -70,7 +71,6 @@ type PortStat struct {
 	Count uint64 `json:"count"`
 }
 
-// IfaceMinBucket is one minute of traffic on one interface.
 type IfaceMinBucket struct {
 	Ts       int64  `json:"ts"`
 	BytesIn  uint64 `json:"bytes_in"`
@@ -79,7 +79,6 @@ type IfaceMinBucket struct {
 	FlowsOut uint64 `json:"flows_out"`
 }
 
-// IfaceSeries is the time-series + totals for one interface.
 type IfaceSeries struct {
 	Index    uint32           `json:"index"`
 	Name     string           `json:"name"`
@@ -88,6 +87,17 @@ type IfaceSeries struct {
 	TotalOut uint64           `json:"total_out"`
 	FlowsIn  uint64           `json:"flows_in"`
 	FlowsOut uint64           `json:"flows_out"`
+}
+
+// IfaceSankeyPair is one edge in the interface→ASN Sankey.
+type IfaceSankeyPair struct {
+	IfaceIdx  uint32 `json:"iface_idx"`
+	IfaceName string `json:"iface_name"`
+	ASN       uint32 `json:"asn"`
+	ASNName   string `json:"asn_name"`
+	Bytes     uint64 `json:"bytes"`
+	Flows     uint64 `json:"flows"`
+	Dir       string `json:"dir"` // "in" or "out"
 }
 
 // ── internal types ────────────────────────────────────────────────────────────
@@ -108,6 +118,20 @@ type ifaceMinCount struct {
 	flowsOut uint64
 }
 
+// ifaceAsnKey identifies a (interface, asn, direction) triplet for sankey.
+type ifaceAsnKey struct {
+	ifIdx uint32
+	asn   uint32
+	dir   bool // true=in
+}
+
+type ifaceAsnAccum struct {
+	ifName  string
+	asnName string
+	bytes   uint64
+	flows   uint64
+}
+
 type pairKey struct{ SrcASN, DstASN uint32 }
 
 type pairAccum struct {
@@ -118,16 +142,20 @@ type pairAccum struct {
 // ── Aggregator ────────────────────────────────────────────────────────────────
 
 type Aggregator struct {
-	mu     sync.RWMutex
-	myASN  uint32
-	myName string
-	myNets []*net.IPNet
-
+	mu             sync.RWMutex
+	myASN          uint32
+	myName         string
+	myNets         []*net.IPNet
 	upstreamIfaces map[uint32]bool
 
-	ring     [RingSize]MinuteBucket
-	asnRing  [RingSize]map[uint32]*asnMinCount
-	ifaceRing [RingSize]map[uint32]*ifaceMinCount // per-interface per-minute
+	ring      [RingSize]MinuteBucket
+	asnRing   [RingSize]map[uint32]*asnMinCount
+	ifaceRing [RingSize]map[uint32]*ifaceMinCount
+
+	// asnIface: accumulated per-reset — tracks which interface carries each ASN
+	// key: (ifIdx, asn, inbound) → bytes+flows
+	asnIface    map[ifaceAsnKey]*ifaceAsnAccum
+	ifaceNames  map[uint32]string // index → latest seen name
 
 	pairsIn  map[pairKey]*pairAccum
 	pairsOut map[pairKey]*pairAccum
@@ -148,6 +176,8 @@ func Init(myASN uint32, myName string, myNets []*net.IPNet, upstreamIfaces []uin
 		myName:         myName,
 		myNets:         myNets,
 		upstreamIfaces: ifSet,
+		asnIface:       make(map[ifaceAsnKey]*ifaceAsnAccum),
+		ifaceNames:     make(map[uint32]string),
 		pairsIn:        make(map[pairKey]*pairAccum),
 		pairsOut:       make(map[pairKey]*pairAccum),
 		hostsIn:        make(map[string]uint64),
@@ -166,16 +196,11 @@ func Init(myASN uint32, myName string, myNets []*net.IPNet, upstreamIfaces []uin
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-func slotFor(t time.Time) int {
-	return int((t.Unix() / 60) % RingSize)
-}
-
-func minEpoch(t time.Time) int64 {
-	return (t.Unix() / 60) * 60
-}
+func slotFor(t time.Time) int { return int((t.Unix() / 60) % RingSize) }
+func minEpoch(t time.Time) int64 { return (t.Unix() / 60) * 60 }
 
 func (a *Aggregator) classifyDirection(rec *Record) (inbound, srcInMy, dstInMy bool) {
-	// 1. Interface index (most reliable)
+	// 1. Interface index (most reliable — avoids MikroTik direction=0 bug)
 	if len(a.upstreamIfaces) > 0 {
 		if rec.InputInterface != 0 && a.upstreamIfaces[rec.InputInterface] {
 			return true, false, false
@@ -188,26 +213,16 @@ func (a *Aggregator) classifyDirection(rec *Record) (inbound, srcInMy, dstInMy b
 	if len(a.myNets) > 0 {
 		if ip := net.ParseIP(rec.DstHost); ip != nil {
 			for _, n := range a.myNets {
-				if n.Contains(ip) {
-					dstInMy = true
-					break
-				}
+				if n.Contains(ip) { dstInMy = true; break }
 			}
 		}
 		if ip := net.ParseIP(rec.SrcHost); ip != nil {
 			for _, n := range a.myNets {
-				if n.Contains(ip) {
-					srcInMy = true
-					break
-				}
+				if n.Contains(ip) { srcInMy = true; break }
 			}
 		}
-		if dstInMy {
-			return true, srcInMy, dstInMy
-		}
-		if srcInMy {
-			return false, srcInMy, dstInMy
-		}
+		if dstInMy { return true, srcInMy, dstInMy }
+		if srcInMy { return false, srcInMy, dstInMy }
 	}
 	// 3. FlowDirection fallback
 	return rec.FlowDirection == 0, srcInMy, dstInMy
@@ -234,62 +249,49 @@ func (a *Aggregator) Ingest(rec *Record) {
 		a.ifaceRing[slot] = make(map[uint32]*ifaceMinCount)
 	}
 	if inbound {
-		b.BytesIn += rec.Bytes
-		b.FlowsIn++
-		b.PktsIn += rec.Packets
+		b.BytesIn += rec.Bytes; b.FlowsIn++; b.PktsIn += rec.Packets
 	} else {
-		b.BytesOut += rec.Bytes
-		b.FlowsOut++
-		b.PktsOut += rec.Packets
+		b.BytesOut += rec.Bytes; b.FlowsOut++; b.PktsOut += rec.Packets
 	}
 
 	// ── ASN ring ──────────────────────────────────────────────────────────
 	asn, asnName := rec.PeerSrcAS, rec.PeerSrcASName
-	if !inbound {
-		asn, asnName = rec.PeerDstAS, rec.PeerDstASName
-	}
+	if !inbound { asn, asnName = rec.PeerDstAS, rec.PeerDstASName }
 	if asn != 0 && asn != a.myASN {
 		am := a.asnRing[slot]
 		c, ok := am[asn]
-		if !ok {
-			c = &asnMinCount{name: asnName}
-			am[asn] = c
-		} else if c.name == "" && asnName != "" {
-			c.name = asnName
-		}
-		if inbound {
-			c.bytesIn += rec.Bytes
-			c.flowsIn++
-		} else {
-			c.bytesOut += rec.Bytes
-			c.flowsOut++
-		}
+		if !ok { c = &asnMinCount{name: asnName}; am[asn] = c } else if c.name == "" && asnName != "" { c.name = asnName }
+		if inbound { c.bytesIn += rec.Bytes; c.flowsIn++ } else { c.bytesOut += rec.Bytes; c.flowsOut++ }
 	}
 
-	// ── Interface ring ────────────────────────────────────────────────────
-	// Track the "interesting" interface: for inbound = input (where it came from),
-	// for outbound = output (where it went to). Both are upstream-facing.
+	// ── Interface ring (upstream-only for the series, all for sankey) ─────
 	ifIdx := rec.InputInterface
 	ifName := rec.InputInterfaceName
-	if !inbound {
-		ifIdx = rec.OutputInterface
-		ifName = rec.OutputInterfaceName
-	}
+	if !inbound { ifIdx = rec.OutputInterface; ifName = rec.OutputInterfaceName }
 	if ifIdx != 0 {
-		im := a.ifaceRing[slot]
-		ic, ok := im[ifIdx]
-		if !ok {
-			ic = &ifaceMinCount{name: ifName}
-			im[ifIdx] = ic
-		} else if ic.name == "" && ifName != "" {
-			ic.name = ifName
+		// Store name
+		if ifName != "" { a.ifaceNames[ifIdx] = ifName }
+
+		// Only add to ring if it's an upstream interface
+		if len(a.upstreamIfaces) == 0 || a.upstreamIfaces[ifIdx] {
+			im := a.ifaceRing[slot]
+			ic, ok := im[ifIdx]
+			if !ok { ic = &ifaceMinCount{name: ifName}; im[ifIdx] = ic } else if ic.name == "" && ifName != "" { ic.name = ifName }
+			if inbound { ic.bytesIn += rec.Bytes; ic.flowsIn++ } else { ic.bytesOut += rec.Bytes; ic.flowsOut++ }
 		}
-		if inbound {
-			ic.bytesIn += rec.Bytes
-			ic.flowsIn++
-		} else {
-			ic.bytesOut += rec.Bytes
-			ic.flowsOut++
+
+		// ASN→Interface mapping (for "via" column and sankey) — all upstream ifaces
+		if asn != 0 && asn != a.myASN && (len(a.upstreamIfaces) == 0 || a.upstreamIfaces[ifIdx]) {
+			k := ifaceAsnKey{ifIdx, asn, inbound}
+			acc, ok := a.asnIface[k]
+			if !ok {
+				acc = &ifaceAsnAccum{ifName: ifName, asnName: asnName}
+				a.asnIface[k] = acc
+			}
+			if acc.ifName == "" && ifName != "" { acc.ifName = ifName }
+			if acc.asnName == "" && asnName != "" { acc.asnName = asnName }
+			acc.bytes += rec.Bytes
+			acc.flows++
 		}
 	}
 
@@ -299,39 +301,25 @@ func (a *Aggregator) Ingest(rec *Record) {
 	if inbound && srcASN != 0 && srcASN != a.myASN {
 		k := pairKey{srcASN, a.myASN}
 		p, ok := a.pairsIn[k]
-		if !ok {
-			p = &pairAccum{srcName: srcName, dstName: a.myName}
-			a.pairsIn[k] = p
-		}
-		p.bytes += rec.Bytes
-		p.flows++
+		if !ok { p = &pairAccum{srcName: srcName, dstName: a.myName}; a.pairsIn[k] = p }
+		p.bytes += rec.Bytes; p.flows++
 	}
 	if !inbound && dstASN != 0 && dstASN != a.myASN {
 		k := pairKey{a.myASN, dstASN}
 		p, ok := a.pairsOut[k]
-		if !ok {
-			p = &pairAccum{srcName: a.myName, dstName: dstName}
-			a.pairsOut[k] = p
-		}
-		p.bytes += rec.Bytes
-		p.flows++
+		if !ok { p = &pairAccum{srcName: a.myName, dstName: dstName}; a.pairsOut[k] = p }
+		p.bytes += rec.Bytes; p.flows++
 	}
 
 	// ── Top hosts ─────────────────────────────────────────────────────────
 	if inbound {
-		if len(a.hostsIn) < 50000 {
-			a.hostsIn[rec.DstHost] += rec.Bytes
-		}
+		if len(a.hostsIn) < 50000 { a.hostsIn[rec.DstHost] += rec.Bytes }
 	} else {
-		if len(a.hostsOut) < 50000 {
-			a.hostsOut[rec.SrcHost] += rec.Bytes
-		}
+		if len(a.hostsOut) < 50000 { a.hostsOut[rec.SrcHost] += rec.Bytes }
 	}
 
 	// ── Port heatmap ──────────────────────────────────────────────────────
-	if rec.DstPort != 0 {
-		a.ports[rec.DstPort]++
-	}
+	if rec.DstPort != 0 { a.ports[rec.DstPort]++ }
 }
 
 // ── ResetAccumulators ─────────────────────────────────────────────────────────
@@ -344,243 +332,211 @@ func (a *Aggregator) ResetAccumulators() {
 	a.hostsIn = make(map[string]uint64)
 	a.hostsOut = make(map[string]uint64)
 	a.ports = make(map[uint16]uint64)
+	a.asnIface = make(map[ifaceAsnKey]*ifaceAsnAccum)
 	a.lastReset = time.Now()
 }
 
 // ── Query methods ─────────────────────────────────────────────────────────────
 
 func (a *Aggregator) QueryTimeSeries(minutes int) []MinuteBucket {
-	if minutes > RingSize {
-		minutes = RingSize
-	}
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-
+	if minutes > RingSize { minutes = RingSize }
+	a.mu.RLock(); defer a.mu.RUnlock()
 	cutoff := minEpoch(time.Now()) - int64(minutes-1)*60
 	result := make([]MinuteBucket, 0, minutes)
 	for i := 0; i < RingSize; i++ {
-		if a.ring[i].Ts >= cutoff {
-			result = append(result, a.ring[i])
-		}
+		if a.ring[i].Ts >= cutoff { result = append(result, a.ring[i]) }
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Ts < result[j].Ts })
 	return result
 }
 
-func (a *Aggregator) QueryTopASN(n, minutes int) (topIn, topOut []ASNStat) {
-	if minutes > RingSize {
-		minutes = RingSize
+// dominantIface returns the interface name that carried the most bytes for
+// a given ASN in the given direction. Used to populate ASNStat.Via.
+func (a *Aggregator) dominantIface(asn uint32, inbound bool) string {
+	var best string
+	var bestBytes uint64
+	for k, v := range a.asnIface {
+		if k.asn == asn && k.dir == inbound && v.bytes > bestBytes {
+			bestBytes = v.bytes
+			best = v.ifName
+			if best == "" { best = a.ifaceNames[k.ifIdx] }
+		}
 	}
-	a.mu.RLock()
-	defer a.mu.RUnlock()
+	return best
+}
+
+func (a *Aggregator) QueryTopASN(n, minutes int) (topIn, topOut []ASNStat) {
+	if minutes > RingSize { minutes = RingSize }
+	a.mu.RLock(); defer a.mu.RUnlock()
 
 	cutoff := minEpoch(time.Now()) - int64(minutes)*60
 	merged := make(map[uint32]*ASNStat, 256)
 	for slot := 0; slot < RingSize; slot++ {
-		if a.ring[slot].Ts < cutoff {
-			continue
-		}
+		if a.ring[slot].Ts < cutoff { continue }
 		for asn, c := range a.asnRing[slot] {
 			s, ok := merged[asn]
-			if !ok {
-				s = &ASNStat{ASN: asn, Name: c.name}
-				merged[asn] = s
-			}
-			s.BytesIn += c.bytesIn
-			s.BytesOut += c.bytesOut
-			s.FlowsIn += c.flowsIn
-			s.FlowsOut += c.flowsOut
-			if s.Name == "" && c.name != "" {
-				s.Name = c.name
-			}
+			if !ok { s = &ASNStat{ASN: asn, Name: c.name}; merged[asn] = s }
+			s.BytesIn += c.bytesIn; s.BytesOut += c.bytesOut
+			s.FlowsIn += c.flowsIn; s.FlowsOut += c.flowsOut
+			if s.Name == "" && c.name != "" { s.Name = c.name }
 		}
 	}
+
 	all := make([]ASNStat, 0, len(merged))
-	for _, s := range merged {
-		all = append(all, *s)
-	}
+	for _, s := range merged { all = append(all, *s) }
+
 	in := make([]ASNStat, len(all))
 	copy(in, all)
 	sort.Slice(in, func(i, j int) bool { return in[i].BytesIn > in[j].BytesIn })
-	if len(in) > n {
-		in = in[:n]
-	}
+	if len(in) > n { in = in[:n] }
+	for i := range in { in[i].Via = a.dominantIface(in[i].ASN, true) }
+
 	out := make([]ASNStat, len(all))
 	copy(out, all)
 	sort.Slice(out, func(i, j int) bool { return out[i].BytesOut > out[j].BytesOut })
-	if len(out) > n {
-		out = out[:n]
-	}
+	if len(out) > n { out = out[:n] }
+	for i := range out { out[i].Via = a.dominantIface(out[i].ASN, false) }
+
 	return in, out
 }
 
-// QueryInterfaces returns per-interface time-series for the last `minutes` minutes.
-// Only interfaces that have seen traffic are returned.
+// QueryInterfaces returns per-upstream-interface time-series.
+// Only returns upstream interfaces (those in upstreamIfaces config).
 func (a *Aggregator) QueryInterfaces(minutes int) []IfaceSeries {
-	if minutes > RingSize {
-		minutes = RingSize
-	}
-	a.mu.RLock()
-	defer a.mu.RUnlock()
+	if minutes > RingSize { minutes = RingSize }
+	a.mu.RLock(); defer a.mu.RUnlock()
 
 	cutoff := minEpoch(time.Now()) - int64(minutes-1)*60
-
-	// collect all slots into per-interface series map
-	// seriesMap[ifIdx][ts] = bucket
-	type bucketKey struct {
-		idx uint32
-		ts  int64
-	}
+	type bucketKey struct{ idx uint32; ts int64 }
 	buckets := make(map[bucketKey]*IfaceMinBucket)
-	names := make(map[uint32]string)
 	totals := make(map[uint32]*IfaceSeries)
 
 	for slot := 0; slot < RingSize; slot++ {
 		slotTs := a.ring[slot].Ts
-		if slotTs < cutoff || slotTs == 0 {
-			continue
-		}
+		if slotTs < cutoff || slotTs == 0 { continue }
 		for idx, ic := range a.ifaceRing[slot] {
 			k := bucketKey{idx, slotTs}
-			if _, ok := buckets[k]; !ok {
-				buckets[k] = &IfaceMinBucket{Ts: slotTs}
-			}
+			if _, ok := buckets[k]; !ok { buckets[k] = &IfaceMinBucket{Ts: slotTs} }
 			bkt := buckets[k]
-			bkt.BytesIn += ic.bytesIn
-			bkt.BytesOut += ic.bytesOut
-			bkt.FlowsIn += ic.flowsIn
-			bkt.FlowsOut += ic.flowsOut
-			if names[idx] == "" && ic.name != "" {
-				names[idx] = ic.name
+			bkt.BytesIn += ic.bytesIn; bkt.BytesOut += ic.bytesOut
+			bkt.FlowsIn += ic.flowsIn; bkt.FlowsOut += ic.flowsOut
+			if totals[idx] == nil { totals[idx] = &IfaceSeries{Index: idx} }
+			totals[idx].TotalIn += ic.bytesIn; totals[idx].TotalOut += ic.bytesOut
+			totals[idx].FlowsIn += ic.flowsIn; totals[idx].FlowsOut += ic.flowsOut
+			// Resolve name: prefer ifaceNames (populated from live flows)
+			if totals[idx].Name == "" {
+				if ic.name != "" { totals[idx].Name = ic.name } else if n, ok := a.ifaceNames[idx]; ok { totals[idx].Name = n }
 			}
-			if totals[idx] == nil {
-				totals[idx] = &IfaceSeries{Index: idx}
-			}
-			totals[idx].TotalIn += ic.bytesIn
-			totals[idx].TotalOut += ic.bytesOut
-			totals[idx].FlowsIn += ic.flowsIn
-			totals[idx].FlowsOut += ic.flowsOut
 		}
 	}
 
-	// build IfaceSeries per interface
 	result := make([]IfaceSeries, 0, len(totals))
 	for idx, tot := range totals {
-		// collect and sort time buckets for this interface
 		series := make([]IfaceMinBucket, 0, minutes)
 		for k, bkt := range buckets {
-			if k.idx == idx {
-				series = append(series, *bkt)
-			}
+			if k.idx == idx { series = append(series, *bkt) }
 		}
 		sort.Slice(series, func(i, j int) bool { return series[i].Ts < series[j].Ts })
-
 		result = append(result, IfaceSeries{
-			Index:    idx,
-			Name:     names[idx],
-			Series:   series,
-			TotalIn:  tot.TotalIn,
-			TotalOut: tot.TotalOut,
-			FlowsIn:  tot.FlowsIn,
-			FlowsOut: tot.FlowsOut,
+			Index: idx, Name: tot.Name, Series: series,
+			TotalIn: tot.TotalIn, TotalOut: tot.TotalOut,
+			FlowsIn: tot.FlowsIn, FlowsOut: tot.FlowsOut,
 		})
 	}
-
-	// sort by total traffic descending
 	sort.Slice(result, func(i, j int) bool {
-		return (result[i].TotalIn + result[i].TotalOut) > (result[j].TotalIn + result[j].TotalOut)
+		return (result[i].TotalIn+result[i].TotalOut) > (result[j].TotalIn+result[j].TotalOut)
 	})
 	return result
 }
 
+// QueryIfaceASNSankey returns interface→ASN pairs for inbound and outbound.
+// This drives the "which upstream carries which ASN" Sankey in the Upstreams tab.
+func (a *Aggregator) QueryIfaceASNSankey(limit int) (sankeyIn, sankeyOut []IfaceSankeyPair) {
+	a.mu.RLock(); defer a.mu.RUnlock()
+
+	for k, v := range a.asnIface {
+		name := v.ifName
+		if name == "" { name = a.ifaceNames[k.ifIdx] }
+		pair := IfaceSankeyPair{
+			IfaceIdx: k.ifIdx, IfaceName: name,
+			ASN: k.asn, ASNName: v.asnName,
+			Bytes: v.bytes, Flows: v.flows,
+		}
+		if k.dir {
+			pair.Dir = "in"
+			sankeyIn = append(sankeyIn, pair)
+		} else {
+			pair.Dir = "out"
+			sankeyOut = append(sankeyOut, pair)
+		}
+	}
+
+	sort.Slice(sankeyIn, func(i, j int) bool { return sankeyIn[i].Bytes > sankeyIn[j].Bytes })
+	if len(sankeyIn) > limit { sankeyIn = sankeyIn[:limit] }
+	sort.Slice(sankeyOut, func(i, j int) bool { return sankeyOut[i].Bytes > sankeyOut[j].Bytes })
+	if len(sankeyOut) > limit { sankeyOut = sankeyOut[:limit] }
+	return
+}
+
 func (a *Aggregator) QuerySankey(limit int) (sankeyIn, sankeyOut []PairStat) {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
+	a.mu.RLock(); defer a.mu.RUnlock()
 	in := make([]PairStat, 0, len(a.pairsIn))
-	for k, v := range a.pairsIn {
-		in = append(in, PairStat{k.SrcASN, v.srcName, k.DstASN, v.dstName, v.bytes, v.flows})
-	}
+	for k, v := range a.pairsIn { in = append(in, PairStat{k.SrcASN, v.srcName, k.DstASN, v.dstName, v.bytes, v.flows}) }
 	sort.Slice(in, func(i, j int) bool { return in[i].Bytes > in[j].Bytes })
-	if len(in) > limit {
-		in = in[:limit]
-	}
+	if len(in) > limit { in = in[:limit] }
 	out := make([]PairStat, 0, len(a.pairsOut))
-	for k, v := range a.pairsOut {
-		out = append(out, PairStat{k.SrcASN, v.srcName, k.DstASN, v.dstName, v.bytes, v.flows})
-	}
+	for k, v := range a.pairsOut { out = append(out, PairStat{k.SrcASN, v.srcName, k.DstASN, v.dstName, v.bytes, v.flows}) }
 	sort.Slice(out, func(i, j int) bool { return out[i].Bytes > out[j].Bytes })
-	if len(out) > limit {
-		out = out[:limit]
-	}
+	if len(out) > limit { out = out[:limit] }
 	return in, out
 }
 
 func (a *Aggregator) QueryTopHosts(n int) (topIn, topOut []HostStat) {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
+	a.mu.RLock(); defer a.mu.RUnlock()
 	in := make([]HostStat, 0, len(a.hostsIn))
-	for ip, b := range a.hostsIn {
-		in = append(in, HostStat{IP: ip, BytesIn: b})
-	}
+	for ip, b := range a.hostsIn { in = append(in, HostStat{IP: ip, BytesIn: b}) }
 	sort.Slice(in, func(i, j int) bool { return in[i].BytesIn > in[j].BytesIn })
-	if len(in) > n {
-		in = in[:n]
-	}
+	if len(in) > n { in = in[:n] }
 	out := make([]HostStat, 0, len(a.hostsOut))
-	for ip, b := range a.hostsOut {
-		out = append(out, HostStat{IP: ip, BytesOut: b})
-	}
+	for ip, b := range a.hostsOut { out = append(out, HostStat{IP: ip, BytesOut: b}) }
 	sort.Slice(out, func(i, j int) bool { return out[i].BytesOut > out[j].BytesOut })
-	if len(out) > n {
-		out = out[:n]
-	}
+	if len(out) > n { out = out[:n] }
 	return in, out
 }
 
 func (a *Aggregator) QueryPorts(n int) []PortStat {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
+	a.mu.RLock(); defer a.mu.RUnlock()
 	list := make([]PortStat, 0, len(a.ports))
-	for port, count := range a.ports {
-		list = append(list, PortStat{Port: port, Count: count})
-	}
+	for port, count := range a.ports { list = append(list, PortStat{Port: port, Count: count}) }
 	sort.Slice(list, func(i, j int) bool { return list[i].Count > list[j].Count })
-	if len(list) > n {
-		list = list[:n]
-	}
+	if len(list) > n { list = list[:n] }
 	return list
 }
 
 // ── Snapshot ──────────────────────────────────────────────────────────────────
 
 type SnapshotData struct {
-	TopASNIn    []ASNStat      `json:"asn_in"`
-	TopASNOut   []ASNStat      `json:"asn_out"`
-	TimeSeries  []MinuteBucket `json:"timeseries"`
-	SankeyIn    []PairStat     `json:"sankey_in"`
-	SankeyOut   []PairStat     `json:"sankey_out"`
-	TopHostsIn  []HostStat     `json:"hosts_in"`
-	TopHostsOut []HostStat     `json:"hosts_out"`
-	TopPorts    []PortStat     `json:"ports"`
-	Interfaces  []IfaceSeries  `json:"interfaces"`
+	TopASNIn    []ASNStat        `json:"asn_in"`
+	TopASNOut   []ASNStat        `json:"asn_out"`
+	TimeSeries  []MinuteBucket   `json:"timeseries"`
+	SankeyIn    []PairStat       `json:"sankey_in"`
+	SankeyOut   []PairStat       `json:"sankey_out"`
+	TopHostsIn  []HostStat       `json:"hosts_in"`
+	TopHostsOut []HostStat       `json:"hosts_out"`
+	TopPorts    []PortStat       `json:"ports"`
+	Interfaces  []IfaceSeries    `json:"interfaces"`
 }
 
 func (a *Aggregator) BuildSnapshot(minutes int) SnapshotData {
 	topIn, topOut := a.QueryTopASN(100, minutes)
 	sankeyIn, sankeyOut := a.QuerySankey(100)
 	hostsIn, hostsOut := a.QueryTopHosts(100)
-	ports := a.QueryPorts(100)
-	ts := a.QueryTimeSeries(minutes)
-	ifaces := a.QueryInterfaces(minutes)
 	return SnapshotData{
-		TopASNIn:    topIn,
-		TopASNOut:   topOut,
-		TimeSeries:  ts,
-		SankeyIn:    sankeyIn,
-		SankeyOut:   sankeyOut,
-		TopHostsIn:  hostsIn,
-		TopHostsOut: hostsOut,
-		TopPorts:    ports,
-		Interfaces:  ifaces,
+		TopASNIn: topIn, TopASNOut: topOut,
+		TimeSeries: a.QueryTimeSeries(minutes),
+		SankeyIn: sankeyIn, SankeyOut: sankeyOut,
+		TopHostsIn: hostsIn, TopHostsOut: hostsOut,
+		TopPorts: a.QueryPorts(100),
+		Interfaces: a.QueryInterfaces(minutes),
 	}
 }

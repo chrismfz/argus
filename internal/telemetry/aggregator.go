@@ -7,15 +7,13 @@ import (
 	"time"
 )
 
-// RingSize is 24 h × 60 min = 1440 one-minute buckets.
 const RingSize = 1440
 
-// Global is the process-wide aggregator. Set by Init().
 var Global *Aggregator
 
 // Record is a telemetry-local view of an enriched flow.
 // batcher.go converts *flow.FlowRecord → Record before calling Ingest,
-// which breaks the flow↔telemetry import cycle.
+// breaking the flow↔telemetry import cycle.
 type Record struct {
 	SrcHost       string
 	DstHost       string
@@ -25,15 +23,14 @@ type Record struct {
 	PeerDstASName string
 	Bytes         uint64
 	Packets       uint64
-	FlowDirection uint8 // 0 = ingress, 1 = egress
+	FlowDirection uint8 // MikroTik often sends 0 for all — don't trust alone
 	DstPort       uint16
 }
 
-// ── public types (used by API handlers and snapshotter) ──────────────────────
+// ── public types ──────────────────────────────────────────────────────────────
 
-// MinuteBucket holds aggregated counters for one calendar minute.
 type MinuteBucket struct {
-	Ts       int64  `json:"ts"`       // unix epoch, minute-boundary
+	Ts       int64  `json:"ts"`
 	BytesIn  uint64 `json:"bytes_in"`
 	BytesOut uint64 `json:"bytes_out"`
 	FlowsIn  uint64 `json:"flows_in"`
@@ -42,7 +39,6 @@ type MinuteBucket struct {
 	PktsOut  uint64 `json:"pkts_out"`
 }
 
-// ASNStat is the per-ASN view returned by query methods.
 type ASNStat struct {
 	ASN      uint32 `json:"asn"`
 	Name     string `json:"name"`
@@ -52,7 +48,6 @@ type ASNStat struct {
 	FlowsOut uint64 `json:"flows_out"`
 }
 
-// PairStat is one edge in the Sankey graph.
 type PairStat struct {
 	SrcASN  uint32 `json:"src_asn"`
 	SrcName string `json:"src_name"`
@@ -62,14 +57,12 @@ type PairStat struct {
 	Flows   uint64 `json:"flows"`
 }
 
-// HostStat is one host in the top-hosts list.
 type HostStat struct {
 	IP       string `json:"ip"`
 	BytesIn  uint64 `json:"bytes_in,omitempty"`
 	BytesOut uint64 `json:"bytes_out,omitempty"`
 }
 
-// PortStat is one entry in the port heatmap.
 type PortStat struct {
 	Port  uint16 `json:"port"`
 	Count uint64 `json:"count"`
@@ -97,6 +90,7 @@ type pairAccum struct {
 type Aggregator struct {
 	mu     sync.RWMutex
 	myASN  uint32
+	myName string     // resolved from MaxMind at Init time
 	myNets []*net.IPNet
 
 	ring    [RingSize]MinuteBucket
@@ -111,10 +105,13 @@ type Aggregator struct {
 	lastReset time.Time
 }
 
-// Init creates the global aggregator. Call once from main after myNets is built.
-func Init(myASN uint32, myNets []*net.IPNet) {
+// Init creates the global aggregator.
+// myName should come from geo.GetASNName(myNets[0].IP.String()) in main.go.
+// Call after myNets is built and geo is initialised.
+func Init(myASN uint32, myName string, myNets []*net.IPNet) {
 	a := &Aggregator{
 		myASN:     myASN,
+		myName:    myName,
 		myNets:    myNets,
 		pairsIn:   make(map[pairKey]*pairAccum),
 		pairsOut:  make(map[pairKey]*pairAccum),
@@ -140,28 +137,35 @@ func minEpoch(t time.Time) int64 {
 }
 
 // isInbound returns true when the flow carries traffic INTO our network.
-// Primary signal: FlowDirection (0 = ingress, 1 = egress).
-// Fallback: dst IP in myNets → inbound.
+//
+// Primary: IP matching against my_prefixes — reliable regardless of what
+// MikroTik puts in the FlowDirection field (it often exports 0 for everything).
+// Fallback: FlowDirection, only when neither src nor dst matches our prefixes.
 func (a *Aggregator) isInbound(rec *Record) bool {
-	switch rec.FlowDirection {
-	case 0:
-		return true
-	case 1:
-		return false
-	}
-	if ip := net.ParseIP(rec.DstHost); ip != nil {
-		for _, n := range a.myNets {
-			if n.Contains(ip) {
-				return true
+	if len(a.myNets) > 0 {
+		if ip := net.ParseIP(rec.DstHost); ip != nil {
+			for _, n := range a.myNets {
+				if n.Contains(ip) {
+					return true // destined to our prefix → inbound
+				}
+			}
+		}
+		if ip := net.ParseIP(rec.SrcHost); ip != nil {
+			for _, n := range a.myNets {
+				if n.Contains(ip) {
+					return false // sourced from our prefix → outbound
+				}
 			}
 		}
 	}
-	return false
+	// Fallback: trust FlowDirection only when IP matching was inconclusive
+	return rec.FlowDirection == 0
 }
 
 // ── Ingest ────────────────────────────────────────────────────────────────────
 
-// Ingest processes one enriched Record. Called from batcher.enrichAndFlush.
+// Ingest processes one enriched Record. Called from batcher.enrichAndFlush
+// after GeoIP/BGP enrichment, before (or alongside) the ClickHouse insert.
 func (a *Aggregator) Ingest(rec *Record) {
 	now := time.Now()
 	slot := slotFor(now)
@@ -188,11 +192,14 @@ func (a *Aggregator) Ingest(rec *Record) {
 	}
 
 	// ── ASN ring ──────────────────────────────────────────────────────────
+	// Inbound → interesting peer is who sends to us (PeerSrcAS).
+	// Outbound → interesting peer is where we send to (PeerDstAS).
+	// Skip our own ASN — it must never appear as a remote peer.
 	asn, asnName := rec.PeerSrcAS, rec.PeerSrcASName
 	if !inbound {
 		asn, asnName = rec.PeerDstAS, rec.PeerDstASName
 	}
-	if asn != 0 {
+	if asn != 0 && asn != a.myASN {
 		am := a.asnRing[slot]
 		c, ok := am[asn]
 		if !ok {
@@ -211,24 +218,26 @@ func (a *Aggregator) Ingest(rec *Record) {
 	}
 
 	// ── Sankey pairs ──────────────────────────────────────────────────────
+	// Skip pairs where the remote peer is our own ASN.
+	// Use myName (resolved from MaxMind at init) for our side of the edge.
 	srcASN, dstASN := rec.PeerSrcAS, rec.PeerDstAS
 	srcName, dstName := rec.PeerSrcASName, rec.PeerDstASName
 
-	if inbound && srcASN != 0 {
+	if inbound && srcASN != 0 && srcASN != a.myASN {
 		k := pairKey{srcASN, a.myASN}
 		p, ok := a.pairsIn[k]
 		if !ok {
-			p = &pairAccum{srcName: srcName, dstName: "MyIP Networks"}
+			p = &pairAccum{srcName: srcName, dstName: a.myName}
 			a.pairsIn[k] = p
 		}
 		p.bytes += rec.Bytes
 		p.flows++
 	}
-	if !inbound && dstASN != 0 {
+	if !inbound && dstASN != 0 && dstASN != a.myASN {
 		k := pairKey{a.myASN, dstASN}
 		p, ok := a.pairsOut[k]
 		if !ok {
-			p = &pairAccum{srcName: "MyIP Networks", dstName: dstName}
+			p = &pairAccum{srcName: a.myName, dstName: dstName}
 			a.pairsOut[k] = p
 		}
 		p.bytes += rec.Bytes
@@ -236,6 +245,7 @@ func (a *Aggregator) Ingest(rec *Record) {
 	}
 
 	// ── Top hosts ─────────────────────────────────────────────────────────
+	// Cap at 50 000 unique IPs to prevent unbounded growth between resets.
 	if inbound {
 		if len(a.hostsIn) < 50000 {
 			a.hostsIn[rec.DstHost] += rec.Bytes
@@ -254,6 +264,8 @@ func (a *Aggregator) Ingest(rec *Record) {
 
 // ── ResetAccumulators ─────────────────────────────────────────────────────────
 
+// ResetAccumulators clears the daily-window maps (pairs, hosts, ports).
+// Called by the snapshotter after each daily snapshot is saved.
 func (a *Aggregator) ResetAccumulators() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -433,4 +445,3 @@ func (a *Aggregator) BuildSnapshot(minutes int) SnapshotData {
 		TopPorts:    ports,
 	}
 }
-

@@ -249,7 +249,14 @@ func main() {
 	if err := telemetry.InitSchema(db); err != nil {
 		log.Printf("[telemetry] schema init failed: %v", err)
 	}
-	telemetry.Init(uint32(cfg.MyASN), myNets)
+
+// derive our own ASN name from MaxMind using first prefix IP
+myName := ""
+if len(myNets) > 0 {
+    myName = geo.GetASNName(myNets[0].IP.String())
+}
+telemetry.Init(uint32(cfg.MyASN), myName, myNets)
+
 	telemetry.StartScheduler(ctx, db)
 	log.Printf("[telemetry] aggregator ready (myASN=%d nets=%d)", cfg.MyASN, len(myNets))
 

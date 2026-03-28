@@ -203,15 +203,6 @@ api:
     - "192.168.0.0/16"
     - "84.54.49.0/24"
 
-debug_api:
-  enabled: true
-  listen_address: "127.0.0.1"
-  port: 9601
-  allow_ips:
-    - "127.0.0.1"
-  # if false, only IP allow-list is enforced (so pprof CLI works)
-  require_token: false
-
 
 cfm:
   enabled: true

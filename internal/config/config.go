@@ -179,19 +179,9 @@ API struct {
     ListenAddress string   `yaml:"listen_address"`
     Port          int      `yaml:"port"`
     Tokens        []string `yaml:"tokens"`
-    AllowIPs      []string `yaml:"allow_ips"` // CIDR μορφή ή απλές IPs
+    AllowIPs      []string `yaml:"allow_ips"`
 } `yaml:"api"`
 
-DebugAPI DebugAPIConfig `yaml:"debug_api"`
-
-}
-
-type DebugAPIConfig struct {
-    Enabled      bool     `yaml:"enabled"`
-    ListenAddress string  `yaml:"listen_address"`
-    Port         int      `yaml:"port"`
-    AllowIPs     []string `yaml:"allow_ips"`
-    RequireToken bool     `yaml:"require_token"`
 }
 
 type SNMPConfig struct {

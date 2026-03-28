@@ -249,8 +249,23 @@ if len(myNets) > 0 {
 }
 telemetry.Init(uint32(cfg.MyASN), myName, myNets, cfg.UpstreamInterfaces)
 
+if err := telemetry.InitRingSchema(db); err != nil {
+    log.Printf("[telemetry] ring schema init failed: %v", err)
+} else {
+    n, err := telemetry.WarmupRingFromDB(db)
+    if err != nil {
+        log.Printf("[telemetry] ring warmup failed: %v", err)
+    } else if n > 0 {
+        log.Printf("[telemetry] ring warmed up from DB: %d buckets (%.1f hours)",
+            n, float64(n)/60.0)
+    }
+}
+
+
 	telemetry.StartScheduler(ctx, db)
 	log.Printf("[telemetry] aggregator ready (myASN=%d nets=%d)", cfg.MyASN, len(myNets))
+
+
 
 	// ── Protection list ───────────────────────────────────────────────────────
 	protPath := filepath.Join("etc", "exclude.detections.conf")

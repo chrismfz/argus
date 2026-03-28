@@ -246,6 +246,43 @@ func StartScheduler(ctx context.Context, db *sql.DB) {
 		}
 	}()
 	log.Print("[telemetry] snapshot scheduler started")
+
+// ── Ring persistence — flush every 5 minutes ──────────────────────────────
+go func() {
+    t := time.NewTicker(5 * time.Minute)
+    defer t.Stop()
+    for {
+        select {
+        case <-ctx.Done():
+            // Final flush on shutdown
+            if err := PersistRing(db); err != nil {
+                log.Printf("[telemetry] final ring flush failed: %v", err)
+            }
+            return
+        case <-t.C:
+            if err := PersistRing(db); err != nil {
+                log.Printf("[telemetry] ring persist failed: %v", err)
+            }
+        }
+    }
+}()
+
+// ── Daily prune — keep last 30 days (configurable) ───────────────────────
+go func() {
+    t := time.NewTicker(24 * time.Hour)
+    defer t.Stop()
+    for {
+        select {
+        case <-ctx.Done():
+            return
+        case <-t.C:
+            if err := PruneOldBuckets(db, 30); err != nil {
+                log.Printf("[telemetry] prune failed: %v", err)
+            }
+        }
+    }
+}()
+
 }
 
 // lastSeen tracks when we last took a snapshot of each period type.

@@ -1,4 +1,4 @@
-package main
+package flow
 
 import (
 	"encoding/json"
@@ -6,11 +6,10 @@ import (
 	"strconv"
 	"time"
         "argus/internal/enrich"
-	"argus/internal/flow"
 
 )
 
-func ParseAndEnrich(line string, geo *enrich.GeoIP, dns *enrich.DNSResolver, timezone string) (*flow.FlowRecord, error) {
+func ParseAndEnrich(line string, geo *enrich.GeoIP, dns *enrich.DNSResolver, timezone string) (*FlowRecord, error) {
     var j map[string]interface{}
     err := json.Unmarshal([]byte(line), &j)
     if err != nil {
@@ -68,7 +67,7 @@ func ParseAndEnrich(line string, geo *enrich.GeoIP, dns *enrich.DNSResolver, tim
     }
 
 
-    return &flow.FlowRecord{
+    return &FlowRecord{
         TimestampStart:   tUTC,
         Proto:            proto,
         TCPFlags:         toUint8(j["tcp_flags"]),

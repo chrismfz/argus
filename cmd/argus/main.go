@@ -464,10 +464,7 @@ if enrichEnabled(cfg, "ptr") {
 
 
         // ClickHouse Inserter
-        inserter, err := clickhouse.NewInserter(cfg.ClickHouse.Table)
-        if err != nil {
-                log.Fatalf("ClickHouse connection error: %v", err)
-        }
+        inserter := clickhouse.NewInserter(cfg.ClickHouse.Table)
         dlog("ClickHouse connection established.")
 
         batcher := NewInsertFlowBatcher(

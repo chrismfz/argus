@@ -60,37 +60,32 @@ func ipAllowed(r *http.Request, cidrs []string) bool {
 	return false
 }
 
-// WithAuth enforces IP allowlist + bearer token.
+// WithAuth accepts if EITHER the source IP is allowed OR a valid Bearer token
+// is present. This means:
+//   - IPs in allow_ips (+ loopback) work with no token — dashboard, CLI, local
+//   - External callers (CFM API etc.) can authenticate with token from anywhere
+//   - When nginx sits in front, all requests arrive as 127.0.0.1 — no token needed
 func WithAuth(handler http.HandlerFunc) http.HandlerFunc {
-    return func(w http.ResponseWriter, r *http.Request) {
-        if !ipAllowed(r, config.AppConfig.API.AllowIPs) {
-            http.Error(w, "Forbidden", http.StatusForbidden)
-            return
-        }
-        // Loopback is already trusted at the network level (nginx handles auth).
-        // Skip token check for local requests.
-        host, _, _ := net.SplitHostPort(r.RemoteAddr)
-        if net.ParseIP(host).IsLoopback() {
-            handler(w, r)
-            return
-        }
-        // Token check for non-loopback (direct API access without nginx)
-        if len(config.AppConfig.API.Tokens) > 0 {
-            token := ""
-            if auth := r.Header.Get("Authorization"); len(auth) > 7 && auth[:7] == "Bearer " {
-                token = auth[7:]
-            }
-            valid := false
-            for _, t := range config.AppConfig.API.Tokens {
-                if token == t { valid = true; break }
-            }
-            if !valid {
-                http.Error(w, "Unauthorized", http.StatusUnauthorized)
-                return
-            }
-        }
-        handler(w, r)
-    }
+	return func(w http.ResponseWriter, r *http.Request) {
+		// IP allowed — let through immediately
+		if ipAllowed(r, config.AppConfig.API.AllowIPs) {
+			handler(w, r)
+			return
+		}
+		// Not an allowed IP — try Bearer token
+		if len(config.AppConfig.API.Tokens) > 0 {
+			if auth := r.Header.Get("Authorization"); len(auth) > 7 && auth[:7] == "Bearer " {
+				token := auth[7:]
+				for _, t := range config.AppConfig.API.Tokens {
+					if token == t {
+						handler(w, r)
+						return
+					}
+				}
+			}
+		}
+		http.Error(w, "Forbidden", http.StatusForbidden)
+	}
 }
 
 // WithMainIPOnly enforces IP allowlist only — no token.

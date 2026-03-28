@@ -83,6 +83,7 @@ button.btn.secondary{background:var(--bg3);color:var(--text);border:1px solid va
   <button :class="{active:tab==='hosts'}"    @click="tab='hosts';loadHosts()">Hosts &amp; Ports</button>
   <button :class="{active:tab==='history'}"  @click="tab='history'">History</button>
   <button :class="{active:tab==='snapshots'}" @click="tab='snapshots';loadSnapshots()">Snapshots</button>
+  <button onclick="window.open('/debug/flows','_blank')" style="margin-left:auto;color:var(--yellow)">⚡ Live Flows</button>
 </nav>
 
 <!-- ── OVERVIEW ── -->

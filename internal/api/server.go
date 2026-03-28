@@ -172,6 +172,35 @@ func Start() {
 	// Catch-all: unknown paths → 403 (don't leak route map to scanners)
 	mainMux.HandleFunc("/", notFoundHandler)
 
+
+	// ── Detection settings page & API ─────────────────────────────────────
+	mainMux.HandleFunc("/detection", WithMainIPOnly(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(detectionHTML)
+	}))
+	// List / add  (no trailing slash)
+	mainMux.HandleFunc("/detection/excludes", WithAuth(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			handleDetectionExcludesList(w, r)
+		case http.MethodPost:
+			handleDetectionExcludesAdd(w, r)
+		default:
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		}
+	}))
+	// Single entry (delete / update)  — /detection/excludes/{id}
+	mainMux.HandleFunc("/detection/excludes/", WithAuth(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodDelete:
+			handleDetectionExcludesDelete(w, r)
+		case http.MethodPut:
+			handleDetectionExcludesUpdate(w, r)
+		default:
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		}
+	}))
+
 	// Stack: panic recovery → global IP/rate/ban guard → mux routing → per-route auth
 	handler := withRecovery(globalGuard(mainMux))
 

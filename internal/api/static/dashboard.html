@@ -22,6 +22,10 @@ nav{display:flex;gap:2px;padding:0 20px;background:var(--bg2);border-bottom:1px 
 nav .sep{margin-left:auto;width:1px;height:20px;background:var(--border)}
 nav a.dbg{padding:6px 12px;font-size:12px;color:var(--yellow);text-decoration:none;border:1px solid rgba(249,226,175,.25);border-radius:4px;margin-left:8px;transition:.15s}
 nav a.dbg:hover{background:rgba(249,226,175,.1);border-color:var(--yellow)}
+
+nav a.page{padding:10px 18px;color:var(--muted);font-size:13px;text-decoration:none;border-bottom:2px solid transparent;display:inline-block;transition:.1s}
+nav a.page:hover{color:var(--text)}
+
 nav button{padding:10px 18px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;border-bottom:2px solid transparent;transition:.15s}
 nav button.active{color:var(--accent);border-color:var(--accent)}
 nav button:hover:not(.active){color:var(--text)}
@@ -81,13 +85,14 @@ button.btn.secondary{background:var(--bg3);color:var(--text);border:1px solid va
 </header>
 
 <nav>
-  <button :class="{active:tab==='overview'}" @click="tab='overview'">Overview</button>
-  <button :class="{active:tab==='asn'}"      @click="tab='asn';loadASN()">Traffic by AS</button>
-  <button :class="{active:tab==='hosts'}"    @click="tab='hosts';loadHosts()">Hosts &amp; Ports</button>
-  <button :class="{active:tab==='history'}"  @click="tab='history'">History</button>
+  <button :class="{active:tab==='overview'}"  @click="tab='overview'">Overview</button>
+  <button :class="{active:tab==='asn'}"       @click="tab='asn';loadASN()">Traffic by AS</button>
+  <button :class="{active:tab==='hosts'}"     @click="tab='hosts';loadHosts()">Hosts &amp; Ports</button>
+  <button :class="{active:tab==='history'}"   @click="tab='history'">History</button>
   <button :class="{active:tab==='snapshots'}" @click="tab='snapshots';loadSnapshots()">Snapshots</button>
   <button :class="{active:tab==='upstreams'}" @click="tab='upstreams';loadUpstreams()">Upstreams</button>
-  <button :class="{active:tab==='control'}" @click="tab='control';loadControl()">⚙ Control</button>
+  <a href="/detection" class="page">Detection</a>
+  <button :class="{active:tab==='control'}"   @click="tab='control';loadControl()">⚙ Control</button>
   <span class="sep"></span>
   <a href="/debug/flows" target="_blank" class="dbg">⚡ Live Flows</a>
   <a href="/debug/rawflows" target="_blank" class="dbg">🔬 Raw Fields</a>

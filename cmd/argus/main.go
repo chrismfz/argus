@@ -254,7 +254,7 @@ telemetry.Init(uint32(cfg.MyASN), myName, myNets, cfg.UpstreamInterfaces)
 
 	// ── Protection list ───────────────────────────────────────────────────────
 	protPath := filepath.Join("etc", "exclude.detections.conf")
-	if err := detection.LoadProtectedFromFile(protPath); err != nil {
+	if err := detection.LoadProtectedFromDB(db); err != nil {
 		log.Printf("[SAFEGUARD] protection list not loaded (%s): %v", protPath, err)
 	} else {
 		log.Printf("[SAFEGUARD] protection list loaded from %s", protPath)
@@ -274,7 +274,7 @@ telemetry.Init(uint32(cfg.MyASN), myName, myNets, cfg.UpstreamInterfaces)
 			case ev := <-w.Events:
 				if ev.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename) != 0 {
 					time.Sleep(150 * time.Millisecond)
-					if err := detection.LoadProtectedFromFile(protPath); err != nil {
+					if err := detection.LoadProtectedFromDB(db); err != nil {
 						log.Printf("[SAFEGUARD] reload failed: %v", err)
 					} else {
 						log.Printf("[SAFEGUARD] reloaded protection list (%s)", protPath)
@@ -293,12 +293,35 @@ telemetry.Init(uint32(cfg.MyASN), myName, myNets, cfg.UpstreamInterfaces)
 			case <-ctx.Done():
 				return
 			case <-t.C:
-				_ = detection.LoadProtectedFromFile(protPath)
+				_ = detection.LoadProtectedFromDB(db)
 			}
 		}
 	}()
 
 	dlog("GeoIP ASN DB: %s", cfg.GeoIP.ASNDB)
+
+	// ── Detection excludes DB (SQLite-backed, migrates from flat file) ────
+	if db != nil {
+		if err := detection.InitExcludesTable(db); err != nil {
+			log.Printf("[SAFEGUARD] excludes table init failed: %v", err)
+		} else {
+			n, err := detection.MigrateExcludesFromFile(db, protPath)
+			if err != nil {
+				log.Printf("[SAFEGUARD] excludes migration error: %v", err)
+			} else if n > 0 {
+				log.Printf("[SAFEGUARD] migrated %d entries from %s into SQLite", n, protPath)
+			}
+			// Use DB as the live source going forward.
+			if err := detection.LoadProtectedFromDB(db); err != nil {
+				log.Printf("[SAFEGUARD] LoadProtectedFromDB failed: %v", err)
+			} else {
+				log.Printf("[SAFEGUARD] loaded exclusions from SQLite")
+			}
+			api.DetectionDB = db
+		}
+	}
+
+
 
 	// ── SNMP ──────────────────────────────────────────────────────────────────
 	var ifNameCache *enrich.IFNameCache

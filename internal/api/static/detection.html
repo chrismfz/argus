@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>argus — detection settings</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/alpinejs/3.13.3/cdn.min.js" defer></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f1117;--bg2:#161b27;--bg3:#1e2535;
+  --border:#2a3147;--text:#cdd6f4;--muted:#6c7086;
+  --accent:#89b4fa;--green:#a6e3a1;--red:#f38ba8;--yellow:#f9e2af;
+  --purple:#cba6f7;--teal:#94e2d5;--orange:#fab387;
+}
+html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;font-size:14px}
+header{display:flex;align-items:center;gap:16px;padding:12px 20px;background:var(--bg2);border-bottom:1px solid var(--border)}
+header h1{font-size:16px;font-weight:600;color:var(--accent)}
+header .tag{font-size:11px;padding:2px 8px;border-radius:4px;background:var(--bg3);color:var(--muted)}
+nav{display:flex;gap:2px;padding:0 20px;background:var(--bg2);border-bottom:1px solid var(--border);align-items:center}
+nav a{padding:10px 18px;color:var(--muted);font-size:13px;text-decoration:none;border-bottom:2px solid transparent;display:inline-block;transition:.1s}
+nav a:hover{color:var(--text)}
+nav a.active{color:var(--accent);border-color:var(--accent)}
+.content{padding:20px;max-width:1200px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px}
+.card-title{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:14px;display:flex;align-items:center;gap:10px}
+.card-title .count{font-size:11px;padding:1px 7px;border-radius:10px;background:var(--bg3);color:var(--accent);font-weight:700;letter-spacing:0}
+table{width:100%;border-collapse:collapse}
+thead th{text-align:left;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;padding:6px 8px;border-bottom:1px solid var(--border)}
+tbody td{padding:8px 8px;border-bottom:1px solid var(--border);font-size:13px}
+tbody tr:last-child td{border:none}
+tbody tr:hover td{background:var(--bg3)}
+.mono{font-family:monospace;color:var(--accent)}
+.label-text{color:var(--muted);font-size:12px}
+.actions{display:flex;gap:6px;white-space:nowrap}
+input,select{background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 10px;font-size:13px;outline:none;font-family:monospace}
+input:focus,select:focus{border-color:var(--accent)}
+input.label-input{font-family:system-ui,sans-serif}
+button.btn{background:var(--accent);color:var(--bg);border:none;border-radius:6px;padding:6px 14px;font-size:13px;cursor:pointer;font-weight:600;white-space:nowrap}
+button.btn:hover{opacity:.85}
+button.btn.secondary{background:var(--bg3);color:var(--text);border:1px solid var(--border)}
+button.btn.secondary:hover{border-color:var(--accent);color:var(--accent)}
+button.btn.danger{background:transparent;color:var(--red);border:1px solid rgba(243,139,168,.3)}
+button.btn.danger:hover{background:rgba(243,139,168,.1);border-color:var(--red)}
+button.btn.sm{padding:4px 10px;font-size:12px}
+.add-row{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;align-items:center}
+.add-row input.cidr-in{width:200px}
+.add-row input.lbl-in{flex:1;min-width:180px}
+.toast{position:fixed;bottom:24px;right:24px;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:600;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none}
+.toast.show{opacity:1;pointer-events:auto}
+.toast.ok{background:var(--green);color:#1e2535}
+.toast.err{background:var(--red);color:#1e2535}
+.edit-cell{display:flex;gap:6px;align-items:center}
+.edit-cell input{padding:4px 8px;font-size:12px}
+.placeholder{padding:20px;text-align:center;color:var(--muted);font-size:13px;border:1px dashed var(--border);border-radius:6px}
+.section-hint{font-size:12px;color:var(--muted);margin-bottom:12px}
+.spinner{display:inline-block;width:13px;height:13px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body x-data="app()" x-init="init()">
+
+<header>
+  <h1>argus panoptes</h1>
+  <span class="tag">detection settings</span>
+</header>
+
+<nav>
+  <a href="/dashboard">overview</a>
+  <a href="/detection" class="active">detection</a>
+</nav>
+
+<div class="content">
+
+  <!-- ── Exclusions card ─────────────────────────────────────────────────── -->
+  <div class="card">
+    <div class="card-title">
+      Detection exclusions
+      <span class="count" x-text="excludes.length"></span>
+      <span x-show="loading" class="spinner" style="margin-left:4px"></span>
+      <span style="margin-left:auto;font-size:11px;color:var(--muted);font-weight:400;letter-spacing:0">
+        IPs and CIDRs in this list are never blackholed by the detection engine
+      </span>
+    </div>
+
+    <template x-if="excludes.length === 0 && !loading">
+      <div class="placeholder">No exclusions configured yet. Add one below.</div>
+    </template>
+
+    <template x-if="excludes.length > 0">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:40px">#</th>
+            <th>CIDR / IP</th>
+            <th>Label</th>
+            <th>Added</th>
+            <th style="width:160px">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="e in excludes" :key="e.id">
+            <tr>
+              <td style="color:var(--muted);font-size:12px" x-text="e.id"></td>
+
+              <!-- View mode -->
+              <template x-if="editID !== e.id">
+                <td class="mono" x-text="e.cidr"></td>
+              </template>
+              <!-- Edit mode CIDR -->
+              <template x-if="editID === e.id">
+                <td><div class="edit-cell">
+                  <input x-model="editCIDR" style="width:180px" @keydown.enter="saveEdit(e.id)" @keydown.escape="cancelEdit()">
+                </div></td>
+              </template>
+
+              <!-- View mode label -->
+              <template x-if="editID !== e.id">
+                <td class="label-text" x-text="e.label || '—'"></td>
+              </template>
+              <!-- Edit mode label -->
+              <template x-if="editID === e.id">
+                <td><div class="edit-cell">
+                  <input x-model="editLabel" class="label-input" style="width:200px" @keydown.enter="saveEdit(e.id)" @keydown.escape="cancelEdit()" placeholder="label (optional)">
+                </div></td>
+              </template>
+
+              <td style="color:var(--muted);font-size:12px" x-text="fmtDate(e.created_at)"></td>
+
+              <!-- Actions -->
+              <template x-if="editID !== e.id">
+                <td>
+                  <div class="actions">
+                    <button class="btn secondary sm" @click="startEdit(e)">Edit</button>
+                    <button class="btn danger sm" @click="deleteEntry(e.id, e.cidr)">Delete</button>
+                  </div>
+                </td>
+              </template>
+              <template x-if="editID === e.id">
+                <td>
+                  <div class="actions">
+                    <button class="btn sm" @click="saveEdit(e.id)">Save</button>
+                    <button class="btn secondary sm" @click="cancelEdit()">Cancel</button>
+                  </div>
+                </td>
+              </template>
+
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </template>
+
+    <!-- Add new -->
+    <div class="add-row">
+      <input class="cidr-in" x-model="newCIDR" placeholder="e.g. 1.2.3.4 or 10.0.0.0/8" @keydown.enter="addEntry()">
+      <input class="lbl-in label-input" x-model="newLabel" placeholder="label (optional, e.g. Public DNS)" @keydown.enter="addEntry()">
+      <button class="btn" @click="addEntry()" :disabled="!newCIDR.trim()">Add</button>
+    </div>
+  </div>
+
+  <!-- ── Upcoming: Recent Detections ────────────────────────────────────── -->
+  <div class="card">
+    <div class="card-title">Recent detections <span style="color:var(--yellow);font-size:11px;margin-left:6px;letter-spacing:0;text-transform:none;font-weight:400">coming soon</span></div>
+    <p class="section-hint">This section will display a live tail of <code>detections.log</code> — rule hits, source enrichment, and detection counts — directly in the UI.</p>
+    <div class="placeholder">Live detection log viewer — not yet implemented.</div>
+  </div>
+
+</div>
+
+<!-- Toast -->
+<div class="toast" :class="[toast.type, toast.show ? 'show' : '']" x-text="toast.msg"></div>
+
+<script>
+function app() { return {
+  excludes: [],
+  loading: false,
+  newCIDR: '',
+  newLabel: '',
+  editID: null,
+  editCIDR: '',
+  editLabel: '',
+  toast: { msg: '', type: 'ok', show: false },
+  _toastTimer: null,
+
+  init() { this.load() },
+
+  async load() {
+    this.loading = true
+    try {
+      const r = await fetch('/detection/excludes', { headers: this.authHeaders() })
+      if (!r.ok) throw new Error('HTTP ' + r.status)
+      this.excludes = await r.json()
+    } catch(e) {
+      this.showToast('Failed to load exclusions: ' + e.message, 'err')
+    } finally { this.loading = false }
+  },
+
+  async addEntry() {
+    const cidr = this.newCIDR.trim()
+    if (!cidr) return
+    try {
+      const r = await fetch('/detection/excludes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...this.authHeaders() },
+        body: JSON.stringify({ cidr, label: this.newLabel.trim() })
+      })
+      const data = await r.json()
+      if (!r.ok) throw new Error(data.error || 'HTTP ' + r.status)
+      this.newCIDR = ''
+      this.newLabel = ''
+      this.showToast('Added ' + cidr, 'ok')
+      await this.load()
+    } catch(e) {
+      this.showToast(e.message, 'err')
+    }
+  },
+
+  async deleteEntry(id, cidr) {
+    if (!confirm(`Remove ${cidr} from exclusions?`)) return
+    try {
+      const r = await fetch(`/detection/excludes/${id}`, {
+        method: 'DELETE',
+        headers: this.authHeaders()
+      })
+      const data = await r.json()
+      if (!r.ok) throw new Error(data.error || 'HTTP ' + r.status)
+      this.showToast('Removed ' + cidr, 'ok')
+      await this.load()
+    } catch(e) {
+      this.showToast(e.message, 'err')
+    }
+  },
+
+  startEdit(e) {
+    this.editID = e.id
+    this.editCIDR = e.cidr
+    this.editLabel = e.label
+  },
+
+  cancelEdit() {
+    this.editID = null
+    this.editCIDR = ''
+    this.editLabel = ''
+  },
+
+  async saveEdit(id) {
+    const cidr = this.editCIDR.trim()
+    if (!cidr) return
+    try {
+      const r = await fetch(`/detection/excludes/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...this.authHeaders() },
+        body: JSON.stringify({ cidr, label: this.editLabel.trim() })
+      })
+      const data = await r.json()
+      if (!r.ok) throw new Error(data.error || 'HTTP ' + r.status)
+      this.cancelEdit()
+      this.showToast('Updated', 'ok')
+      await this.load()
+    } catch(e) {
+      this.showToast(e.message, 'err')
+    }
+  },
+
+  // Extract Bearer token from meta tag if present (set by nginx/server),
+  // or fall back to empty (loopback traffic needs no token).
+  authHeaders() {
+    const meta = document.querySelector('meta[name="argus-token"]')
+    return meta ? { 'Authorization': 'Bearer ' + meta.content } : {}
+  },
+
+  fmtDate(ts) {
+    if (!ts) return '—'
+    const d = new Date(ts)
+    if (isNaN(d)) return ts
+    return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})
+  },
+
+  showToast(msg, type = 'ok') {
+    clearTimeout(this._toastTimer)
+    this.toast = { msg, type, show: true }
+    this._toastTimer = setTimeout(() => { this.toast.show = false }, 3500)
+  }
+}}
+</script>
+</body>
+</html>

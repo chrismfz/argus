@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>argus — telemetry</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.4.3/echarts.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/alpinejs/3.13.3/cdn.min.js" defer></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f1117;--bg2:#161b27;--bg3:#1e2535;
+  --border:#2a3147;--text:#cdd6f4;--muted:#6c7086;
+  --accent:#89b4fa;--green:#a6e3a1;--red:#f38ba8;--yellow:#f9e2af;
+  --purple:#cba6f7;--teal:#94e2d5;--orange:#fab387;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;font-size:14px}
+header{display:flex;align-items:center;gap:16px;padding:12px 20px;background:var(--bg2);border-bottom:1px solid var(--border)}
+header h1{font-size:16px;font-weight:600;color:var(--accent)}
+header .tag{font-size:11px;padding:2px 8px;border-radius:4px;background:var(--bg3);color:var(--muted)}
+nav{display:flex;gap:2px;padding:0 20px;background:var(--bg2);border-bottom:1px solid var(--border)}
+nav button{padding:10px 18px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;border-bottom:2px solid transparent;transition:.15s}
+nav button.active{color:var(--accent);border-color:var(--accent)}
+nav button:hover:not(.active){color:var(--text)}
+.content{padding:20px;max-width:1600px;margin:0 auto}
+.grid{display:grid;gap:16px}
+.grid-2{grid-template-columns:1fr 1fr}
+.grid-3{grid-template-columns:1fr 1fr 1fr}
+.grid-4{grid-template-columns:repeat(4,1fr)}
+@media(max-width:900px){.grid-2,.grid-3,.grid-4{grid-template-columns:1fr}}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px}
+.card-title{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px}
+.stat{font-size:28px;font-weight:700;color:var(--text)}
+.stat-sub{font-size:12px;color:var(--muted);margin-top:2px}
+.chart{width:100%;height:280px}
+.chart-tall{width:100%;height:380px}
+table{width:100%;border-collapse:collapse}
+thead th{text-align:left;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;padding:6px 8px;border-bottom:1px solid var(--border)}
+tbody td{padding:7px 8px;border-bottom:1px solid var(--border);font-size:13px;white-space:nowrap}
+tbody tr:hover{background:var(--bg3)}
+tbody tr:last-child td{border:none}
+.asn-num{color:var(--muted);font-size:12px}
+.bytes{font-family:monospace;color:var(--accent)}
+.bar-bg{height:6px;background:var(--bg3);border-radius:3px;overflow:hidden;min-width:60px}
+.bar-fill{height:100%;border-radius:3px;background:var(--accent);transition:width .3s}
+.bar-fill.out{background:var(--orange)}
+.tag-pill{display:inline-block;font-size:11px;padding:2px 8px;border-radius:10px;background:var(--bg3);color:var(--muted)}
+input,select{background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 10px;font-size:13px;outline:none}
+input:focus,select:focus{border-color:var(--accent)}
+button.btn{background:var(--accent);color:var(--bg);border:none;border-radius:6px;padding:7px 16px;font-size:13px;cursor:pointer;font-weight:600}
+button.btn:hover{opacity:.85}
+button.btn.secondary{background:var(--bg3);color:var(--text);border:1px solid var(--border)}
+.notice{padding:12px 16px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--muted);font-size:13px}
+.notice.warn{border-color:var(--yellow);color:var(--yellow)}
+.badge{display:inline-block;font-size:11px;padding:2px 7px;border-radius:4px;background:var(--bg3)}
+.badge.daily{color:var(--green)}
+.badge.weekly{color:var(--teal)}
+.badge.monthly{color:var(--purple)}
+.badge.yearly{color:var(--red)}
+.badge.manual{color:var(--yellow)}
+.badge.live{color:var(--accent)}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.refresh-bar{display:flex;align-items:center;gap:10px;margin-bottom:14px;color:var(--muted);font-size:12px}
+.refresh-bar span{margin-left:auto}
+.note-input{display:flex;gap:8px;margin-top:12px}
+.note-input input{flex:1}
+.history-table tbody tr td:first-child{font-weight:600}
+</style>
+</head>
+<body x-data="app()" x-init="init()">
+
+<header>
+  <h1>argus telemetry</h1>
+  <span class="tag" x-text="'AS' + (overview.asn_out?.[0]?.asn ?? '—')"></span>
+  <span class="tag" x-text="lastUpdated ? 'updated ' + lastUpdated : 'loading…'"></span>
+  <span class="tag" :style="live ? 'color:var(--green)' : 'color:var(--red)'" x-text="live ? '● live' : '○ stale'"></span>
+</header>
+
+<nav>
+  <button :class="{active:tab==='overview'}" @click="tab='overview'">Overview</button>
+  <button :class="{active:tab==='asn'}"      @click="tab='asn';loadASN()">Traffic by AS</button>
+  <button :class="{active:tab==='hosts'}"    @click="tab='hosts';loadHosts()">Hosts &amp; Ports</button>
+  <button :class="{active:tab==='history'}"  @click="tab='history'">History</button>
+  <button :class="{active:tab==='snapshots'}" @click="tab='snapshots';loadSnapshots()">Snapshots</button>
+</nav>
+
+<!-- ── OVERVIEW ── -->
+<div class="content" x-show="tab==='overview'">
+  <div class="refresh-bar">
+    <template x-if="loading"><span><span class="spinner"></span>fetching…</span></template>
+    <label>window <select x-model="overviewMinutes" @change="loadOverview()">
+      <option value="60">last hour</option>
+      <option value="360">last 6 h</option>
+      <option value="1440" selected>last 24 h</option>
+    </select></label>
+    <span>auto-refresh in <b x-text="nextRefresh"></b>s</span>
+  </div>
+
+  <div class="grid grid-4" style="margin-bottom:16px">
+    <div class="card">
+      <div class="card-title">total inbound</div>
+      <div class="stat" x-text="fmtBytes(overview.total_in ?? 0)"></div>
+      <div class="stat-sub" x-text="(overview.flows_in ?? 0).toLocaleString() + ' flows'"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">total outbound</div>
+      <div class="stat" x-text="fmtBytes(overview.total_out ?? 0)"></div>
+      <div class="stat-sub" x-text="(overview.flows_out ?? 0).toLocaleString() + ' flows'"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">top inbound AS</div>
+      <div class="stat" style="font-size:18px" x-text="overview.asn_in?.[0]?.name ?? '—'"></div>
+      <div class="stat-sub" x-text="fmtBytes(overview.asn_in?.[0]?.bytes_in ?? 0)"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">top outbound AS</div>
+      <div class="stat" style="font-size:18px" x-text="overview.asn_out?.[0]?.name ?? '—'"></div>
+      <div class="stat-sub" x-text="fmtBytes(overview.asn_out?.[0]?.bytes_out ?? 0)"></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-title">throughput (bytes/min)</div>
+    <div id="chart-throughput" class="chart"></div>
+  </div>
+
+  <div class="grid grid-2">
+    <div class="card">
+      <div class="card-title">top 10 inbound AS (24h)</div>
+      <div id="chart-asn-in" style="height:220px"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">top 10 outbound AS (24h)</div>
+      <div id="chart-asn-out" style="height:220px"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── TRAFFIC BY AS ── -->
+<div class="content" x-show="tab==='asn'">
+  <div class="grid grid-2" style="margin-bottom:16px">
+    <div class="card">
+      <div class="card-title">top inbound ASNs (last 24h)</div>
+      <table>
+        <thead><tr><th>ASN</th><th>Name</th><th>In</th><th style="width:80px"></th></tr></thead>
+        <tbody>
+          <template x-for="a in (asnData.top_in ?? [])" :key="a.asn">
+            <tr>
+              <td><span class="asn-num" x-text="a.asn"></span></td>
+              <td x-text="a.name || '—'"></td>
+              <td class="bytes" x-text="fmtBytes(a.bytes_in)"></td>
+              <td><div class="bar-bg"><div class="bar-fill" :style="'width:'+pct(a.bytes_in, maxAsnIn)+'%'"></div></div></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-title">top outbound ASNs (last 24h)</div>
+      <table>
+        <thead><tr><th>ASN</th><th>Name</th><th>Out</th><th style="width:80px"></th></tr></thead>
+        <tbody>
+          <template x-for="a in (asnData.top_out ?? [])" :key="a.asn">
+            <tr>
+              <td><span class="asn-num" x-text="a.asn"></span></td>
+              <td x-text="a.name || '—'"></td>
+              <td class="bytes" x-text="fmtBytes(a.bytes_out)"></td>
+              <td><div class="bar-bg"><div class="bar-fill out" :style="'width:'+pct(a.bytes_out, maxAsnOut)+'%'"></div></div></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-title">outgoing traffic — AS sankey</div>
+    <div id="chart-sankey-out" class="chart-tall"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">incoming traffic — AS sankey</div>
+    <div id="chart-sankey-in" class="chart-tall"></div>
+  </div>
+</div>
+
+<!-- ── HOSTS & PORTS ── -->
+<div class="content" x-show="tab==='hosts'">
+  <div class="grid grid-2" style="margin-bottom:16px">
+    <div class="card">
+      <div class="card-title">top inbound destination hosts</div>
+      <table>
+        <thead><tr><th>Host</th><th>Inbound bytes</th></tr></thead>
+        <tbody>
+          <template x-for="h in (hostsData.hosts_in ?? [])" :key="h.ip">
+            <tr>
+              <td x-text="h.ip"></td>
+              <td class="bytes" x-text="fmtBytes(h.bytes_in)"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-title">top outbound source hosts</div>
+      <table>
+        <thead><tr><th>Host</th><th>Outbound bytes</th></tr></thead>
+        <tbody>
+          <template x-for="h in (hostsData.hosts_out ?? [])" :key="h.ip">
+            <tr>
+              <td x-text="h.ip"></td>
+              <td class="bytes" x-text="fmtBytes(h.bytes_out)"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">destination port heatmap (top 30)</div>
+    <div id="chart-ports" class="chart"></div>
+  </div>
+</div>
+
+<!-- ── HISTORY ── -->
+<div class="content" x-show="tab==='history'">
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-title">ASN historical comparison</div>
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
+      <input x-model="historyASN" type="number" placeholder="ASN number e.g. 13335" style="width:220px" @keyup.enter="loadHistory()">
+      <button class="btn" @click="loadHistory()" :disabled="historyLoading">
+        <template x-if="historyLoading"><span><span class="spinner"></span>loading…</span></template>
+        <template x-if="!historyLoading">Look up</template>
+      </button>
+      <span x-text="historyName ? historyName : ''" style="color:var(--accent);font-weight:600"></span>
+    </div>
+
+    <template x-if="historyRows.length > 0">
+      <div>
+        <table class="history-table">
+          <thead>
+            <tr>
+              <th>Period</th>
+              <th>Date</th>
+              <th>Inbound</th>
+              <th>Outbound</th>
+              <th>Flows in</th>
+              <th>Flows out</th>
+              <th>Note</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="background:var(--bg3)">
+              <td><span class="badge live">live</span></td>
+              <td x-text="historyLive?.label ?? 'last 24h'"></td>
+              <td class="bytes" x-text="fmtBytes(historyLive?.bytes_in ?? 0)"></td>
+              <td class="bytes" x-text="fmtBytes(historyLive?.bytes_out ?? 0)"></td>
+              <td x-text="(historyLive?.flows_in ?? 0).toLocaleString()"></td>
+              <td x-text="(historyLive?.flows_out ?? 0).toLocaleString()"></td>
+              <td>—</td>
+            </tr>
+            <template x-for="row in historyRows" :key="row.snapshot_id">
+              <tr>
+                <td><span class="badge" :class="row.period" x-text="row.period"></span></td>
+                <td x-text="row.label"></td>
+                <td class="bytes" x-text="fmtBytes(row.bytes_in)"></td>
+                <td class="bytes" x-text="fmtBytes(row.bytes_out)"></td>
+                <td x-text="row.flows_in.toLocaleString()"></td>
+                <td x-text="row.flows_out.toLocaleString()"></td>
+                <td x-text="row.note || '—'"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+        <div id="chart-history" style="height:240px;margin-top:12px"></div>
+      </div>
+    </template>
+
+    <template x-if="historyRows.length === 0 && !historyLoading && historyASN">
+      <p class="notice">No snapshot data yet for AS<span x-text="historyASN"></span>.
+        Snapshots accumulate automatically — check back after the first midnight.</p>
+    </template>
+  </div>
+</div>
+
+<!-- ── SNAPSHOTS ── -->
+<div class="content" x-show="tab==='snapshots'">
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-title">manual snapshot</div>
+    <p style="color:var(--muted);font-size:13px;margin-bottom:10px">
+      Take a named snapshot right now — useful before/after peering changes, upgrades, or incidents.
+    </p>
+    <div class="note-input">
+      <input x-model="snapNote" placeholder="e.g. before GR-IX 10G upgrade" @keyup.enter="takeSnap()">
+      <button class="btn" @click="takeSnap()" :disabled="snapLoading">
+        <template x-if="snapLoading"><span class="spinner"></span></template>
+        Save snapshot
+      </button>
+    </div>
+    <p x-show="snapMsg" x-text="snapMsg" style="margin-top:10px;color:var(--green);font-size:13px"></p>
+  </div>
+
+  <div class="card">
+    <div class="card-title">snapshot history</div>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th><th>Period</th><th>Date range</th><th>Created</th><th>Note</th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-for="s in snapshots" :key="s.id">
+          <tr>
+            <td x-text="s.id"></td>
+            <td><span class="badge" :class="s.period" x-text="s.period"></span></td>
+            <td x-text="fmtDate(s.ts_start) + ' → ' + fmtDate(s.ts_end)"></td>
+            <td x-text="fmtDate(s.created_at)"></td>
+            <td x-text="s.note || '—'" style="color:var(--muted)"></td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+    <p x-show="snapshots.length === 0" class="notice" style="margin-top:12px">
+      No snapshots yet. The first automatic snapshot will be taken at midnight.
+    </p>
+  </div>
+</div>
+
+<script>
+// ── ECharts registry ───────────────────────────────────────────────────────────
+const charts = {}
+function ec(id) {
+  if (!charts[id]) charts[id] = echarts.init(document.getElementById(id), 'dark')
+  return charts[id]
+}
+
+// ── Alpine app ─────────────────────────────────────────────────────────────────
+function app() { return {
+  tab: 'overview',
+  loading: false,
+  live: false,
+  lastUpdated: '',
+  nextRefresh: 30,
+  overviewMinutes: 1440,
+
+  overview: {},
+  asnData: {},
+  hostsData: {},
+
+  historyASN: '',
+  historyLoading: false,
+  historyRows: [],
+  historyLive: null,
+  historyName: '',
+
+  snapshots: [],
+  snapNote: '',
+  snapLoading: false,
+  snapMsg: '',
+
+  // ── computed helpers ──
+  get maxAsnIn()  { return Math.max(...(this.asnData.top_in  ?? []).map(a=>a.bytes_in),  1) },
+  get maxAsnOut() { return Math.max(...(this.asnData.top_out ?? []).map(a=>a.bytes_out), 1) },
+
+  // ── lifecycle ──
+  init() {
+    this.loadOverview()
+    setInterval(()=>{
+      this.nextRefresh--
+      if (this.nextRefresh <= 0) {
+        this.nextRefresh = 30
+        if (this.tab === 'overview') this.loadOverview()
+      }
+    }, 1000)
+    window.addEventListener('resize', ()=>Object.values(charts).forEach(c=>c.resize()))
+  },
+
+  // ── data fetchers ──
+  async loadOverview() {
+    this.loading = true
+    try {
+      const r = await fetch(`/tel/overview?minutes=${this.overviewMinutes}`)
+      if (!r.ok) throw new Error(r.status)
+      this.overview = await r.json()
+      this.live = true
+      this.lastUpdated = new Date().toLocaleTimeString()
+      this.$nextTick(()=>{
+        this.drawThroughput(this.overview.timeseries ?? [])
+        this.drawASNBar('chart-asn-in',  this.overview.asn_in  ?? [], 'bytes_in',  '#89b4fa')
+        this.drawASNBar('chart-asn-out', this.overview.asn_out ?? [], 'bytes_out', '#fab387')
+      })
+    } catch(e) {
+      this.live = false
+    } finally { this.loading = false }
+  },
+
+  async loadASN() {
+    const r = await fetch('/tel/asn?n=20&minutes=1440')
+    if (!r.ok) return
+    this.asnData = await r.json()
+    const sankey = await fetch('/tel/sankey?limit=25').then(r=>r.json()).catch(()=>({incoming:[],outgoing:[]}))
+    this.$nextTick(()=>{
+      this.drawSankey('chart-sankey-out', sankey.outgoing ?? [])
+      this.drawSankey('chart-sankey-in',  sankey.incoming ?? [])
+    })
+  },
+
+  async loadHosts() {
+    const r = await fetch('/tel/hosts?n=20')
+    if (!r.ok) return
+    this.hostsData = await r.json()
+    const ports = await fetch('/tel/ports?n=30').then(r=>r.json()).catch(()=>[])
+    this.$nextTick(()=>this.drawPorts(ports))
+  },
+
+  async loadHistory() {
+    if (!this.historyASN) return
+    this.historyLoading = true
+    this.historyRows = []
+    this.historyName = ''
+    this.historyLive = null
+    try {
+      const r = await fetch(`/tel/history?asn=${this.historyASN}`)
+      if (!r.ok) throw new Error(r.status)
+      const d = await r.json()
+      this.historyName = d.asn_name || ''
+      this.historyLive = d.live
+      this.historyRows = d.history ?? []
+      this.$nextTick(()=>this.drawHistoryChart(d))
+    } catch(e) {}
+    finally { this.historyLoading = false }
+  },
+
+  async loadSnapshots() {
+    const r = await fetch('/tel/snapshots')
+    if (!r.ok) return
+    this.snapshots = await r.json() ?? []
+  },
+
+  async takeSnap() {
+    this.snapLoading = true
+    this.snapMsg = ''
+    try {
+      const r = await fetch('/tel/snapshots', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({note: this.snapNote})
+      })
+      const d = await r.json()
+      this.snapMsg = `Saved snapshot #${d.id} — "${d.note || '(no note)'}"`
+      this.snapNote = ''
+      this.loadSnapshots()
+    } catch(e) { this.snapMsg = 'Error saving snapshot.' }
+    finally { this.snapLoading = false }
+  },
+
+  // ── chart builders ──
+  drawThroughput(ts) {
+    const c = ec('chart-throughput')
+    const inSeries  = ts.map(b=>[b.ts*1000, b.bytes_in])
+    const outSeries = ts.map(b=>[b.ts*1000, b.bytes_out])
+    c.setOption({
+      backgroundColor:'transparent',
+      tooltip:{trigger:'axis',formatter:p=>{
+        const t=new Date(p[0].value[0]).toLocaleTimeString()
+        return `${t}<br>${p.map(s=>`${s.seriesName}: ${fmtBytesS(s.value[1])}/min`).join('<br>')}`
+      }},
+      legend:{data:['inbound','outbound'],top:0,textStyle:{color:'#cdd6f4'}},
+      grid:{top:30,right:20,bottom:30,left:70},
+      xAxis:{type:'time',axisLabel:{color:'#6c7086'},splitLine:{lineStyle:{color:'#2a3147'}}},
+      yAxis:{type:'value',axisLabel:{color:'#6c7086',formatter:v=>fmtBytesS(v)},splitLine:{lineStyle:{color:'#2a3147'}}},
+      series:[
+        {name:'inbound', type:'line',data:inSeries, showSymbol:false, lineStyle:{width:2}, areaStyle:{opacity:.15}, color:'#89b4fa'},
+        {name:'outbound',type:'line',data:outSeries,showSymbol:false, lineStyle:{width:2}, areaStyle:{opacity:.15}, color:'#fab387'}
+      ]
+    })
+  },
+
+  drawASNBar(id, data, field, color) {
+    const c = ec(id)
+    const top = data.slice(0,10)
+    c.setOption({
+      backgroundColor:'transparent',
+      tooltip:{trigger:'axis',formatter:p=>`${p[0].name}: ${fmtBytesS(p[0].value)}`},
+      grid:{top:10,right:20,bottom:10,left:160,containLabel:false},
+      xAxis:{type:'value',axisLabel:{color:'#6c7086',formatter:v=>fmtBytesS(v)},splitLine:{lineStyle:{color:'#2a3147'}}},
+      yAxis:{type:'category',data:top.map(a=>a.name||`AS${a.asn}`),axisLabel:{color:'#cdd6f4',width:150,overflow:'truncate'}},
+      series:[{type:'bar',data:top.map(a=>a[field]),itemStyle:{color,borderRadius:[0,4,4,0]},barMaxWidth:22}]
+    })
+  },
+
+  drawSankey(id, pairs) {
+    if (!pairs.length) return
+    const nodeSet = new Set()
+    pairs.forEach(p=>{
+      nodeSet.add(p.src_name || `AS${p.src_asn}`)
+      nodeSet.add(p.dst_name || `AS${p.dst_asn}`)
+    })
+    const nodes = [...nodeSet].map(name=>({name}))
+    const links = pairs.map(p=>({
+      source: p.src_name || `AS${p.src_asn}`,
+      target: p.dst_name || `AS${p.dst_asn}`,
+      value:  p.bytes
+    }))
+    const c = ec(id)
+    c.setOption({
+      backgroundColor:'transparent',
+      tooltip:{trigger:'item',formatter:p=>{
+        if(p.dataType==='edge') return `${p.data.source} → ${p.data.target}: ${fmtBytesS(p.data.value)}`
+        return p.name
+      }},
+      series:[{
+        type:'sankey', layout:'none',
+        emphasis:{focus:'adjacency'},
+        data:nodes, links,
+        lineStyle:{color:'gradient',opacity:.4},
+        label:{color:'#cdd6f4',fontSize:12},
+        nodeWidth:12, nodeGap:8
+      }]
+    })
+  },
+
+  drawPorts(ports) {
+    const c = ec('chart-ports')
+    const data = ports.slice(0,30)
+    c.setOption({
+      backgroundColor:'transparent',
+      tooltip:{trigger:'axis',formatter:p=>`Port ${p[0].name}: ${p[0].value.toLocaleString()} flows`},
+      grid:{top:10,right:20,bottom:40,left:60},
+      xAxis:{type:'category',data:data.map(p=>p.port),axisLabel:{color:'#6c7086',rotate:45}},
+      yAxis:{type:'value',axisLabel:{color:'#6c7086'},splitLine:{lineStyle:{color:'#2a3147'}}},
+      series:[{type:'bar',data:data.map(p=>p.count),itemStyle:{color:'#cba6f7',borderRadius:[4,4,0,0]},barMaxWidth:30}]
+    })
+  },
+
+  drawHistoryChart(d) {
+    const c = ec('chart-history')
+    const rows = [
+      {label:'live (24h)', bytes_in: d.live?.bytes_in??0, bytes_out: d.live?.bytes_out??0},
+      ...(d.history??[]).map(r=>({label:r.label, bytes_in:r.bytes_in, bytes_out:r.bytes_out}))
+    ]
+    c.setOption({
+      backgroundColor:'transparent',
+      tooltip:{trigger:'axis'},
+      legend:{data:['inbound','outbound'],top:0,textStyle:{color:'#cdd6f4'}},
+      grid:{top:30,right:20,bottom:60,left:80},
+      xAxis:{type:'category',data:rows.map(r=>r.label),axisLabel:{color:'#cdd6f4',rotate:20}},
+      yAxis:{type:'value',axisLabel:{color:'#6c7086',formatter:v=>fmtBytesS(v)},splitLine:{lineStyle:{color:'#2a3147'}}},
+      series:[
+        {name:'inbound', type:'bar',data:rows.map(r=>r.bytes_in), itemStyle:{color:'#89b4fa',borderRadius:[4,4,0,0]},barMaxWidth:40},
+        {name:'outbound',type:'bar',data:rows.map(r=>r.bytes_out),itemStyle:{color:'#fab387',borderRadius:[4,4,0,0]},barMaxWidth:40}
+      ]
+    })
+  },
+
+  // ── util ──
+  pct(v, max) { return max > 0 ? Math.round(v/max*100) : 0 },
+  fmtDate(ts) { return new Date(ts*1000).toLocaleString() }
+}}
+
+// Standalone byte formatters (used inside chart tooltip formatters outside Alpine context)
+function fmtBytesS(b) {
+  if (b >= 1e12) return (b/1e12).toFixed(2)+' TB'
+  if (b >= 1e9)  return (b/1e9).toFixed(2)+' GB'
+  if (b >= 1e6)  return (b/1e6).toFixed(2)+' MB'
+  if (b >= 1e3)  return (b/1e3).toFixed(1)+' KB'
+  return b+' B'
+}
+// Alpine-accessible version
+function fmtBytes(b) { return fmtBytesS(b) }
+</script>
+</body>
+</html>

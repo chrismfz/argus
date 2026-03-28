@@ -27,6 +27,7 @@ import (
 	"argus/internal/fields"
 	"argus/internal/flow"
 	"argus/internal/sqlite"
+	"argus/internal/telemetry"
 )
 
 var debug bool
@@ -195,6 +196,16 @@ func main() {
 			}
 		}
 	}()
+
+
+    // ── Telemetry ─────────────────────────────────────────────────────────
+    if err := telemetry.InitSchema(db); err != nil {
+        log.Printf("[telemetry] schema init failed: %v", err)
+    }
+    telemetry.Init(uint32(cfg.MyASN), myNets)
+    telemetry.StartScheduler(ctx, db)
+    log.Printf("[telemetry] aggregator ready (myASN=%d nets=%d)", cfg.MyASN, len(myNets))
+
 
 	// ── Enrichment ───────────────────────────────────────────────────────────
 	enrichers, err := enrich.Init(cfg)
@@ -435,6 +446,7 @@ func main() {
 		if listener != nil {
 			api.Ranger = listener.Ranger
 		}
+		api.TelemetryDB = db
 		api.CFM = cfm
 		api.Start()
 	}()

@@ -11,6 +11,7 @@ import (
 	"argus/internal/clickhouse"
 	"argus/internal/enrich"
 	"github.com/yl2chen/cidranger"
+	"argus/internal/telemetry"
 )
 
 // InsertFlowBatcher buffers FlowRecords, enriches them, and inserts into ClickHouse.
@@ -122,6 +123,30 @@ func (b *InsertFlowBatcher) enrichAndFlush(batch []*FlowRecord) {
 			b.enrichBGP(rec)
 		}
 	}
+
+
+
+
+    // ── Telemetry tap (Phase 1: runs alongside ClickHouse insert) ──────────
+if telemetry.Global != nil {
+    for _, rec := range batch {
+        telemetry.Global.Ingest(&telemetry.Record{
+            SrcHost:       rec.SrcHost,
+            DstHost:       rec.DstHost,
+            PeerSrcAS:     rec.PeerSrcAS,
+            PeerDstAS:     rec.PeerDstAS,
+            PeerSrcASName: rec.PeerSrcASName,
+            PeerDstASName: rec.PeerDstASName,
+            Bytes:         rec.Bytes,
+            Packets:       rec.Packets,
+            FlowDirection: rec.FlowDirection,
+            DstPort:       rec.DstPort,
+        })
+    }
+}
+
+
+
 
 	if err := b.insertBatch(context.Background(), batch); err != nil {
 		log.Printf("[BATCHER] insert failed: %v", err)

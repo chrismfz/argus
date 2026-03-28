@@ -56,6 +56,22 @@ func Start() {
     mainMux.HandleFunc("/flush",       WithAuth(handleFlush))
     mainMux.HandleFunc("/snmp/interfaces", WithAuth(handleSNMPInterfaces))
 
+    // Telemetry — monitoring data (read-only, IP-auth same as main API)
+    mainMux.HandleFunc("/tel/overview",   WithAuth(handleTelOverview))
+    mainMux.HandleFunc("/tel/timeseries", WithAuth(handleTelTimeSeries))
+    mainMux.HandleFunc("/tel/asn",        WithAuth(handleTelASN))
+    mainMux.HandleFunc("/tel/sankey",     WithAuth(handleTelSankey))
+    mainMux.HandleFunc("/tel/hosts",      WithAuth(handleTelHosts))
+    mainMux.HandleFunc("/tel/ports",      WithAuth(handleTelPorts))
+    mainMux.HandleFunc("/tel/snapshots",  WithAuth(handleTelSnapshots))
+    mainMux.HandleFunc("/tel/snapshot",   WithAuth(handleTelSnapshotGet))
+    mainMux.HandleFunc("/tel/history",    WithAuth(handleTelHistory))
+    // Dashboard HTML — served at /dashboard
+    mainMux.HandleFunc("/dashboard", WithAuth(func(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set("Content-Type", "text/html; charset=utf-8")
+        w.Write(dashboardHTML)
+    }))
+
     apiAddr := fmt.Sprintf("%s:%d", config.AppConfig.API.ListenAddress, config.AppConfig.API.Port)
     mainSrv := &http.Server{
         Addr:              apiAddr,

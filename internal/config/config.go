@@ -262,17 +262,26 @@ func GetDefaultConfigPath() (string, error) {
 		pathsToTry[0], pathsToTry[1], pathsToTry[2])
 }
 
+
 func LoadConfig(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("error reading config file %s: %w", path, err)
-	}
-	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("error parsing config file %s: %w", path, err)
-	}
-	return &cfg, nil
+        data, err := os.ReadFile(path)
+        if err != nil {
+                return nil, fmt.Errorf("error reading config file %s: %w", path, err)
+        }
+        var cfg Config
+        if err := yaml.Unmarshal(data, &cfg); err != nil {
+                return nil, fmt.Errorf("error parsing config file %s: %w", path, err)
+        }
+
+        // Derive GeoIP paths from MaxMind config
+        if cfg.MaxMind.DBPath != "" {
+                cfg.GeoIP.ASNDB  = filepath.Join(cfg.MaxMind.DBPath, "GeoLite2-ASN.mmdb")
+                cfg.GeoIP.CityDB = filepath.Join(cfg.MaxMind.DBPath, "GeoLite2-City.mmdb")
+        }
+
+        return &cfg, nil
 }
+
 
 
 func (gc Config) GetCollectors() []collectors.Frontend {

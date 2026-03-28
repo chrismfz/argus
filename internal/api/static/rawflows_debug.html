@@ -31,6 +31,9 @@ button.active{background:var(--accent);color:var(--bg);border-color:var(--accent
 /* layout: left=flow list, right=field detail */
 .layout{display:flex;height:calc(100vh - 88px)}
 #flow-list{width:420px;min-width:280px;overflow-y:auto;border-right:1px solid var(--border);flex-shrink:0}
+#flow-list.frozen{border-top:2px solid var(--yellow)}
+.freeze-badge{display:none;font-size:11px;padding:3px 8px;background:rgba(249,226,175,.15);color:var(--yellow);border-bottom:1px solid var(--border);text-align:center}
+#flow-list.frozen .freeze-badge{display:block}
 #field-view{flex:1;overflow-y:auto;padding:0}
 
 /* flow list */
@@ -70,6 +73,13 @@ button.active{background:var(--accent);color:var(--bg);border-color:var(--accent
   <span id="conn-badge" class="badge live">● connecting…</span>
   <div class="controls">
     <input type="text" id="filter-ip" placeholder="filter IP…" oninput="applyFilter()">
+    <select id="sample-rate" title="show 1 in every N flows">
+      <option value="1">1 in 1 (all)</option>
+      <option value="5">1 in 5</option>
+      <option value="10" selected>1 in 10</option>
+      <option value="25">1 in 25</option>
+      <option value="50">1 in 50</option>
+    </select>
     <button id="btn-pause" onclick="togglePause()">⏸ pause</button>
     <button onclick="clearAll()">🗑 clear</button>
     <select id="max-rows" onchange="trimList()">
@@ -87,7 +97,12 @@ button.active{background:var(--accent);color:var(--bg);border-color:var(--accent
 </div>
 
 <div class="layout">
-  <div id="flow-list"><div class="empty" id="list-empty">Waiting for flows…</div></div>
+  <div id="flow-list"
+       onmouseenter="frozen=true"
+       onmouseleave="frozen=false;document.getElementById('flow-list').classList.remove('frozen')">
+    <div class="freeze-badge">⏸ frozen — move mouse away to resume</div>
+    <div class="empty" id="list-empty">Waiting for flows…</div>
+  </div>
   <div id="field-view"><div class="empty" id="fv-empty">← click a flow to inspect its fields</div></div>
 </div>
 
@@ -141,6 +156,8 @@ let selected = null
 let total = 0, dirSeen = 0, dropped = 0
 let sources = new Set()
 let paused = false
+let frozen = false
+let sampleCounter = 0
 let filterIP = ''
 let es = null
 
@@ -173,6 +190,11 @@ function connect() {
 
     if (paused) { dropped++; document.getElementById('s-drop').textContent = dropped; return }
 
+    // sample rate: skip N-1 out of every N flows
+    sampleCounter++
+    const rate = parseInt(document.getElementById('sample-rate').value)
+    if (sampleCounter % rate !== 0) return
+
     // apply filter
     if (filterIP) {
       const src = fields[8]  || fields[27] || ''
@@ -180,14 +202,24 @@ function connect() {
       if (!src.includes(filterIP) && !dst.includes(filterIP)) return
     }
 
-    addFlow(f)
+    // always store the flow for clicking, but don't add to DOM if frozen
+    flows.unshift(f)
+    if (frozen) {
+      document.getElementById('flow-list').classList.add('frozen')
+      return
+    }
+    renderFlow(f, 0)
+    // reindex
+    const list = document.getElementById('flow-list')
+    Array.from(list.querySelectorAll('.flow-item')).forEach((el, i) => el.dataset.idx = i)
+    trimList()
+    if (selected === null) selectFlow(0, list.querySelector('.flow-item'))
   }
 }
 
-function addFlow(f) {
-  flows.unshift(f)
+// renderFlow adds a stored flow to the DOM list at position idx
+function renderFlow(f, idx) {
   document.getElementById('list-empty').style.display = 'none'
-
   const src = f.fields[8]  || f.fields[27] || '?'
   const dst = f.fields[12] || f.fields[28] || '?'
   const t   = new Date(f.ts * 1000).toLocaleTimeString()
@@ -195,24 +227,36 @@ function addFlow(f) {
 
   const item = document.createElement('div')
   item.className = 'flow-item'
-  item.dataset.idx = 0
+  item.dataset.idx = idx
   item.innerHTML = `
     <span class="t">${t}</span>
     <span class="src">${src}</span>
     <span class="dst">${dst}</span>
     <span class="cnt">${cnt} fields</span>
   `
-  item.onclick = () => selectFlow(0, item)
+  item.onclick = () => selectFlow(parseInt(item.dataset.idx), item)
 
   const list = document.getElementById('flow-list')
-  list.insertBefore(item, list.firstChild)
-
-  // reindex
-  Array.from(list.querySelectorAll('.flow-item')).forEach((el, i) => el.dataset.idx = i)
-
-  trimList()
-  if (selected === null) selectFlow(0, item)
+  list.insertBefore(item, list.firstChild.nextSibling) // after freeze-badge
 }
+
+// onmouseleave: flush queued flows into DOM
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('flow-list').addEventListener('mouseleave', () => {
+    frozen = false
+    document.getElementById('flow-list').classList.remove('frozen')
+    // re-render up to max-rows flows
+    const max = parseInt(document.getElementById('max-rows').value)
+    const list = document.getElementById('flow-list')
+    // clear existing items
+    list.querySelectorAll('.flow-item').forEach(e => e.remove())
+    const toShow = flows.slice(0, max)
+    // render in reverse so newest ends up on top
+    for (let i = toShow.length - 1; i >= 0; i--) renderFlow(toShow[i], i)
+    Array.from(list.querySelectorAll('.flow-item')).forEach((el, i) => el.dataset.idx = i)
+    if (flows.length > 0) document.getElementById('list-empty').style.display = 'none'
+  })
+})
 
 function selectFlow(idx, el) {
   document.querySelectorAll('.flow-item').forEach(e => e.classList.remove('selected'))

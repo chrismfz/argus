@@ -537,7 +537,7 @@ function app() { return {
     this.importSkipped = 0
   },
 
-  
+  authHeaders() {
     const meta = document.querySelector('meta[name="argus-token"]')
     return meta ? { 'Authorization': 'Bearer ' + meta.content } : {}
   },

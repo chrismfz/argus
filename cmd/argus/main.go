@@ -42,7 +42,6 @@ var anom *detection.Anomaly
 // memory lane
 var mem *detection.MemoryLayer
 
-var f *flow.FlowRecord
 
 
 func dlog(msg string, args ...interface{}) {
@@ -467,7 +466,7 @@ if enrichEnabled(cfg, "ptr") {
         inserter := clickhouse.NewInserter(cfg.ClickHouse.Table)
         dlog("ClickHouse connection established.")
 
-        batcher := NewInsertFlowBatcher(
+        batcher := flow.NewInsertFlowBatcher(
                 inserter,
                 cfg.Insert.BatchSize,
                 time.Duration(cfg.Insert.FlushIntervalMs)*time.Millisecond,
@@ -475,7 +474,8 @@ if enrichEnabled(cfg, "ptr") {
                 cfg.MyASN,
                 myNets,
                 ifNameCache,
-                cfg.BGP.Listener.StoreASPath, // ✅ πάρε το flag από το bgp_listener
+                cfg.BGP.Listener.StoreASPath,
+			geo,
         )
         defer batcher.Close()
 

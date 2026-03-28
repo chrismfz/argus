@@ -27,7 +27,8 @@ type InsertFlowBatcher struct {
 	myASN  uint32
 	myNets []*net.IPNet
 	ifNames *enrich.IFNameCache
-	storeASPath   bool // NEW
+	storeASPath   bool
+	geo           *enrich.GeoIP
 }
 
 
@@ -39,7 +40,8 @@ func NewInsertFlowBatcher(
     myASN uint32,
     myNets []*net.IPNet,
     ifNames *enrich.IFNameCache,
-    storeASPath bool, // NEW
+    storeASPath bool,
+    geo         *enrich.GeoIP,
 
 ) *InsertFlowBatcher {
     ctx, cancel := context.WithCancel(context.Background())
@@ -57,6 +59,7 @@ func NewInsertFlowBatcher(
         myNets:        myNets,
         ifNames:       ifNames,
 	storeASPath:   storeASPath,
+		geo:           geo,
     }
     go b.autoFlushLoop()
     return b
@@ -118,11 +121,11 @@ func (b *InsertFlowBatcher) flush() {
 
     // ✅ enrich.GeoIP enrichment (ανεξάρτητα από BGP)
     for _, rec := range batch {
-        if geo != nil {
-            rec.SrcHostCountry = geo.GetCountry(rec.SrcHost)
-            rec.DstHostCountry = geo.GetCountry(rec.DstHost)
-            rec.PeerSrcASName = geo.GetASNName(rec.SrcHost)
-            rec.PeerDstASName = geo.GetASNName(rec.DstHost)
+        if b.geo != nil {
+            rec.SrcHostCountry = b.geo.GetCountry(rec.SrcHost)
+            rec.DstHostCountry = b.geo.GetCountry(rec.DstHost)
+            rec.PeerSrcASName = b.geo.GetASNName(rec.SrcHost)
+            rec.PeerDstASName = b.geo.GetASNName(rec.DstHost)
         }
     }
 
@@ -201,9 +204,9 @@ for _, rec := range batch {
 
 
 
-    dlog("Flushing %d flows to ClickHouse", len(batch))
+    log.Printf("[DEBUG] Flushing %d flows to ClickHouse", len(batch))
 
-    if err := b.inserter.InsertBatch(context.Background(), batch); err != nil {
+    if err := b.insertBatch(context.Background(), batch); err != nil {
         log.Printf("[ERROR] Failed to insert batch: %v", err)
     }
 }
@@ -220,3 +223,16 @@ func (b *InsertFlowBatcher) Close() {
 }
 
 
+
+func (b *InsertFlowBatcher) insertBatch(ctx context.Context, flows []*FlowRecord) error {
+	batch, err := clickhouse.Global.PrepareBatch(ctx, b.inserter.Query())
+	if err != nil {
+		return err
+	}
+	for _, f := range flows {
+		if err := batch.AppendStruct(f); err != nil {
+			return err
+		}
+	}
+	return batch.Send()
+}

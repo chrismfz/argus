@@ -29,17 +29,9 @@ import (
 )
 
 var debug bool
-var listener *bgp.BGPListener
-var resolver *enrich.DNSResolver
 var myNets []*net.IPNet
 var Version   = "dev" // fallback version
 var BuildTime = "unknown"
-var engine *detection.Engine
-var detectionRules []detection.DetectionRule // MOVED THIS DECLARATION TO GLOBAL SCOPE
-// anomaly globals for hot-reload
-var anom *detection.Anomaly
-// memory lane
-var mem *detection.MemoryLayer
 
 
 
@@ -90,7 +82,13 @@ func enrichEnabled(cfg *config.Config, name string) bool {
 /////////////////// MAIN //////////////////
 func main() {
         var configPath string
-//context for graceful shutdown
+// subsystem handles (local to main)
+	var listener *bgp.BGPListener
+	var resolver *enrich.DNSResolver
+	var engine *detection.Engine
+	var detectionRules []detection.DetectionRule
+
+	//context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -588,7 +586,7 @@ if cfm != nil {
 
 // ===== ANOMALY (one-liner: wire + hot-reload inside detection) =====
 if cfg.Detection.Enabled && cfg.Detection.Anomaly.Enabled {
-        anom, mem = detection.StartAnomalyStack(ctx, cfg, engine, store, configPath)
+        _, _ = detection.StartAnomalyStack(ctx, cfg, engine, store, configPath)
 }
 
 

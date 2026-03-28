@@ -13,6 +13,8 @@ import (
 	"syscall"
 	"time"
 
+
+	"argus/internal/maxmind"
 	_ "modernc.org/sqlite"
 	"github.com/fsnotify/fsnotify"
 
@@ -194,6 +196,30 @@ func main() {
 			}
 		}
 	}()
+
+
+	// ── MaxMind preflight ─────────────────────────────────────────────────────
+	// Block until all .mmdb files exist. Downloads only what is missing.
+	if cfg.MaxMind.Enabled {
+		log.Printf("[maxmind] checking db files in %s ...", cfg.MaxMind.DBPath)
+		if err := maxmind.EnsureDBs(maxmind.Config{
+			AccountID:   cfg.MaxMind.AccountID,
+			LicenseKey:  cfg.MaxMind.LicenseKey,
+			Editions:    cfg.MaxMind.Editions,
+			Dir:         cfg.MaxMind.DBPath,
+			HTTPTimeout: cfg.MaxMind.HTTPTimeout,
+		}); err != nil {
+			log.Fatalf("[maxmind] preflight failed: %v", err)
+		}
+		log.Printf("[maxmind] db files ok")
+	}
+
+	// ── MaxMind background updater ────────────────────────────────────────────
+	mmLifecycle := maxmind.NewLifecycle()
+	mmLifecycle.ApplyConfig(ctx, &cfg.MaxMind)
+	defer mmLifecycle.Stop()
+
+
 
 	// ── Enrichment ────────────────────────────────────────────────────────────
 	enrichers, err := enrich.Init(cfg)

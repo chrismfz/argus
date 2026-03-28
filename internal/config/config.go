@@ -8,6 +8,7 @@ import (
     "gopkg.in/yaml.v3"
     "argus/internal/collectors"
     "strings"
+    "time"
 
 )
 
@@ -58,11 +59,11 @@ type Config struct {
         FlushIntervalMs int `yaml:"flush_interval_ms"`
     } `yaml:"insert"`
 
-    GeoIP struct {
-        ASNDB  string `yaml:"asn_db"`
-        CityDB string `yaml:"city_db"`
-    } `yaml:"geoip"`
-
+MaxMind MaxMindConfig `yaml:"maxmind"`
+GeoIP struct {
+    ASNDB  string // derived, not from yaml
+    CityDB string // derived, not from yaml
+}
 
     DNS struct {
         Nameserver string `yaml:"nameserver"`
@@ -221,6 +222,17 @@ type CFMConfig struct {
 }
 
 
+// Add this struct (alongside SNMPConfig, CFMConfig etc.)
+type MaxMindConfig struct {
+    Enabled     bool          `yaml:"enabled"`
+    AccountID   string        `yaml:"account_id"`
+    LicenseKey  string        `yaml:"license_key"`
+    DBPath      string        `yaml:"db_path"`
+    Editions    []string      `yaml:"editions"`
+    CheckEvery  time.Duration `yaml:"check_every"`
+    MinAge      time.Duration `yaml:"min_age"`
+    HTTPTimeout time.Duration `yaml:"http_timeout"`
+}
 
 func GetDefaultConfigPath() (string, error) {
 	exePath, err := os.Executable()

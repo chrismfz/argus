@@ -437,7 +437,6 @@ if enrichEnabled(cfg, "bgp") {
     for _, n := range myNets {
         entry := bgp.BGPEnrichedEntry{
             Net:    *n,
-            ASN:    cfg.MyASN,
             ASPath: []string{fmt.Sprintf("%d", cfg.MyASN)},
 	    //Communities: communities,
         }
@@ -471,8 +470,6 @@ if enrichEnabled(cfg, "ptr") {
                 cfg.Insert.BatchSize,
                 time.Duration(cfg.Insert.FlushIntervalMs)*time.Millisecond,
                 listener.Ranger,
-                cfg.MyASN,
-                myNets,
                 ifNameCache,
                 cfg.BGP.Listener.StoreASPath,
 			geo,
@@ -576,13 +573,13 @@ if db != nil {
 
 // Start detection engine with store
 engine = detection.NewEngine(
-	detectionRules,
-	cfg.MyASN,
-	myNets,
-	maxWin,
-	enrichers.Geo,
-	enrichers.DNS,
-	store,
+    detectionRules,
+    cfg.MyASN,
+    myNets,
+    maxWin,
+    enrichers.Geo,
+    enrichers.DNS,
+    store,
 )
 
 

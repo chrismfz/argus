@@ -20,6 +20,10 @@ bgp:
     dump_enabled: false   # default off
     store_aspath: true   # set to false for the test; default true in prod
 
+upstream_interfaces:
+  - 2    # sfp1-Synapsecom
+  - 3    # sfp2-GRIX
+
 clickhouse:
   host: "localhost"
   user: "default"

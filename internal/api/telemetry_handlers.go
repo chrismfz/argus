@@ -253,3 +253,13 @@ func handleTelHistory(w http.ResponseWriter, r *http.Request) {
 		"history": hist,
 	})
 }
+
+
+
+func handleTelInterfaces(w http.ResponseWriter, r *http.Request) {
+	if !telReady(w) {
+		return
+	}
+	minutes := queryInt(r, "minutes", 1440, 1, 1440)
+	telJSON(w, telemetry.Global.QueryInterfaces(minutes))
+}

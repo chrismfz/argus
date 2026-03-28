@@ -86,6 +86,7 @@ button.btn.secondary{background:var(--bg3);color:var(--text);border:1px solid va
   <button :class="{active:tab==='hosts'}"    @click="tab='hosts';loadHosts()">Hosts &amp; Ports</button>
   <button :class="{active:tab==='history'}"  @click="tab='history'">History</button>
   <button :class="{active:tab==='snapshots'}" @click="tab='snapshots';loadSnapshots()">Snapshots</button>
+  <button :class="{active:tab==='upstreams'}" @click="tab='upstreams';loadUpstreams()">Upstreams</button>
   <span class="sep"></span>
   <a href="/debug/flows" target="_blank" class="dbg">⚡ Live Flows</a>
   <a href="/debug/rawflows" target="_blank" class="dbg">🔬 Raw Fields</a>
@@ -360,6 +361,8 @@ function app() { return {
   historyName: '',
 
   snapshots: [],
+  upstreamsData: [],
+  upstreamMinutes: 1440,
   snapNote: '',
   snapLoading: false,
   snapMsg: '',
@@ -435,6 +438,42 @@ function app() { return {
       this.$nextTick(()=>this.drawHistoryChart(d))
     } catch(e) {}
     finally { this.historyLoading = false }
+  },
+
+  async loadUpstreams() {
+    this.loading = true
+    try {
+      const r = await fetch(`/tel/interfaces?minutes=${this.upstreamMinutes}`)
+      if (!r.ok) return
+      this.upstreamsData = await r.json() ?? []
+      // charts are drawn by x-init on each card after data loads
+    } catch(e) {}
+    finally { this.loading = false }
+  },
+
+  drawIfaceChart(iface) {
+    const id = 'chart-iface-' + iface.index
+    const el = document.getElementById(id)
+    if (!el) return
+    if (!charts[id]) charts[id] = echarts.init(el, 'dark')
+    const c = charts[id]
+    const inSeries  = (iface.series||[]).map(b=>[b.ts*1000, b.bytes_in])
+    const outSeries = (iface.series||[]).map(b=>[b.ts*1000, b.bytes_out])
+    c.setOption({
+      backgroundColor:'transparent',
+      tooltip:{trigger:'axis',formatter:p=>{
+        const t=new Date(p[0].value[0]).toLocaleTimeString()
+        return `${t}<br>${p.map(s=>`${s.seriesName}: ${fmtBytesS(s.value[1])}/min`).join('<br>')}`
+      }},
+      legend:{data:['in','out'],top:0,textStyle:{color:'#cdd6f4'}},
+      grid:{top:30,right:20,bottom:30,left:70},
+      xAxis:{type:'time',axisLabel:{color:'#6c7086'},splitLine:{lineStyle:{color:'#2a3147'}}},
+      yAxis:{type:'value',axisLabel:{color:'#6c7086',formatter:v=>fmtBytesS(v)},splitLine:{lineStyle:{color:'#2a3147'}}},
+      series:[
+        {name:'in', type:'line',data:inSeries, showSymbol:false,lineStyle:{width:2},areaStyle:{opacity:.15},color:'#89b4fa'},
+        {name:'out',type:'line',data:outSeries,showSymbol:false,lineStyle:{width:2},areaStyle:{opacity:.15},color:'#fab387'}
+      ]
+    })
   },
 
   async loadSnapshots() {
@@ -575,5 +614,51 @@ function fmtBytesS(b) {
 // Alpine-accessible version
 function fmtBytes(b) { return fmtBytesS(b) }
 </script>
+
+<!-- ── UPSTREAMS ── -->
+<div class="content" x-show="tab==='upstreams'">
+  <div class="refresh-bar">
+    <template x-if="loading"><span><span class="spinner"></span>fetching…</span></template>
+    <label>window <select x-model="upstreamMinutes" @change="loadUpstreams()">
+      <option value="60">last hour</option>
+      <option value="360">last 6 h</option>
+      <option value="1440" selected>last 24 h</option>
+    </select></label>
+  </div>
+
+  <!-- summary cards -->
+  <div class="grid" :style="'grid-template-columns:repeat('+Math.min(upstreamsData.length||1,4)+',1fr);margin-bottom:16px'">
+    <template x-for="iface in upstreamsData" :key="iface.index">
+      <div class="card">
+        <div class="card-title" x-text="iface.name || ('if'+iface.index)"></div>
+        <div style="display:flex;gap:12px;margin-top:4px">
+          <div>
+            <div style="font-size:11px;color:var(--muted)">IN</div>
+            <div class="stat" style="font-size:20px;color:var(--accent)" x-text="fmtBytes(iface.total_in)"></div>
+            <div class="stat-sub" x-text="(iface.flows_in||0).toLocaleString()+' flows'"></div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--muted)">OUT</div>
+            <div class="stat" style="font-size:20px;color:var(--orange)" x-text="fmtBytes(iface.total_out)"></div>
+            <div class="stat-sub" x-text="(iface.flows_out||0).toLocaleString()+' flows'"></div>
+          </div>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <!-- per-interface time-series charts -->
+  <template x-for="(iface, i) in upstreamsData" :key="iface.index">
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-title" x-text="(iface.name || ('if'+iface.index)) + ' — throughput (bytes/min)'"></div>
+      <div :id="'chart-iface-'+iface.index" class="chart" x-init="$nextTick(()=>drawIfaceChart(iface))"></div>
+    </div>
+  </template>
+
+  <template x-if="upstreamsData.length === 0">
+    <p class="notice">No interface data yet — traffic accumulates per minute. Check that upstream_interfaces is set in config.yaml.</p>
+  </template>
+</div>
+
 </body>
 </html>

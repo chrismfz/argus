@@ -131,6 +131,7 @@ func Start() {
 	mainMux.HandleFunc("/tel/snapshots",  WithMainIPOnly(handleTelSnapshots))
 	mainMux.HandleFunc("/tel/snapshot",   WithMainIPOnly(handleTelSnapshotGet))
 	mainMux.HandleFunc("/tel/history",    WithMainIPOnly(handleTelHistory))
+	mainMux.HandleFunc("/tel/interfaces", WithMainIPOnly(handleTelInterfaces))
 
 	// Dashboard HTML — IP-only, no token
 	mainMux.HandleFunc("/dashboard", WithMainIPOnly(func(w http.ResponseWriter, r *http.Request) {
@@ -138,11 +139,10 @@ func Start() {
 		w.Write(dashboardHTML)
 	}))
 
-mainMux.HandleFunc("/debug/flows",      WithMainIPOnly(handleFlowsDebug))
-mainMux.HandleFunc("/tel/flows/stream", WithMainIPOnly(handleFlowsStream))
-
-mainMux.HandleFunc("/debug/rawflows",      WithMainIPOnly(handleRawFlowsDebug))
-mainMux.HandleFunc("/tel/rawflows/stream", WithMainIPOnly(handleRawFlowsStream))
+	mainMux.HandleFunc("/debug/flows",      WithMainIPOnly(handleFlowsDebug))
+	mainMux.HandleFunc("/tel/flows/stream", WithMainIPOnly(handleFlowsStream))
+	mainMux.HandleFunc("/debug/rawflows",      WithMainIPOnly(handleRawFlowsDebug))
+	mainMux.HandleFunc("/tel/rawflows/stream", WithMainIPOnly(handleRawFlowsStream))
 
 	apiAddr := fmt.Sprintf("%s:%d", config.AppConfig.API.ListenAddress, config.AppConfig.API.Port)
 	mainSrv := &http.Server{

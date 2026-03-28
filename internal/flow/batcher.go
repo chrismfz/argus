@@ -141,8 +141,10 @@ if telemetry.Global != nil {
             Packets:       rec.Packets,
             FlowDirection: rec.FlowDirection,
             DstPort:       rec.DstPort,
-            InputInterface:  rec.InputInterface,   // ← add
-            OutputInterface: rec.OutputInterface,  // ← add
+            InputInterface:  rec.InputInterface,
+            OutputInterface: rec.OutputInterface,
+	    InputInterfaceName:  rec.InputInterfaceName,
+     	    OutputInterfaceName: rec.OutputInterfaceName,
         })
     }
 }

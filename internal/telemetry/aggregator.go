@@ -90,7 +90,7 @@ type pairAccum struct {
 type Aggregator struct {
 	mu     sync.RWMutex
 	myASN  uint32
-	myName string     // resolved from MaxMind at Init time
+	myName string
 	myNets []*net.IPNet
 
 	ring    [RingSize]MinuteBucket
@@ -136,41 +136,50 @@ func minEpoch(t time.Time) int64 {
 	return (t.Unix() / 60) * 60
 }
 
-// isInbound returns true when the flow carries traffic INTO our network.
-//
-// Primary: IP matching against my_prefixes — reliable regardless of what
-// MikroTik puts in the FlowDirection field (it often exports 0 for everything).
-// Fallback: FlowDirection, only when neither src nor dst matches our prefixes.
-func (a *Aggregator) isInbound(rec *Record) bool {
+// classifyDirection returns inbound + debug booleans for src/dst prefix match.
+// Primary: IP matching against my_prefixes.
+// Fallback: FlowDirection (MikroTik often exports 0 for everything).
+func (a *Aggregator) classifyDirection(rec *Record) (inbound, srcInMy, dstInMy bool) {
 	if len(a.myNets) > 0 {
 		if ip := net.ParseIP(rec.DstHost); ip != nil {
 			for _, n := range a.myNets {
 				if n.Contains(ip) {
-					return true // destined to our prefix → inbound
+					dstInMy = true
+					break
 				}
 			}
 		}
 		if ip := net.ParseIP(rec.SrcHost); ip != nil {
 			for _, n := range a.myNets {
 				if n.Contains(ip) {
-					return false // sourced from our prefix → outbound
+					srcInMy = true
+					break
 				}
 			}
 		}
+		if dstInMy {
+			return true, srcInMy, dstInMy
+		}
+		if srcInMy {
+			return false, srcInMy, dstInMy
+		}
 	}
 	// Fallback: trust FlowDirection only when IP matching was inconclusive
-	return rec.FlowDirection == 0
+	return rec.FlowDirection == 0, srcInMy, dstInMy
 }
 
 // ── Ingest ────────────────────────────────────────────────────────────────────
 
-// Ingest processes one enriched Record. Called from batcher.enrichAndFlush
-// after GeoIP/BGP enrichment, before (or alongside) the ClickHouse insert.
+// Ingest processes one enriched Record. Called from batcher.enrichAndFlush.
 func (a *Aggregator) Ingest(rec *Record) {
 	now := time.Now()
 	slot := slotFor(now)
 	ts := minEpoch(now)
-	inbound := a.isInbound(rec)
+
+	inbound, srcInMy, dstInMy := a.classifyDirection(rec)
+
+	// Feed the live debug tap (non-blocking, runs outside the main lock)
+	Tap.ingest(rec, inbound, srcInMy, dstInMy)
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -218,8 +227,6 @@ func (a *Aggregator) Ingest(rec *Record) {
 	}
 
 	// ── Sankey pairs ──────────────────────────────────────────────────────
-	// Skip pairs where the remote peer is our own ASN.
-	// Use myName (resolved from MaxMind at init) for our side of the edge.
 	srcASN, dstASN := rec.PeerSrcAS, rec.PeerDstAS
 	srcName, dstName := rec.PeerSrcASName, rec.PeerDstASName
 
@@ -245,7 +252,6 @@ func (a *Aggregator) Ingest(rec *Record) {
 	}
 
 	// ── Top hosts ─────────────────────────────────────────────────────────
-	// Cap at 50 000 unique IPs to prevent unbounded growth between resets.
 	if inbound {
 		if len(a.hostsIn) < 50000 {
 			a.hostsIn[rec.DstHost] += rec.Bytes
@@ -264,8 +270,6 @@ func (a *Aggregator) Ingest(rec *Record) {
 
 // ── ResetAccumulators ─────────────────────────────────────────────────────────
 
-// ResetAccumulators clears the daily-window maps (pairs, hosts, ports).
-// Called by the snapshotter after each daily snapshot is saved.
 func (a *Aggregator) ResetAccumulators() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -445,3 +449,4 @@ func (a *Aggregator) BuildSnapshot(minutes int) SnapshotData {
 		TopPorts:    ports,
 	}
 }
+

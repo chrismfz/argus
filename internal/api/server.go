@@ -138,6 +138,9 @@ func Start() {
 		w.Write(dashboardHTML)
 	}))
 
+mainMux.HandleFunc("/debug/flows",      WithMainIPOnly(handleFlowsDebug))
+mainMux.HandleFunc("/tel/flows/stream", WithMainIPOnly(handleFlowsStream))
+
 	apiAddr := fmt.Sprintf("%s:%d", config.AppConfig.API.ListenAddress, config.AppConfig.API.Port)
 	mainSrv := &http.Server{
 		Addr:              apiAddr,

@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>argus — live flow debug</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f1117;--bg2:#161b27;--bg3:#1e2535;
+  --border:#2a3147;--text:#cdd6f4;--muted:#6c7086;
+  --in:#a6e3a1;--out:#fab387;--warn:#f9e2af;--err:#f38ba8;
+  --accent:#89b4fa;--purple:#cba6f7;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:monospace;font-size:13px}
+header{display:flex;align-items:center;gap:12px;padding:10px 16px;background:var(--bg2);border-bottom:1px solid var(--border);flex-wrap:wrap}
+header h1{font-size:14px;font-weight:600;color:var(--accent);font-family:system-ui,sans-serif}
+.badge{font-size:11px;padding:2px 8px;border-radius:4px;background:var(--bg3)}
+.badge.live{color:var(--in)}
+.badge.paused{color:var(--warn)}
+.controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto}
+input[type=text]{background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:4px 8px;font-size:12px;font-family:monospace;width:160px}
+input[type=text]:focus{outline:none;border-color:var(--accent)}
+select{background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:4px 8px;font-size:12px}
+button{background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:4px 12px;font-size:12px;cursor:pointer;font-family:system-ui,sans-serif}
+button:hover{border-color:var(--accent);color:var(--accent)}
+button.active{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+.stats{display:flex;gap:16px;padding:6px 16px;background:var(--bg2);border-bottom:1px solid var(--border);font-size:12px;color:var(--muted)}
+.stats span b{color:var(--text)}
+.stats .s-in b{color:var(--in)}
+.stats .s-out b{color:var(--out)}
+.stats .s-warn b{color:var(--warn)}
+#table-wrap{overflow:auto;height:calc(100vh - 100px)}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
+colgroup col:nth-child(1){width:80px}   /* time */
+colgroup col:nth-child(2){width:130px}  /* src */
+colgroup col:nth-child(3){width:130px}  /* dst */
+colgroup col:nth-child(4){width:50px}   /* port */
+colgroup col:nth-child(5){width:160px}  /* src asn */
+colgroup col:nth-child(6){width:160px}  /* dst asn */
+colgroup col:nth-child(7){width:75px}   /* bytes */
+colgroup col:nth-child(8){width:50px}   /* dir raw */
+colgroup col:nth-child(9){width:70px}   /* src∈nets */
+colgroup col:nth-child(10){width:70px}  /* dst∈nets */
+colgroup col:nth-child(11){width:75px}  /* computed */
+thead{position:sticky;top:0;z-index:10;background:var(--bg2)}
+thead th{text-align:left;padding:6px 6px;font-size:11px;font-weight:600;color:var(--muted);border-bottom:1px solid var(--border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+tbody tr{border-bottom:1px solid rgba(42,49,71,.5)}
+tbody tr:hover{background:var(--bg3)}
+tbody td{padding:4px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.r-in  td:first-child{border-left:2px solid var(--in)}
+.r-out td:first-child{border-left:2px solid var(--out)}
+.r-mismatch td:first-child{border-left:2px solid var(--warn)}
+.tag-in  {color:var(--in);font-weight:600}
+.tag-out {color:var(--out);font-weight:600}
+.tag-warn{color:var(--warn);font-weight:600}
+.tag-muted{color:var(--muted)}
+.ip{color:var(--accent)}
+.ip-mine{color:var(--purple)}
+.asn-name{color:var(--muted);font-size:11px}
+.bytes{color:var(--text)}
+#empty{padding:40px;text-align:center;color:var(--muted);display:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>live flow debug</h1>
+  <span id="conn-badge" class="badge live">● connecting…</span>
+  <div class="controls">
+    <input type="text" id="filter-ip"  placeholder="filter IP…"  oninput="applyFilters()">
+    <input type="text" id="filter-asn" placeholder="filter ASN…" oninput="applyFilters()">
+    <select id="filter-dir" onchange="applyFilters()">
+      <option value="">all directions</option>
+      <option value="in">inbound only</option>
+      <option value="out">outbound only</option>
+      <option value="mismatch">dir mismatch</option>
+    </select>
+    <button id="btn-pause" onclick="togglePause()">⏸ pause</button>
+    <button onclick="clearRows()">🗑 clear</button>
+    <select id="max-rows" onchange="trimRows()">
+      <option value="200">200 rows</option>
+      <option value="500" selected>500 rows</option>
+      <option value="1000">1000 rows</option>
+    </select>
+  </div>
+</header>
+<div class="stats">
+  <span>total <b id="s-total">0</b></span>
+  <span class="s-in">inbound <b id="s-in">0</b></span>
+  <span class="s-out">outbound <b id="s-out">0</b></span>
+  <span class="s-warn">dir mismatch <b id="s-mismatch">0</b></span>
+  <span>dropped (slow) <b id="s-drop">0</b></span>
+</div>
+
+<div id="table-wrap">
+  <table>
+    <colgroup>
+      <col><col><col><col><col><col><col><col><col><col><col>
+    </colgroup>
+    <thead>
+      <tr>
+        <th>time</th>
+        <th>src IP</th>
+        <th>dst IP</th>
+        <th>port</th>
+        <th>src ASN</th>
+        <th>dst ASN</th>
+        <th>bytes</th>
+        <th title="FlowDirection field as sent by MikroTik">dir_raw</th>
+        <th title="src IP matched my_prefixes">src∈nets</th>
+        <th title="dst IP matched my_prefixes">dst∈nets</th>
+        <th title="computed direction after IP matching">computed</th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+  <div id="empty">Waiting for flows…</div>
+</div>
+
+<script>
+let paused = false
+let total = 0, cntIn = 0, cntOut = 0, cntMismatch = 0, cntDrop = 0
+let es = null
+let filterIP = '', filterASN = '', filterDir = ''
+const tbody = document.getElementById('tbody')
+
+function connect() {
+  es = new EventSource('/tel/flows/stream')
+  es.onopen = () => {
+    document.getElementById('conn-badge').textContent = '● live'
+    document.getElementById('conn-badge').className = 'badge live'
+  }
+  es.onerror = () => {
+    document.getElementById('conn-badge').textContent = '○ reconnecting…'
+    document.getElementById('conn-badge').className = 'badge paused'
+  }
+  es.onmessage = e => {
+    let f
+    try { f = JSON.parse(e.data) } catch { return }
+    if (paused) { cntDrop++; document.getElementById('s-drop').textContent = cntDrop; return }
+    addRow(f)
+  }
+}
+
+function addRow(f) {
+  total++
+
+  // detect direction mismatch: raw=0 but we computed outbound, or raw=1 but computed inbound
+  const rawSaysIn = f.flow_dir_raw === 0
+  const mismatch  = rawSaysIn !== f.inbound
+
+  if (mismatch) cntMismatch++
+  if (f.inbound) cntIn++; else cntOut++
+
+  document.getElementById('s-total').textContent    = total
+  document.getElementById('s-in').textContent       = cntIn
+  document.getElementById('s-out').textContent      = cntOut
+  document.getElementById('s-mismatch').textContent = cntMismatch
+
+  // apply filters
+  if (filterIP && !f.src.includes(filterIP) && !f.dst.includes(filterIP)) return
+  if (filterASN) {
+    const a = filterASN.toLowerCase()
+    if (!(f.peer_src_name||'').toLowerCase().includes(a) &&
+        !(f.peer_dst_name||'').toLowerCase().includes(a) &&
+        !String(f.peer_src_as).includes(filterASN) &&
+        !String(f.peer_dst_as).includes(filterASN)) return
+  }
+  if (filterDir === 'in'       && !f.inbound)  return
+  if (filterDir === 'out'      && f.inbound)   return
+  if (filterDir === 'mismatch' && !mismatch)   return
+
+  const t   = new Date(f.ts * 1000).toLocaleTimeString()
+  const cls = mismatch ? 'r-mismatch' : f.inbound ? 'r-in' : 'r-out'
+
+  const srcCls = f.src_in_my_nets ? 'ip-mine' : 'ip'
+  const dstCls = f.dst_in_my_nets ? 'ip-mine' : 'ip'
+
+  const dirTag  = f.inbound
+    ? '<span class="tag-in">▼ IN</span>'
+    : '<span class="tag-out">▲ OUT</span>'
+  const rawTag  = mismatch
+    ? `<span class="tag-warn">${f.flow_dir_raw}</span>`
+    : `<span class="tag-muted">${f.flow_dir_raw}</span>`
+  const srcNet  = f.src_in_my_nets ? '<span class="tag-warn">✓</span>' : '<span class="tag-muted">—</span>'
+  const dstNet  = f.dst_in_my_nets ? '<span class="tag-in">✓</span>'   : '<span class="tag-muted">—</span>'
+
+  const srcAsn = f.peer_src_as
+    ? `<span>${f.peer_src_as}</span> <span class="asn-name">${f.peer_src_name||''}</span>`
+    : '<span class="tag-muted">—</span>'
+  const dstAsn = f.peer_dst_as
+    ? `<span>${f.peer_dst_as}</span> <span class="asn-name">${f.peer_dst_name||''}</span>`
+    : '<span class="tag-muted">—</span>'
+
+  const tr = document.createElement('tr')
+  tr.className = cls
+  tr.innerHTML = `
+    <td>${t}</td>
+    <td class="${srcCls}">${f.src}</td>
+    <td class="${dstCls}">${f.dst}</td>
+    <td class="tag-muted">${f.dst_port||'—'}</td>
+    <td>${srcAsn}</td>
+    <td>${dstAsn}</td>
+    <td class="bytes">${fmtBytes(f.bytes)}</td>
+    <td>${rawTag}</td>
+    <td>${srcNet}</td>
+    <td>${dstNet}</td>
+    <td>${dirTag}</td>
+  `
+
+  // prepend so newest is at top
+  tbody.insertBefore(tr, tbody.firstChild)
+  document.getElementById('empty').style.display = 'none'
+
+  trimRows()
+}
+
+function trimRows() {
+  const max = parseInt(document.getElementById('max-rows').value)
+  while (tbody.children.length > max) tbody.removeChild(tbody.lastChild)
+}
+
+function clearRows() {
+  tbody.innerHTML = ''
+  document.getElementById('empty').style.display = 'block'
+}
+
+function togglePause() {
+  paused = !paused
+  const btn = document.getElementById('btn-pause')
+  const badge = document.getElementById('conn-badge')
+  if (paused) {
+    btn.textContent = '▶ resume'
+    btn.classList.add('active')
+    badge.textContent = '⏸ paused'
+    badge.className = 'badge paused'
+  } else {
+    btn.textContent = '⏸ pause'
+    btn.classList.remove('active')
+    badge.textContent = '● live'
+    badge.className = 'badge live'
+  }
+}
+
+function applyFilters() {
+  filterIP  = document.getElementById('filter-ip').value.trim()
+  filterASN = document.getElementById('filter-asn').value.trim()
+  filterDir = document.getElementById('filter-dir').value
+}
+
+function fmtBytes(b) {
+  if (b >= 1e9) return (b/1e9).toFixed(1)+' GB'
+  if (b >= 1e6) return (b/1e6).toFixed(1)+' MB'
+  if (b >= 1e3) return (b/1e3).toFixed(0)+' KB'
+  return b+' B'
+}
+
+connect()
+</script>
+</body>
+</html>

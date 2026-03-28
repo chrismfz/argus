@@ -7,5 +7,6 @@ import _ "embed"
 //
 //go:embed static/dashboard.html
 var dashboardHTML []byte
-var detectionHTML []byte
 
+//go:embed static/detection.html
+var detectionHTML []byte

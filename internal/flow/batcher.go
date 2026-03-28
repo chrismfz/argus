@@ -1,4 +1,4 @@
-package main
+package flow
 
 import (
 	"context"
@@ -10,7 +10,6 @@ import (
 	"argus/internal/enrich"
         "argus/internal/bgp"
 	"argus/internal/clickhouse"
-flowpkg "argus/internal/flow"
 
 )
 
@@ -19,7 +18,7 @@ type InsertFlowBatcher struct {
 	batchSize     int
 	flushInterval time.Duration
 	ranger        cidranger.Ranger
-	buffer        []*flowpkg.FlowRecord
+	buffer        []*FlowRecord
 	lock          sync.Mutex
 	ticker        *time.Ticker
 	flushCtx      context.Context
@@ -49,7 +48,7 @@ func NewInsertFlowBatcher(
         batchSize:     batchSize,
         flushInterval: flushInterval,
         ranger:        ranger,
-        buffer:        make([]*flowpkg.FlowRecord, 0, batchSize),
+        buffer:        make([]*FlowRecord, 0, batchSize),
         ticker:        time.NewTicker(flushInterval),
         flushCtx:      ctx,
         flushCancel:   cancel,
@@ -65,7 +64,7 @@ func NewInsertFlowBatcher(
 
 
 
-func (b *InsertFlowBatcher) Add(flow *flowpkg.FlowRecord) {
+func (b *InsertFlowBatcher) Add(flow *FlowRecord) {
 	b.lock.Lock()
 	b.buffer = append(b.buffer, flow)
 	shouldFlush := len(b.buffer) >= b.batchSize && !b.isFlushing
@@ -104,7 +103,7 @@ func (b *InsertFlowBatcher) flush() {
     }
     b.isFlushing = true
     batch := b.buffer
-    b.buffer = make([]*flowpkg.FlowRecord, 0, b.batchSize)
+    b.buffer = make([]*FlowRecord, 0, b.batchSize)
     b.lock.Unlock()
 
     defer func() {

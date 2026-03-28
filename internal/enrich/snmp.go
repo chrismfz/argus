@@ -8,7 +8,6 @@ import (
     "time"
     "argus/internal/config"
     "github.com/gosnmp/gosnmp"
-    "argus/internal/clickhouse"
 )
 
 type IFNameCache struct {
@@ -128,7 +127,7 @@ var SNMPClient *gosnmp.GoSNMP
 var IFNames *IFNameCache
 
 
-func CollectSNMPStats() ([]clickhouse.SNMPStat, error) {
+func CollectSNMPStats() ([]SNMPStat, error) {
     cache := IFNames
     snmp := SNMPClient
 
@@ -139,7 +138,7 @@ func CollectSNMPStats() ([]clickhouse.SNMPStat, error) {
     cache.RLock()
     defer cache.RUnlock()
 
-    var stats []clickhouse.SNMPStat
+var stats []SNMPStat
     now := time.Now()
 
     for index, name := range cache.names {
@@ -176,7 +175,7 @@ func CollectSNMPStats() ([]clickhouse.SNMPStat, error) {
             }
         }
 
-        stats = append(stats, clickhouse.SNMPStat{
+stats = append(stats, SNMPStat{
             Timestamp:    now,
             IfIndex:      index,
             IfName:       name,

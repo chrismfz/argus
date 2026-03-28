@@ -1,22 +1,20 @@
 package flow
 
 import (
-	"context"
-	"log"
 	"net"
 	"sync"
 	"time"
 
 	"argus/internal/bgp"
-	"argus/internal/clickhouse"
 	"argus/internal/enrich"
-	"github.com/yl2chen/cidranger"
 	"argus/internal/telemetry"
+	"github.com/yl2chen/cidranger"
 )
 
-// InsertFlowBatcher buffers FlowRecords, enriches them, and inserts into ClickHouse.
-type InsertFlowBatcher struct {
-	inserter    *clickhouse.Inserter
+// FlowEnricher enriches FlowRecords (GeoIP, BGP, interfaces) and feeds
+// the telemetry aggregator. ClickHouse has been removed — telemetry ring
+// buffers replace it for all monitoring purposes.
+type FlowEnricher struct {
 	batchSize   int
 	flushEvery  time.Duration
 	ranger      cidranger.Ranger
@@ -33,16 +31,15 @@ type InsertFlowBatcher struct {
 }
 
 func NewInsertFlowBatcher(
-	inserter *clickhouse.Inserter,
+	_ interface{}, // formerly clickhouse.Inserter — kept for call-site compatibility
 	batchSize int,
 	flushEvery time.Duration,
 	ranger cidranger.Ranger,
 	ifNames *enrich.IFNameCache,
 	storeASPath bool,
 	geo *enrich.GeoIP,
-) *InsertFlowBatcher {
-	b := &InsertFlowBatcher{
-		inserter:    inserter,
+) *FlowEnricher {
+	b := &FlowEnricher{
 		batchSize:   batchSize,
 		flushEvery:  flushEvery,
 		ranger:      ranger,
@@ -57,19 +54,17 @@ func NewInsertFlowBatcher(
 	return b
 }
 
-// Add enqueues a flow. If the buffer is full, flush is triggered.
-func (b *InsertFlowBatcher) Add(rec *FlowRecord) {
+func (b *FlowEnricher) Add(rec *FlowRecord) {
 	b.mu.Lock()
 	b.buffer = append(b.buffer, rec)
 	full := len(b.buffer) >= b.batchSize
 	b.mu.Unlock()
-
 	if full {
 		b.triggerFlush()
 	}
 }
 
-func (b *InsertFlowBatcher) loop() {
+func (b *FlowEnricher) loop() {
 	for {
 		select {
 		case <-b.ticker.C:
@@ -80,7 +75,7 @@ func (b *InsertFlowBatcher) loop() {
 	}
 }
 
-func (b *InsertFlowBatcher) triggerFlush() {
+func (b *FlowEnricher) triggerFlush() {
 	b.mu.Lock()
 	if b.flushing || len(b.buffer) == 0 {
 		b.mu.Unlock()
@@ -92,24 +87,23 @@ func (b *InsertFlowBatcher) triggerFlush() {
 	b.mu.Unlock()
 
 	go func() {
-		b.enrichAndFlush(batch)
+		b.enrichAndFeed(batch)
 		b.mu.Lock()
 		b.flushing = false
 		b.mu.Unlock()
 	}()
 }
 
-// enrichAndFlush enriches all records in a single pass then inserts.
-func (b *InsertFlowBatcher) enrichAndFlush(batch []*FlowRecord) {
+// enrichAndFeed enriches all records then feeds the telemetry aggregator
+// and the raw debug tap. No database write.
+func (b *FlowEnricher) enrichAndFeed(batch []*FlowRecord) {
 	for _, rec := range batch {
-		// ── Single pass: GeoIP + interface name + BGP ──────────────────
 		if b.geo != nil {
 			rec.SrcHostCountry = b.geo.GetCountry(rec.SrcHost)
 			rec.DstHostCountry = b.geo.GetCountry(rec.DstHost)
 			rec.PeerSrcASName  = b.geo.GetASNName(rec.SrcHost)
 			rec.PeerDstASName  = b.geo.GetASNName(rec.DstHost)
 		}
-
 		if b.ifNames != nil {
 			if rec.InputInterface != 0 {
 				rec.InputInterfaceName = b.ifNames.Get(rec.InputInterface)
@@ -118,47 +112,38 @@ func (b *InsertFlowBatcher) enrichAndFlush(batch []*FlowRecord) {
 				rec.OutputInterfaceName = b.ifNames.Get(rec.OutputInterface)
 			}
 		}
-
 		if b.ranger != nil {
 			b.enrichBGP(rec)
 		}
 	}
 
-
-
-
-    // ── Telemetry tap (Phase 1: runs alongside ClickHouse insert) ──────────
-if telemetry.Global != nil {
-    for _, rec := range batch {
-        telemetry.Global.Ingest(&telemetry.Record{
-            SrcHost:       rec.SrcHost,
-            DstHost:       rec.DstHost,
-            PeerSrcAS:     rec.PeerSrcAS,
-            PeerDstAS:     rec.PeerDstAS,
-            PeerSrcASName: rec.PeerSrcASName,
-            PeerDstASName: rec.PeerDstASName,
-            Bytes:         rec.Bytes,
-            Packets:       rec.Packets,
-            FlowDirection: rec.FlowDirection,
-            DstPort:       rec.DstPort,
-            InputInterface:  rec.InputInterface,
-            OutputInterface: rec.OutputInterface,
-	    InputInterfaceName:  rec.InputInterfaceName,
-     	    OutputInterfaceName: rec.OutputInterfaceName,
-        })
-    }
-}
-
-
-
-
-	if err := b.insertBatch(context.Background(), batch); err != nil {
-		log.Printf("[BATCHER] insert failed: %v", err)
+	// ── Telemetry tap ──────────────────────────────────────────────────────
+	if telemetry.Global != nil {
+		for _, rec := range batch {
+			telemetry.Global.Ingest(&telemetry.Record{
+				SrcHost:             rec.SrcHost,
+				DstHost:             rec.DstHost,
+				PeerSrcAS:           rec.PeerSrcAS,
+				PeerDstAS:           rec.PeerDstAS,
+				PeerSrcASName:       rec.PeerSrcASName,
+				PeerDstASName:       rec.PeerDstASName,
+				Bytes:               rec.Bytes,
+				Packets:             rec.Packets,
+				FlowDirection:       rec.FlowDirection,
+				DstPort:             rec.DstPort,
+				InputInterface:      rec.InputInterface,
+				OutputInterface:     rec.OutputInterface,
+				InputInterfaceName:  rec.InputInterfaceName,
+				OutputInterfaceName: rec.OutputInterfaceName,
+			})
+		}
 	}
+
+	// ── Raw debug tap ──────────────────────────────────────────────────────
+	// (RawTap is fed in main.go from the raw NetFlow map, before conversion)
 }
 
-// enrichBGP fills BGP-derived fields from the cidranger.
-func (b *InsertFlowBatcher) enrichBGP(rec *FlowRecord) {
+func (b *FlowEnricher) enrichBGP(rec *FlowRecord) {
 	if dst := net.ParseIP(rec.DstHost); dst != nil {
 		if entry, ok := b.bestMatch(dst); ok {
 			if b.storeASPath && len(rec.ASPath) == 0 {
@@ -175,7 +160,6 @@ func (b *InsertFlowBatcher) enrichBGP(rec *FlowRecord) {
 			}
 		}
 	}
-
 	if src := net.ParseIP(rec.SrcHost); src != nil {
 		if entry, ok := b.bestMatch(src); ok && rec.PeerSrcAS == 0 {
 			rec.PeerSrcAS = entry.ASN
@@ -183,7 +167,7 @@ func (b *InsertFlowBatcher) enrichBGP(rec *FlowRecord) {
 	}
 }
 
-func (b *InsertFlowBatcher) bestMatch(ip net.IP) (bgp.BGPEnrichedEntry, bool) {
+func (b *FlowEnricher) bestMatch(ip net.IP) (bgp.BGPEnrichedEntry, bool) {
 	entries, err := b.ranger.ContainingNetworks(ip)
 	if err != nil || len(entries) == 0 {
 		return bgp.BGPEnrichedEntry{}, false
@@ -200,24 +184,9 @@ func (b *InsertFlowBatcher) bestMatch(ip net.IP) (bgp.BGPEnrichedEntry, bool) {
 	return entry, ok
 }
 
-func (b *InsertFlowBatcher) insertBatch(ctx context.Context, flows []*FlowRecord) error {
-	chBatch, err := clickhouse.Global.PrepareBatch(ctx, b.inserter.Query())
-	if err != nil {
-		return err
-	}
-	for _, f := range flows {
-		if err := chBatch.AppendStruct(f); err != nil {
-			return err
-		}
-	}
-	return chBatch.Send()
-}
-
-// Close flushes remaining records and stops the background loop.
-func (b *InsertFlowBatcher) Close() {
+func (b *FlowEnricher) Close() {
 	b.ticker.Stop()
 	close(b.done)
 	b.triggerFlush()
-	// wait for in-flight flush
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 }

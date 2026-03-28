@@ -24,14 +24,6 @@ upstream_interfaces:
   - 2    # sfp1-Synapsecom
   - 3    # sfp2-GRIX
 
-clickhouse:
-  host: "localhost"
-  user: "default"
-  password: ""
-  database: "pmacct"
-  table: "flows"
-
-
 maxmind:
   enabled: true
   account_id: "0000000"
@@ -61,10 +53,6 @@ enrich: "geoip, bgp, snmp"
 # could be geoip, bgp, ptr, smtp or none #
 # surely, none fucks the purpose of doing all this program :-) #
 # ptr hammers the system be careful
-
-insert:
-  batch_size: 200
-  flush_interval_ms: 1000
 
 # my_asn is your real ASN. Useful to enrich your own prefixes, AS_PATH for blackholes prefixes.
 my_asn: 216285
@@ -174,7 +162,7 @@ detection:
 
     alpha: 0.30            # EWMA smoothing for risk (↑ = shorter memory)
     theta: 0.65            # pivot for “above-normal” debt accumulation
-    tau_risk: 0.75         # risk (EWMA) considered high
+    tau_risk: 0.85         # risk (EWMA) considered high
 
     debt:
       decay_per_tick: 0.10

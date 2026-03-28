@@ -21,7 +21,6 @@ import (
 	"argus/internal/api"
 	"argus/internal/bgp"
 	"argus/internal/cfmapi"
-	"argus/internal/clickhouse"
 	"argus/internal/collectors"
 	"argus/internal/config"
 	"argus/internal/detection"
@@ -146,13 +145,6 @@ func main() {
 			cfg.CFM.Enabled, cfg.CFM.URL, len(cfg.CFM.Token))
 	}
 
-	// ── ClickHouse ────────────────────────────────────────────────────────────
-	if err := clickhouse.Init(*cfg); err != nil {
-		log.Fatalf("[FATAL] ClickHouse init failed: %v", err)
-	}
-	if err := clickhouse.EnsureTables(); err != nil {
-		log.Fatalf("[FATAL] EnsureTables failed: %v", err)
-	}
 
 	// ── SQLite ────────────────────────────────────────────────────────────────
 	dsn := "file:detections.sqlite?mode=rwc" +
@@ -306,7 +298,6 @@ telemetry.Init(uint32(cfg.MyASN), myName, myNets, cfg.UpstreamInterfaces)
 		}
 	}()
 
-	dlog("ClickHouse Host: %s", cfg.ClickHouse.Host)
 	dlog("GeoIP ASN DB: %s", cfg.GeoIP.ASNDB)
 
 	// ── SNMP ──────────────────────────────────────────────────────────────────
@@ -366,16 +357,15 @@ telemetry.Init(uint32(cfg.MyASN), myName, myNets, cfg.UpstreamInterfaces)
 	}
 
 	// ── Flow pipeline ─────────────────────────────────────────────────────────
-	inserter := clickhouse.NewInserter(cfg.ClickHouse.Table)
-	batcher := flow.NewInsertFlowBatcher(
-		inserter,
-		cfg.Insert.BatchSize,
-		time.Duration(cfg.Insert.FlushIntervalMs)*time.Millisecond,
-		listener.Ranger,
-		ifNameCache,
-		cfg.BGP.Listener.StoreASPath,
-		geo,
-	)
+      batcher := flow.NewInsertFlowBatcher(
+          nil,  // no inserter needed
+          200,  // batch size (or cfg.Enrich.BatchSize)
+          1000*time.Millisecond, // flush interval (or cfg.Enrich.FlushIntervalMs)
+          listener.Ranger,
+          ifNameCache,
+          cfg.BGP.Listener.StoreASPath,
+          geo,
+      )
 	defer batcher.Close()
 
 	log.Print("[INFO] Starting NetFlow collectors...")
@@ -462,7 +452,6 @@ telemetry.RawTap.Publish("mikrotik", func() map[uint16]string {
 		}
 
 		engine = detection.NewEngine(detectionRules, cfg.MyASN, myNets, maxWin, enrichers.Geo, enrichers.DNS, store)
-		engine.SetClickHouseWriter(detection.NewClickHouseWriter())
 		if cfm != nil {
 			engine.SetReporter(cfm)
 		}

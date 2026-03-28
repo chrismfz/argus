@@ -46,18 +46,6 @@ type Config struct {
 
     CFM CFMConfig `yaml:"cfm"`
 
-    ClickHouse struct {
-        Host     string `yaml:"host"`
-        User     string `yaml:"user"`
-        Password string `yaml:"password"`
-        Database string `yaml:"database"`
-        Table    string `yaml:"table"`
-    } `yaml:"clickhouse"`
-
-    Insert struct {
-        BatchSize       int `yaml:"batch_size"`
-        FlushIntervalMs int `yaml:"flush_interval_ms"`
-    } `yaml:"insert"`
 
 MaxMind MaxMindConfig `yaml:"maxmind"`
 GeoIP struct {

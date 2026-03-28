@@ -21,13 +21,13 @@ nav{display:flex;gap:2px;padding:0 20px;background:var(--bg2);border-bottom:1px 
 nav a{padding:10px 18px;color:var(--muted);font-size:13px;text-decoration:none;border-bottom:2px solid transparent;display:inline-block;transition:.1s}
 nav a:hover{color:var(--text)}
 nav a.active{color:var(--accent);border-color:var(--accent)}
-.content{padding:20px;max-width:1200px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+.content{padding:20px;max-width:1400px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
 .card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px}
 .card-title{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:14px;display:flex;align-items:center;gap:10px}
 .card-title .count{font-size:11px;padding:1px 7px;border-radius:10px;background:var(--bg3);color:var(--accent);font-weight:700;letter-spacing:0}
 table{width:100%;border-collapse:collapse}
-thead th{text-align:left;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;padding:6px 8px;border-bottom:1px solid var(--border)}
-tbody td{padding:8px 8px;border-bottom:1px solid var(--border);font-size:13px}
+thead th{text-align:left;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap}
+tbody td{padding:8px 8px;border-bottom:1px solid var(--border);font-size:13px;vertical-align:middle}
 tbody tr:last-child td{border:none}
 tbody tr:hover td{background:var(--bg3)}
 .mono{font-family:monospace;color:var(--accent)}
@@ -55,7 +55,15 @@ button.btn.sm{padding:4px 10px;font-size:12px}
 .placeholder{padding:20px;text-align:center;color:var(--muted);font-size:13px;border:1px dashed var(--border);border-radius:6px}
 .section-hint{font-size:12px;color:var(--muted);margin-bottom:12px}
 .spinner{display:inline-block;width:13px;height:13px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle}
+.spinner-sm{display:inline-block;width:10px;height:10px;border:1.5px solid var(--border);border-top-color:var(--muted);border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle}
 @keyframes spin{to{transform:rotate(360deg)}}
+/* enrichment */
+.asn-num{color:var(--muted);font-size:11px;margin-right:3px}
+.asn-name{color:var(--text);font-size:12px}
+.enrich-country{font-size:12px;color:var(--muted);white-space:nowrap}
+.flag{font-size:14px;margin-right:3px}
+.enrich-ptr{font-size:11px;font-family:monospace;color:var(--teal);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.private-badge{font-size:10px;padding:1px 6px;border-radius:4px;background:var(--bg3);color:var(--muted);border:1px solid var(--border)}
 </style>
 </head>
 <body x-data="app()" x-init="init()">
@@ -72,12 +80,15 @@ button.btn.sm{padding:4px 10px;font-size:12px}
 
 <div class="content">
 
-  <!-- ── Exclusions card ─────────────────────────────────────────────────── -->
+  <!-- ── Exclusions ──────────────────────────────────────────────────────── -->
   <div class="card">
     <div class="card-title">
       Detection exclusions
       <span class="count" x-text="excludes.length"></span>
       <span x-show="loading" class="spinner" style="margin-left:4px"></span>
+      <span x-show="enrichLoading && !loading" style="font-size:11px;color:var(--muted);font-weight:400;letter-spacing:0">
+        <span class="spinner-sm"></span> enriching…
+      </span>
       <span style="margin-left:auto;font-size:11px;color:var(--muted);font-weight:400;letter-spacing:0">
         IPs and CIDRs in this list are never blackholed by the detection engine
       </span>
@@ -91,11 +102,14 @@ button.btn.sm{padding:4px 10px;font-size:12px}
       <table>
         <thead>
           <tr>
-            <th style="width:40px">#</th>
-            <th>CIDR / IP</th>
-            <th>Label</th>
-            <th>Added</th>
-            <th style="width:160px">Actions</th>
+            <th style="width:34px">#</th>
+            <th style="min-width:155px">CIDR / IP</th>
+            <th style="min-width:200px">ASN</th>
+            <th style="width:75px">Country</th>
+            <th style="min-width:180px">PTR</th>
+            <th style="min-width:120px">Label</th>
+            <th style="width:105px">Added</th>
+            <th style="width:150px">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -103,46 +117,85 @@ button.btn.sm{padding:4px 10px;font-size:12px}
             <tr>
               <td style="color:var(--muted);font-size:12px" x-text="e.id"></td>
 
-              <!-- View mode -->
+              <!-- CIDR — view -->
               <template x-if="editID !== e.id">
                 <td class="mono" x-text="e.cidr"></td>
               </template>
-              <!-- Edit mode CIDR -->
+              <!-- CIDR — edit -->
               <template x-if="editID === e.id">
                 <td><div class="edit-cell">
-                  <input x-model="editCIDR" style="width:180px" @keydown.enter="saveEdit(e.id)" @keydown.escape="cancelEdit()">
+                  <input x-model="editCIDR" style="width:150px" @keydown.enter="saveEdit(e.id)" @keydown.escape="cancelEdit()">
                 </div></td>
               </template>
 
-              <!-- View mode label -->
+              <!-- ASN -->
+              <td>
+                <template x-if="!enrichment[baseIP(e.cidr)]">
+                  <span style="color:var(--muted);font-size:11px">
+                    <span x-show="enrichLoading" class="spinner-sm"></span>
+                    <span x-show="!enrichLoading">—</span>
+                  </span>
+                </template>
+                <template x-if="enrichment[baseIP(e.cidr)] && enrichment[baseIP(e.cidr)].private">
+                  <span class="private-badge">private / RFC1918</span>
+                </template>
+                <template x-if="enrichment[baseIP(e.cidr)] && !enrichment[baseIP(e.cidr)].private">
+                  <span>
+                    <span class="asn-num" x-text="enrichment[baseIP(e.cidr)].asn ? 'AS'+enrichment[baseIP(e.cidr)].asn : '—'"></span>
+                    <span class="asn-name" x-text="enrichment[baseIP(e.cidr)].asn_name || ''"></span>
+                  </span>
+                </template>
+              </td>
+
+              <!-- Country -->
+              <td>
+                <template x-if="enrichment[baseIP(e.cidr)] && !enrichment[baseIP(e.cidr)].private && enrichment[baseIP(e.cidr)].country">
+                  <div class="enrich-country">
+                    <span class="flag" x-text="countryFlag(enrichment[baseIP(e.cidr)].country)"></span>
+                    <span x-text="enrichment[baseIP(e.cidr)].country"></span>
+                  </div>
+                </template>
+                <template x-if="!enrichment[baseIP(e.cidr)] || enrichment[baseIP(e.cidr)].private || !enrichment[baseIP(e.cidr)].country">
+                  <span style="color:var(--muted)">—</span>
+                </template>
+              </td>
+
+              <!-- PTR -->
+              <td>
+                <template x-if="enrichment[baseIP(e.cidr)] && enrichment[baseIP(e.cidr)].ptr">
+                  <div class="enrich-ptr" :title="enrichment[baseIP(e.cidr)].ptr" x-text="enrichment[baseIP(e.cidr)].ptr"></div>
+                </template>
+                <template x-if="!enrichment[baseIP(e.cidr)] || !enrichment[baseIP(e.cidr)].ptr">
+                  <span style="color:var(--muted)">—</span>
+                </template>
+              </td>
+
+              <!-- Label — view -->
               <template x-if="editID !== e.id">
                 <td class="label-text" x-text="e.label || '—'"></td>
               </template>
-              <!-- Edit mode label -->
+              <!-- Label — edit -->
               <template x-if="editID === e.id">
                 <td><div class="edit-cell">
-                  <input x-model="editLabel" class="label-input" style="width:200px" @keydown.enter="saveEdit(e.id)" @keydown.escape="cancelEdit()" placeholder="label (optional)">
+                  <input x-model="editLabel" class="label-input" style="width:150px" @keydown.enter="saveEdit(e.id)" @keydown.escape="cancelEdit()" placeholder="label (optional)">
                 </div></td>
               </template>
 
-              <td style="color:var(--muted);font-size:12px" x-text="fmtDate(e.created_at)"></td>
+              <td style="color:var(--muted);font-size:12px;white-space:nowrap" x-text="fmtDate(e.created_at)"></td>
 
-              <!-- Actions -->
+              <!-- Actions — view -->
               <template x-if="editID !== e.id">
-                <td>
-                  <div class="actions">
-                    <button class="btn secondary sm" @click="startEdit(e)">Edit</button>
-                    <button class="btn danger sm" @click="deleteEntry(e.id, e.cidr)">Delete</button>
-                  </div>
-                </td>
+                <td><div class="actions">
+                  <button class="btn secondary sm" @click="startEdit(e)">Edit</button>
+                  <button class="btn danger sm" @click="deleteEntry(e.id, e.cidr)">Delete</button>
+                </div></td>
               </template>
+              <!-- Actions — edit -->
               <template x-if="editID === e.id">
-                <td>
-                  <div class="actions">
-                    <button class="btn sm" @click="saveEdit(e.id)">Save</button>
-                    <button class="btn secondary sm" @click="cancelEdit()">Cancel</button>
-                  </div>
-                </td>
+                <td><div class="actions">
+                  <button class="btn sm" @click="saveEdit(e.id)">Save</button>
+                  <button class="btn secondary sm" @click="cancelEdit()">Cancel</button>
+                </div></td>
               </template>
 
             </tr>
@@ -156,31 +209,87 @@ button.btn.sm{padding:4px 10px;font-size:12px}
       <input class="cidr-in" x-model="newCIDR" placeholder="e.g. 1.2.3.4 or 10.0.0.0/8" @keydown.enter="addEntry()">
       <input class="lbl-in label-input" x-model="newLabel" placeholder="label (optional, e.g. Public DNS)" @keydown.enter="addEntry()">
       <button class="btn" @click="addEntry()" :disabled="!newCIDR.trim()">Add</button>
+      <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+        <button class="btn secondary" @click="exportJSON()" title="Download all exclusions as JSON">⬇ Export</button>
+        <label class="btn secondary" style="cursor:pointer;margin:0" title="Import from JSON or flat .conf file">
+          ⬆ Import
+          <input type="file" accept=".json,.conf,.txt" style="display:none" @change="importFile($event)">
+        </label>
+      </div>
     </div>
+
+    <!-- Import preview modal -->
+    <template x-if="importPreview.length > 0">
+      <div style="margin-top:16px;border:1px solid var(--border);border-radius:6px;overflow:hidden">
+        <div style="padding:10px 14px;background:var(--bg3);display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted)">
+          <span style="font-weight:600;color:var(--text)">Import preview</span>
+          <span x-text="importPreview.length + ' entries'"></span>
+          <span x-show="importSkipped > 0" style="color:var(--yellow)" x-text="importSkipped + ' skipped (invalid or duplicate)'"></span>
+          <div style="margin-left:auto;display:flex;gap:8px">
+            <button class="btn sm" @click="confirmImport()" :disabled="importLoading">
+              <span x-show="importLoading" class="spinner-sm" style="margin-right:4px"></span>
+              <span x-text="importLoading ? 'Importing…' : 'Import all'"></span>
+            </button>
+            <button class="btn secondary sm" @click="cancelImport()">Cancel</button>
+          </div>
+        </div>
+        <div style="max-height:220px;overflow-y:auto">
+          <table>
+            <thead><tr>
+              <th>CIDR / IP</th>
+              <th>Label</th>
+              <th style="width:90px">Status</th>
+            </tr></thead>
+            <tbody>
+              <template x-for="(row, idx) in importPreview" :key="idx">
+                <tr>
+                  <td class="mono" x-text="row.cidr"></td>
+                  <td class="label-text" x-text="row.label || '—'"></td>
+                  <td>
+                    <span x-show="row.status === 'pending'" style="color:var(--muted);font-size:11px">pending</span>
+                    <span x-show="row.status === 'ok'"      style="color:var(--green);font-size:11px">✓ added</span>
+                    <span x-show="row.status === 'dup'"     style="color:var(--muted);font-size:11px">already exists</span>
+                    <span x-show="row.status === 'err'"     style="color:var(--red);font-size:11px"   x-text="'✗ ' + (row.err||'error')"></span>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </template>
+
   </div>
 
   <!-- ── Upcoming: Recent Detections ────────────────────────────────────── -->
   <div class="card">
-    <div class="card-title">Recent detections <span style="color:var(--yellow);font-size:11px;margin-left:6px;letter-spacing:0;text-transform:none;font-weight:400">coming soon</span></div>
+    <div class="card-title">
+      Recent detections
+      <span style="color:var(--yellow);font-size:11px;margin-left:6px;letter-spacing:0;text-transform:none;font-weight:400">coming soon</span>
+    </div>
     <p class="section-hint">This section will display a live tail of <code>detections.log</code> — rule hits, source enrichment, and detection counts — directly in the UI.</p>
     <div class="placeholder">Live detection log viewer — not yet implemented.</div>
   </div>
 
 </div>
 
-<!-- Toast -->
 <div class="toast" :class="[toast.type, toast.show ? 'show' : '']" x-text="toast.msg"></div>
 
 <script>
 function app() { return {
-  excludes: [],
-  loading: false,
-  newCIDR: '',
+  excludes:      [],
+  enrichment:    {},    // keyed by base IP string
+  loading:       false,
+  enrichLoading: false,
+  newCIDR:  '',
   newLabel: '',
-  editID: null,
-  editCIDR: '',
+  editID:    null,
+  editCIDR:  '',
   editLabel: '',
-  toast: { msg: '', type: 'ok', show: false },
+  importPreview: [],
+  importSkipped: 0,
+  importLoading: false,
+  toast: { msg:'', type:'ok', show:false },
   _toastTimer: null,
 
   init() { this.load() },
@@ -191,10 +300,62 @@ function app() { return {
       const r = await fetch('/detection/excludes', { headers: this.authHeaders() })
       if (!r.ok) throw new Error('HTTP ' + r.status)
       this.excludes = await r.json()
+      this.enrichAll()
     } catch(e) {
-      this.showToast('Failed to load exclusions: ' + e.message, 'err')
+      this.showToast('Failed to load: ' + e.message, 'err')
     } finally { this.loading = false }
   },
+
+  // ── Enrichment ─────────────────────────────────────────────────────────────
+
+  baseIP(cidr) {
+    return cidr ? cidr.split('/')[0] : ''
+  },
+
+  isPrivate(ip) {
+    return /^10\./.test(ip)
+        || /^172\.(1[6-9]|2\d|3[01])\./.test(ip)
+        || /^192\.168\./.test(ip)
+        || /^127\./.test(ip)
+        || /^::1$/.test(ip)
+        || /^f[cd]/i.test(ip)
+        || /^169\.254\./.test(ip)
+  },
+
+  countryFlag(cc) {
+    if (!cc || cc.length !== 2) return ''
+    return [...cc.toUpperCase()].map(c =>
+      String.fromCodePoint(c.charCodeAt(0) - 65 + 0x1F1E6)
+    ).join('')
+  },
+
+  async enrichAll() {
+    const ips = [...new Set(this.excludes.map(e => this.baseIP(e.cidr)))]
+      .filter(ip => ip && !this.enrichment[ip])
+    if (!ips.length) return
+
+    this.enrichLoading = true
+    // Batches of 5 — parallel within batch, sequential between
+    for (let i = 0; i < ips.length; i += 5) {
+      await Promise.all(ips.slice(i, i + 5).map(ip => this.enrichOne(ip)))
+    }
+    this.enrichLoading = false
+  },
+
+  async enrichOne(ip) {
+    if (this.isPrivate(ip)) {
+      this.enrichment = { ...this.enrichment, [ip]: { private: true } }
+      return
+    }
+    try {
+      const r = await fetch(`/infoip?ip=${encodeURIComponent(ip)}`, { headers: this.authHeaders() })
+      if (!r.ok) return
+      const d = await r.json()
+      this.enrichment = { ...this.enrichment, [ip]: d }
+    } catch(_) { /* best-effort */ }
+  },
+
+  // ── CRUD ───────────────────────────────────────────────────────────────────
 
   async addEntry() {
     const cidr = this.newCIDR.trim()
@@ -207,42 +368,27 @@ function app() { return {
       })
       const data = await r.json()
       if (!r.ok) throw new Error(data.error || 'HTTP ' + r.status)
-      this.newCIDR = ''
-      this.newLabel = ''
+      this.newCIDR = ''; this.newLabel = ''
       this.showToast('Added ' + cidr, 'ok')
       await this.load()
-    } catch(e) {
-      this.showToast(e.message, 'err')
-    }
+    } catch(e) { this.showToast(e.message, 'err') }
   },
 
   async deleteEntry(id, cidr) {
     if (!confirm(`Remove ${cidr} from exclusions?`)) return
     try {
       const r = await fetch(`/detection/excludes/${id}`, {
-        method: 'DELETE',
-        headers: this.authHeaders()
+        method: 'DELETE', headers: this.authHeaders()
       })
       const data = await r.json()
       if (!r.ok) throw new Error(data.error || 'HTTP ' + r.status)
       this.showToast('Removed ' + cidr, 'ok')
       await this.load()
-    } catch(e) {
-      this.showToast(e.message, 'err')
-    }
+    } catch(e) { this.showToast(e.message, 'err') }
   },
 
-  startEdit(e) {
-    this.editID = e.id
-    this.editCIDR = e.cidr
-    this.editLabel = e.label
-  },
-
-  cancelEdit() {
-    this.editID = null
-    this.editCIDR = ''
-    this.editLabel = ''
-  },
+  startEdit(e) { this.editID = e.id; this.editCIDR = e.cidr; this.editLabel = e.label },
+  cancelEdit()  { this.editID = null; this.editCIDR = ''; this.editLabel = '' },
 
   async saveEdit(id) {
     const cidr = this.editCIDR.trim()
@@ -258,14 +404,140 @@ function app() { return {
       this.cancelEdit()
       this.showToast('Updated', 'ok')
       await this.load()
-    } catch(e) {
-      this.showToast(e.message, 'err')
-    }
+    } catch(e) { this.showToast(e.message, 'err') }
   },
 
-  // Extract Bearer token from meta tag if present (set by nginx/server),
-  // or fall back to empty (loopback traffic needs no token).
-  authHeaders() {
+  // ── Export ─────────────────────────────────────────────────────────────────
+
+  exportJSON() {
+    const data = this.excludes.map(e => ({ cidr: e.cidr, label: e.label || '' }))
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = `argus-excludes-${new Date().toISOString().slice(0,10)}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    this.showToast('Exported ' + data.length + ' entries', 'ok')
+  },
+
+  // ── Import ─────────────────────────────────────────────────────────────────
+
+  importFile(evt) {
+    const file = evt.target.files[0]
+    if (!file) return
+    evt.target.value = ''   // reset so the same file can be re-imported if needed
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const text = e.target.result
+      this.parseImport(text, file.name)
+    }
+    reader.readAsText(file)
+  },
+
+  parseImport(text, filename) {
+    let rows = []
+    let skipped = 0
+
+    // Detect format: JSON array vs flat file
+    const trimmed = text.trim()
+    if (trimmed.startsWith('[')) {
+      // JSON format — our export format: [{cidr, label}, ...]
+      try {
+        const parsed = JSON.parse(trimmed)
+        for (const item of parsed) {
+          const cidr = (item.cidr || item.ip || '').trim()
+          if (!cidr) { skipped++; continue }
+          rows.push({ cidr, label: item.label || '', status: 'pending' })
+        }
+      } catch(err) {
+        this.showToast('Invalid JSON: ' + err.message, 'err')
+        return
+      }
+    } else {
+      // Flat file format — one IP/CIDR per line, # comments
+      let currentLabel = ''
+      for (const raw of trimmed.split('\n')) {
+        let line = raw.trim()
+        if (line.startsWith('#')) {
+          currentLabel = line.replace(/^#+\s*/, '').trim()
+          continue
+        }
+        if (!line) { currentLabel = ''; continue }
+        // Strip inline comment
+        const ci = line.indexOf('#')
+        if (ci !== -1) line = line.slice(0, ci).trim()
+        // First token only
+        line = line.split(/\s+/)[0]
+        if (!line) continue
+        rows.push({ cidr: line, label: currentLabel, status: 'pending' })
+      }
+    }
+
+    // Deduplicate against existing entries
+    const existing = new Set(this.excludes.map(e => e.cidr))
+    const deduped  = []
+    for (const row of rows) {
+      if (existing.has(row.cidr)) {
+        row.status = 'dup'
+        skipped++
+      }
+      deduped.push(row)
+    }
+
+    if (!deduped.length) {
+      this.showToast('Nothing to import from ' + filename, 'err')
+      return
+    }
+    this.importPreview = deduped
+    this.importSkipped = skipped
+  },
+
+  async confirmImport() {
+    this.importLoading = true
+    let added = 0, failed = 0
+
+    for (const row of this.importPreview) {
+      if (row.status === 'dup') continue
+      try {
+        const r = await fetch('/detection/excludes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...this.authHeaders() },
+          body: JSON.stringify({ cidr: row.cidr, label: row.label })
+        })
+        const data = await r.json()
+        if (!r.ok) {
+          row.status = 'err'
+          row.err    = data.error || ('HTTP ' + r.status)
+          failed++
+        } else {
+          row.status = 'ok'
+          added++
+        }
+      } catch(e) {
+        row.status = 'err'
+        row.err    = e.message
+        failed++
+      }
+      // Force Alpine to re-render the preview table row by row
+      this.importPreview = [...this.importPreview]
+    }
+
+    this.importLoading = false
+    const msg = added + ' imported' + (failed ? ', ' + failed + ' failed' : '')
+    this.showToast(msg, failed ? 'err' : 'ok')
+    await this.load()   // refresh main list + trigger enrichment for new entries
+
+    // Auto-close preview after a moment if everything went fine
+    if (!failed) setTimeout(() => { this.importPreview = [] }, 1800)
+  },
+
+  cancelImport() {
+    this.importPreview = []
+    this.importSkipped = 0
+  },
+
+  
     const meta = document.querySelector('meta[name="argus-token"]')
     return meta ? { 'Authorization': 'Bearer ' + meta.content } : {}
   },

@@ -29,7 +29,6 @@ import (
 )
 
 var debug bool
-var geo *enrich.GeoIP
 var listener *bgp.BGPListener
 var resolver *enrich.DNSResolver
 var myNets []*net.IPNet
@@ -374,13 +373,7 @@ for _, n := range myNets {
         }
 
         // enrich.GeoIP resolver
-        if enrichEnabled(cfg, "geoip") {
-                geo, err = enrich.NewGeoIP(cfg.GeoIP.ASNDB, cfg.GeoIP.CityDB)
-                if err != nil {
-                        log.Fatalf("enrich.GeoIP init error: %v", err)
-                }
-        }
-
+        geo := enrichers.Geo
 
 
 // Start SNMP

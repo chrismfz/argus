@@ -9,7 +9,7 @@ import (
 	"github.com/yl2chen/cidranger"
 	"argus/internal/enrich"
         "argus/internal/bgp"
-"argus/internal/flow"
+flowpkg "argus/internal/flow"
 
 )
 
@@ -18,7 +18,7 @@ type InsertFlowBatcher struct {
 	batchSize     int
 	flushInterval time.Duration
 	ranger        cidranger.Ranger
-	buffer        []*FlowRecord
+	buffer        []*flowpkg.FlowRecord
 	lock          sync.Mutex
 	ticker        *time.Ticker
 	flushCtx      context.Context
@@ -48,7 +48,7 @@ func NewInsertFlowBatcher(
         batchSize:     batchSize,
         flushInterval: flushInterval,
         ranger:        ranger,
-        buffer:        make([]*FlowRecord, 0, batchSize),
+        buffer:        make([]*flowpkg.FlowRecord, 0, batchSize),
         ticker:        time.NewTicker(flushInterval),
         flushCtx:      ctx,
         flushCancel:   cancel,
@@ -64,7 +64,7 @@ func NewInsertFlowBatcher(
 
 
 
-func (b *InsertFlowBatcher) Add(flow *FlowRecord) {
+func (b *InsertFlowBatcher) Add(flow *flowpkg.FlowRecord) {
 	b.lock.Lock()
 	b.buffer = append(b.buffer, flow)
 	shouldFlush := len(b.buffer) >= b.batchSize && !b.isFlushing
@@ -103,7 +103,7 @@ func (b *InsertFlowBatcher) flush() {
     }
     b.isFlushing = true
     batch := b.buffer
-    b.buffer = make([]*FlowRecord, 0, b.batchSize)
+    b.buffer = make([]*flowpkg.FlowRecord, 0, b.batchSize)
     b.lock.Unlock()
 
     defer func() {

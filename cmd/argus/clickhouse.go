@@ -4,7 +4,7 @@ import (
 	"time"
 	"argus/internal/config"
 	ch "github.com/ClickHouse/clickhouse-go/v2"
-"argus/internal/flow"
+flowpkg "argus/internal/flow"
 )
 
 type ClickHouseInserter struct {
@@ -52,7 +52,7 @@ fields: []string{
 	}, nil
 }
 
-func (c *ClickHouseInserter) InsertFlow(ctx context.Context, flow *FlowRecord) error {
+func (c *ClickHouseInserter) InsertFlow(ctx context.Context, flow *flowpkg.FlowRecord) error {
 	batch, err := c.conn.PrepareBatch(ctx, "INSERT INTO "+c.table+
 		" ("+joinFields(c.fields)+")")
 	if err != nil {
@@ -80,7 +80,7 @@ func join(arr []string, sep string) string {
 	return out
 }
 
-func (c *ClickHouseInserter) InsertBatch(ctx context.Context, flows []*FlowRecord) error {
+func (c *ClickHouseInserter) InsertBatch(ctx context.Context, flows []*flowpkg.FlowRecord) error {
     batch, err := c.conn.PrepareBatch(ctx, "INSERT INTO "+c.table+" ("+joinFields(c.fields)+")")
     if err != nil {
         return err

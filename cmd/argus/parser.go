@@ -10,7 +10,7 @@ import (
 
 )
 
-func ParseAndEnrich(line string, geo *enrich.GeoIP, dns *enrich.DNSResolver, timezone string) (*FlowRecord, error) {
+func ParseAndEnrich(line string, geo *enrich.GeoIP, dns *enrich.DNSResolver, timezone string) (*flow.FlowRecord, error) {
     var j map[string]interface{}
     err := json.Unmarshal([]byte(line), &j)
     if err != nil {
@@ -68,7 +68,7 @@ func ParseAndEnrich(line string, geo *enrich.GeoIP, dns *enrich.DNSResolver, tim
     }
 
 
-    return &FlowRecord{
+    return &flow.FlowRecord{
         TimestampStart:   tUTC,
         Proto:            proto,
         TCPFlags:         toUint8(j["tcp_flags"]),

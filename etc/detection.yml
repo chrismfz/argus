@@ -1,6 +1,6 @@
 #actions: alert and blackhole
-#TODO: Clickhouse, API
-#
+#TODO: API
+
 
 rules:
 
@@ -12,7 +12,7 @@ rules:
     min_flows: 10000
     min_unique_src_ips: 100
     time_window: 20s
-    action: alert,clickhouse,blackhole
+    action: alert,blackhole
     blackhole_count: 30
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
@@ -26,7 +26,7 @@ rules:
     min_flows: 5000
     min_avg_pps: 1000
     time_window: 20s
-    action: alert,clickhouse,blackhole
+    action: alert,blackhole
     blackhole_count: 30
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
@@ -40,7 +40,7 @@ rules:
     min_flows: 5000
     min_avg_pps: 2000
     time_window: 20s
-    action: alert,clickhouse,blackhole
+    action: alert,blackhole
     blackhole_count: 30
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
@@ -54,7 +54,7 @@ rules:
     min_flows: 1000
     min_avg_pps: 1000
     time_window: 20s
-    action: alert,clickhouse,blackhole
+    action: alert,blackhole
     blackhole_count: 30
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
@@ -69,7 +69,7 @@ rules:
     same_dst_ip: true
     min_flows: 50
     time_window: 20s
-    action: alert,clickhouse,blackhole
+    action: alert,blackhole
     blackhole_count: 40
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
@@ -83,7 +83,7 @@ rules:
     same_dst_ip: true
     min_flows: 50
     time_window: 20s
-    action: alert,clickhouse,blackhole
+    action: alert,blackhole
     blackhole_count: 30
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
@@ -97,7 +97,7 @@ rules:
     same_dst_ip: true
     min_flows: 40
     time_window: 20s
-    action: alert,clickhouse
+    action: alert
 
   - name: imap_brute
     proto: tcp
@@ -106,7 +106,7 @@ rules:
     same_dst_ip: true
     min_flows: 40
     time_window: 20s
-    action: alert,clickhouse
+    action: alert
 
   - name: rdp_brute
     proto: tcp
@@ -115,7 +115,7 @@ rules:
     same_dst_ip: true
     min_flows: 40
     time_window: 20s
-    action: alert,clickhouse,blackhole
+    action: alert,blackhole
     blackhole_count: 30
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
@@ -133,7 +133,7 @@ rules:
     dst_port: [20,21,22,23,25,53,67,68,69,80,110,123,135,137,138,139,143,161,162,179,389,443,445,465,514,520,587,636,993,995,1080,1194,1433,1521,1701,1723,2049,2082,2083,2483,3306,3389,3690,4444,4500,5000,5001,5060,5061,5432,5900,5984,6379,6667,8000,8008,8080,8443,8888,9000,9090,9200,9300,11211,27017,27018]
     tcp_flags: SYN
     time_window: 30s
-    action: alert,clickhouse,blackhole
+    action: alert,blackhole
     blackhole_count: 30
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: ["65001:666"]
@@ -148,7 +148,7 @@ rules:
     unique_dst_ips: 80
     min_flows: 150
     time_window: 20s
-    action: alert,clickhouse,blackhole
+    action: alert,blackhole
     blackhole_count: 30
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
@@ -162,7 +162,7 @@ rules:
     unique_dst_ports: 250
     min_flows: 300
     time_window: 20s
-    action: alert,clickhouse,blackhole
+    action: alert,blackhole
     blackhole_count: 30
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
@@ -177,7 +177,7 @@ rules:
     min_flows: 3000
     min_unique_src_ips: 50
     time_window: 15s
-    action: alert,clickhouse,blackhole
+    action: alert,blackhole
     blackhole_count: 30
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
@@ -191,7 +191,7 @@ rules:
     unique_dst_ips: 50
     min_flows: 70
     time_window: 60s
-    action: alert,clickhouse,blackhole
+    action: alert,blackhole
     blackhole_count: 30
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
@@ -207,7 +207,7 @@ rules:
     same_dst_ip: true
     min_flows: 20
     time_window: 60s
-    action: alert,clickhouse,blackhole
+    action: alert,blackhole
     blackhole_count: 40
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
@@ -222,7 +222,7 @@ rules:
     same_dst_ip: true
     min_flows: 8
     time_window: 60s
-    action: alert,clickhouse,blackhole
+    action: alert,blackhole
     blackhole_count: 30
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
@@ -239,7 +239,7 @@ rules:
     unique_dst_ips: 25
     min_flows: 25
     time_window: 30s
-    action: alert,clickhouse,blackhole
+    action: alert,blackhole
     blackhole_count: 30
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
@@ -254,7 +254,7 @@ rules:
     unique_dst_ports: 5
     min_flows: 5
     time_window: 30s
-    action: alert,clickhouse,blackhole
+    action: alert,blackhole
     blackhole_count: 30
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
@@ -269,7 +269,7 @@ rules:
     unique_dst_ips: 10
     min_flows: 10
     time_window: 90s
-    action: alert,clickhouse,blackhole
+    action: alert,blackhole
     blackhole_count: 30
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: [ "65001:666" ]
@@ -286,7 +286,7 @@ rules:
     min_flows: 50
     time_window: 20s
     direction: ingress
-    action: alert,clickhouse,blackhole
+    action: alert,blackhole
     blackhole_count: 10
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: ["65001:666"]
@@ -301,7 +301,7 @@ rules:
     min_flows: 80
     time_window: 30s
     direction: ingress
-    action: alert,clickhouse,blackhole
+    action: alert,blackhole
     blackhole_count: 20
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: ["65001:666"]
@@ -318,7 +318,7 @@ rules:
     min_bytes: 50000000   # 50 MB across flows in window? (see note below)
     time_window: 60s
     direction: egress
-    action: alert,clickhouse
+    action: alert
 
 
 # Very slow horizontal web scan over 5 minutes
@@ -330,7 +330,7 @@ rules:
     min_flows: 60
     time_window: 5m
     direction: ingress
-    action: alert,clickhouse,blackhole
+    action: alert,blackhole
     blackhole_count: 20
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: ["65001:666"]
@@ -344,7 +344,7 @@ rules:
     min_flows: 30
     time_window: 10m
     direction: ingress
-    action: alert,clickhouse
+    action: alert
 
 
   - name: syn_only_many_sources
@@ -356,7 +356,7 @@ rules:
     min_avg_pps: 1200
     time_window: 15s
     direction: ingress
-    action: alert,clickhouse,blackhole
+    action: alert,blackhole
     blackhole_count: 10
     blackhole_next_hop: 192.0.2.1
     blackhole_communities: ["65001:666"]

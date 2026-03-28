@@ -87,6 +87,7 @@ button.btn.secondary{background:var(--bg3);color:var(--text);border:1px solid va
   <button :class="{active:tab==='history'}"  @click="tab='history'">History</button>
   <button :class="{active:tab==='snapshots'}" @click="tab='snapshots';loadSnapshots()">Snapshots</button>
   <button :class="{active:tab==='upstreams'}" @click="tab='upstreams';loadUpstreams()">Upstreams</button>
+  <button :class="{active:tab==='control'}" @click="tab='control';loadControl()">⚙ Control</button>
   <span class="sep"></span>
   <a href="/debug/flows" target="_blank" class="dbg">⚡ Live Flows</a>
   <a href="/debug/rawflows" target="_blank" class="dbg">🔬 Raw Fields</a>
@@ -365,6 +366,17 @@ function app() { return {
   snapshots: [],
   upstreamsData: [],
   ifaceSankeyIn: [],
+  bgpStatus: null,
+  ipLookup: { ip:'', result:null, loading:false },
+  bhSearch: { ip:'', result:null, loading:false },
+  blackholes: [],
+  bhLoading: false,
+  announcements: [],
+  annLoading: false,
+  announceForm: { prefix:'', next_hop:'192.0.2.1', communities:'65001:666', ttl:14400 },
+  announceMsg: '',
+  flushConfirm: false,
+  flushResult: null,
   ifaceSankeyOut: [],
   upstreamMinutes: 1440,
   snapNote: '',
@@ -442,6 +454,116 @@ function app() { return {
       this.$nextTick(()=>this.drawHistoryChart(d))
     } catch(e) {}
     finally { this.historyLoading = false }
+  },
+
+  loadControl() {
+    this.loadBGPStatus()
+    this.loadBlackholes()
+    this.loadAnnouncements()
+  },
+
+  authHeaders() {
+    return { 'Content-Type': 'application/json' }
+  },
+
+  async apiCall(url, opts={}) {
+    opts.headers = { ...this.authHeaders(), ...(opts.headers||{}) }
+    const r = await fetch(url, opts)
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    return r.json()
+  },
+
+  async loadBGPStatus() {
+    try { this.bgpStatus = await this.apiCall('/bgpstatus') } catch(e) { this.bgpStatus = null }
+  },
+
+  async loadBlackholes() {
+    this.bhLoading = true
+    try {
+      const d = await this.apiCall('/blackhole-list')
+      this.blackholes = Object.values(d).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp))
+    } catch(e) { this.blackholes = [] }
+    finally { this.bhLoading = false }
+  },
+
+  async loadAnnouncements() {
+    this.annLoading = true
+    try {
+      const d = await this.apiCall('/announcements')
+      this.announcements = Object.values(d).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp))
+    } catch(e) { this.announcements = [] }
+    finally { this.annLoading = false }
+  },
+
+  async doWithdraw(prefix) {
+    if (!confirm('Withdraw ' + prefix + '?')) return
+    try {
+      await this.apiCall('/withdraw', { method:'POST', body: JSON.stringify({prefix}) })
+      await this.loadBlackholes()
+      await this.loadAnnouncements()
+    } catch(e) { alert('Withdraw failed: ' + e.message) }
+  },
+
+  async doAnnounce() {
+    const comms = this.announceForm.communities
+      ? this.announceForm.communities.split(',').map(s=>s.trim()).filter(Boolean)
+      : []
+    const body = {
+      prefix: this.announceForm.prefix,
+      next_hop: this.announceForm.next_hop,
+      communities: comms,
+      duration_seconds: parseInt(this.announceForm.ttl) || 0,
+    }
+    this.announceMsg = ''
+    try {
+      await this.apiCall('/announce', { method:'POST', body: JSON.stringify(body) })
+      this.announceMsg = '✅ Announced ' + body.prefix
+      this.announceForm.prefix = ''
+      await this.loadAnnouncements()
+      await this.loadBlackholes()
+    } catch(e) { this.announceMsg = '❌ ' + e.message }
+  },
+
+  async doIPLookup() {
+    if (!this.ipLookup.ip) return
+    this.ipLookup.loading = true
+    this.ipLookup.result = null
+    try {
+      this.ipLookup.result = await this.apiCall('/infoip?ip=' + encodeURIComponent(this.ipLookup.ip))
+    } catch(e) { this.ipLookup.result = { error: e.message } }
+    finally { this.ipLookup.loading = false }
+  },
+
+  async doBHSearch() {
+    if (!this.bhSearch.ip) return
+    this.bhSearch.loading = true
+    this.bhSearch.result = null
+    try {
+      this.bhSearch.result = await this.apiCall('/blackhole-search?ip=' + encodeURIComponent(this.bhSearch.ip))
+    } catch(e) {
+      this.bhSearch.result = { found: false, message: 'not blackholed' }
+    }
+    finally { this.bhSearch.loading = false }
+  },
+
+  async doFlush() {
+    if (!this.flushConfirm) { this.flushConfirm = true; return }
+    try {
+      this.flushResult = await this.apiCall('/flush', { method:'POST' })
+      this.flushConfirm = false
+      await this.loadBlackholes()
+      await this.loadAnnouncements()
+    } catch(e) { this.flushResult = { error: e.message } }
+  },
+
+  fmtExpiry(exp) {
+    if (!exp || exp.startsWith('9999')) return '∞ permanent'
+    const d = new Date(exp)
+    const diff = d - Date.now()
+    if (diff < 0) return 'expired'
+    const h = Math.floor(diff/3600000)
+    const m = Math.floor((diff%3600000)/60000)
+    return `${h}h ${m}m`
   },
 
   async loadUpstreams() {
@@ -715,5 +837,262 @@ function fmtBytes(b) { return fmtBytesS(b) }
   </div>
 </div>
 
+
+<!-- ── CONTROL ── -->
+<div class="content" x-show="tab==='control'" style="max-width:1400px">
+
+  <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+    <button class="btn secondary" @click="loadControl()" style="font-size:12px">↻ Refresh all</button>
+  </div>
+
+  <div class="grid grid-2" style="margin-bottom:16px">
+
+    <!-- BGP Status -->
+    <div class="card">
+      <div class="card-title">BGP status</div>
+      <template x-if="bgpStatus">
+        <div>
+          <div style="display:flex;gap:20px;margin-bottom:12px;flex-wrap:wrap">
+            <div>
+              <div style="font-size:11px;color:var(--muted)">peers</div>
+              <div class="stat" style="font-size:22px" x-text="bgpStatus.established_peers + ' / ' + bgpStatus.total_peers"></div>
+            </div>
+            <div>
+              <div style="font-size:11px;color:var(--muted)">prefixes received</div>
+              <div class="stat" style="font-size:22px" x-text="(bgpStatus.prefixes_received||0).toLocaleString()"></div>
+            </div>
+            <div>
+              <div style="font-size:11px;color:var(--muted)">announced</div>
+              <div class="stat" style="font-size:22px" x-text="bgpStatus.prefixes_announced"></div>
+            </div>
+          </div>
+          <template x-for="p in bgpStatus.peers" :key="p.ip">
+            <div style="background:var(--bg3);border-radius:6px;padding:10px 12px;font-size:12px">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+                <span style="font-family:monospace;color:var(--accent)" x-text="p.ip"></span>
+                <span :style="p.state==='ESTABLISHED' ? 'color:var(--green)' : 'color:var(--red)'"
+                      x-text="p.state"></span>
+              </div>
+              <div style="color:var(--muted);display:flex;gap:16px;flex-wrap:wrap">
+                <span>AS<span x-text="p.remote_as"></span></span>
+                <span>up <span x-text="p.uptime||'—'"></span></span>
+                <span>rx <span x-text="(p.messages_received||0).toLocaleString()"></span></span>
+                <span>tx <span x-text="(p.messages_sent||0).toLocaleString()"></span></span>
+              </div>
+            </div>
+          </template>
+        </div>
+      </template>
+      <template x-if="!bgpStatus">
+        <p class="notice">No data — check token.</p>
+      </template>
+    </div>
+
+    <!-- IP Lookup + Blackhole Search -->
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <!-- IP Lookup -->
+      <div class="card" style="flex:1">
+        <div class="card-title">IP lookup</div>
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <input x-model="ipLookup.ip" placeholder="e.g. 8.8.8.8"
+                 @keyup.enter="doIPLookup()"
+                 style="flex:1;font-family:monospace;font-size:13px">
+          <button class="btn" @click="doIPLookup()" :disabled="ipLookup.loading">
+            <template x-if="ipLookup.loading"><span class="spinner"></span></template>
+            <template x-if="!ipLookup.loading">Look up</template>
+          </button>
+        </div>
+        <template x-if="ipLookup.result && !ipLookup.result.error">
+          <div style="font-size:12px;display:flex;flex-direction:column;gap:4px">
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <span class="tag-pill" style="color:var(--accent)" x-text="'AS' + ipLookup.result.asn"></span>
+              <span class="tag-pill" x-text="ipLookup.result.asn_name"></span>
+              <span class="tag-pill" x-text="ipLookup.result.country || '—'"></span>
+              <span class="tag-pill" x-text="ipLookup.result.prefix || '—'"></span>
+            </div>
+            <div style="color:var(--muted)" x-show="ipLookup.result.ptr" x-text="'PTR: ' + ipLookup.result.ptr"></div>
+            <template x-if="ipLookup.result.as_path?.length">
+              <div style="margin-top:6px">
+                <div style="color:var(--muted);margin-bottom:4px">AS path</div>
+                <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px">
+                  <template x-for="(hop, i) in ipLookup.result.as_path" :key="i">
+                    <span style="display:flex;align-items:center;gap:4px">
+                      <span style="background:var(--bg3);padding:2px 8px;border-radius:4px;font-family:monospace"
+                            :title="hop.asn_name" x-text="'AS' + hop.asn"></span>
+                      <span x-show="i < ipLookup.result.as_path.length-1" style="color:var(--muted)">→</span>
+                    </span>
+                  </template>
+                </div>
+              </div>
+            </template>
+            <div style="margin-top:8px">
+              <button class="btn secondary" style="font-size:11px"
+                @click="announceForm.prefix = ipLookup.result.ip + '/32'">
+                + Blackhole this IP
+              </button>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <!-- Blackhole Search -->
+      <div class="card" style="flex:1">
+        <div class="card-title">blackhole search</div>
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <input x-model="bhSearch.ip" placeholder="e.g. 1.2.3.4"
+                 @keyup.enter="doBHSearch()"
+                 style="flex:1;font-family:monospace;font-size:13px">
+          <button class="btn" @click="doBHSearch()" :disabled="bhSearch.loading">
+            <template x-if="bhSearch.loading"><span class="spinner"></span></template>
+            <template x-if="!bhSearch.loading">Search</template>
+          </button>
+        </div>
+        <template x-if="bhSearch.result">
+          <div style="font-size:12px">
+            <template x-if="bhSearch.result.prefix">
+              <div style="display:flex;flex-direction:column;gap:4px">
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <span class="tag-pill" style="color:var(--red)" x-text="bhSearch.result.prefix"></span>
+                  <span class="tag-pill" x-text="bhSearch.result.asn_name"></span>
+                  <span class="tag-pill" x-text="bhSearch.result.country"></span>
+                </div>
+                <div style="color:var(--muted)">rule: <span style="color:var(--yellow)" x-text="bhSearch.result.rule"></span></div>
+                <div style="color:var(--muted)">expires: <span x-text="fmtExpiry(bhSearch.result.expires_at)"></span></div>
+                <button class="btn secondary" style="margin-top:6px;font-size:11px;color:var(--red);border-color:var(--red)"
+                  @click="doWithdraw(bhSearch.result.prefix)">Withdraw</button>
+              </div>
+            </template>
+            <template x-if="!bhSearch.result.prefix">
+              <p style="color:var(--green)">✓ not blackholed</p>
+            </template>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+
+  <!-- Announce form -->
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-title">announce prefix / blackhole</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+      <div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px">prefix</div>
+        <input x-model="announceForm.prefix" placeholder="1.2.3.4/32"
+               style="width:160px;font-family:monospace;font-size:13px">
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px">next-hop</div>
+        <input x-model="announceForm.next_hop" style="width:140px;font-family:monospace;font-size:13px">
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px">communities</div>
+        <input x-model="announceForm.communities" placeholder="65001:666"
+               style="width:120px;font-family:monospace;font-size:13px">
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px">TTL (sec, 0=permanent)</div>
+        <input x-model="announceForm.ttl" type="number" style="width:120px;font-size:13px">
+      </div>
+      <button class="btn" @click="doAnnounce()" :disabled="!announceForm.prefix">Announce</button>
+    </div>
+    <p x-show="announceMsg" x-text="announceMsg"
+       :style="announceMsg.startsWith('✅') ? 'color:var(--green)' : 'color:var(--red)'"
+       style="margin-top:10px;font-size:13px"></p>
+  </div>
+
+  <!-- Active blackholes -->
+  <div class="card" style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <div class="card-title" style="margin:0">active blackholes</div>
+      <span style="font-size:12px;color:var(--muted)" x-text="'(' + blackholes.length + ')'"></span>
+      <button class="btn secondary" style="font-size:11px;margin-left:auto" @click="loadBlackholes()">↻</button>
+    </div>
+    <template x-if="bhLoading"><div style="color:var(--muted);font-size:13px"><span class="spinner"></span> loading…</div></template>
+    <template x-if="!bhLoading && blackholes.length === 0">
+      <p class="notice">No active blackholes.</p>
+    </template>
+    <template x-if="blackholes.length > 0">
+      <table>
+        <thead>
+          <tr>
+            <th>Prefix</th><th>ASN / Name</th><th>Rule</th><th>Expires</th><th>PTR</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="b in blackholes" :key="b.prefix">
+            <tr>
+              <td style="font-family:monospace;color:var(--accent)" x-text="b.prefix"></td>
+              <td>
+                <span class="asn-num" x-text="'AS'+b.asn"></span>
+                <span style="color:var(--muted);font-size:12px;margin-left:4px" x-text="b.asn_name"></span>
+              </td>
+              <td><span class="tag-pill" style="color:var(--yellow);font-size:11px" x-text="b.rule"></span></td>
+              <td style="font-size:12px;color:var(--muted)" x-text="fmtExpiry(b.expires_at)"></td>
+              <td style="font-size:11px;color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis" x-text="b.ptr||'—'"></td>
+              <td>
+                <button style="background:none;border:1px solid var(--red);color:var(--red);border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer"
+                  @click="doWithdraw(b.prefix)">✕</button>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </template>
+  </div>
+
+  <!-- Active announcements (non-blackhole) -->
+  <div class="card" style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <div class="card-title" style="margin:0">all active announcements</div>
+      <span style="font-size:12px;color:var(--muted)" x-text="'(' + announcements.length + ')'"></span>
+      <button class="btn secondary" style="font-size:11px;margin-left:auto" @click="loadAnnouncements()">↻</button>
+    </div>
+    <template x-if="announcements.length > 0">
+      <table>
+        <thead><tr><th>Prefix</th><th>Next-hop</th><th>Communities</th><th>Since</th><th></th></tr></thead>
+        <tbody>
+          <template x-for="a in announcements" :key="a.prefix">
+            <tr>
+              <td style="font-family:monospace;color:var(--accent)" x-text="a.prefix"></td>
+              <td style="font-family:monospace;font-size:12px" x-text="a.next_hop"></td>
+              <td style="font-size:12px;color:var(--muted)" x-text="(a.communities||[]).join(', ')||'—'"></td>
+              <td style="font-size:12px;color:var(--muted)" x-text="new Date(a.timestamp).toLocaleTimeString()"></td>
+              <td>
+                <button style="background:none;border:1px solid var(--red);color:var(--red);border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer"
+                  @click="doWithdraw(a.prefix)">✕</button>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </template>
+    <template x-if="announcements.length === 0 && !annLoading">
+      <p class="notice">No active announcements.</p>
+    </template>
+  </div>
+
+  <!-- Emergency flush -->
+  <div class="card" style="border-color:rgba(243,139,168,.3)">
+    <div class="card-title" style="color:var(--red)">⚠ emergency flush</div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
+      Withdraws ALL BGP announcements and clears the detection + blackhole database. Use only in emergencies.
+    </p>
+    <template x-if="!flushConfirm && !flushResult">
+      <button class="btn secondary" style="border-color:var(--red);color:var(--red)"
+        @click="flushConfirm=true">Flush everything</button>
+    </template>
+    <template x-if="flushConfirm">
+      <div style="display:flex;gap:10px;align-items:center">
+        <span style="color:var(--red);font-size:13px">Are you sure? This withdraws all blackholes immediately.</span>
+        <button class="btn" style="background:var(--red);border-color:var(--red)" @click="doFlush()">Yes, flush</button>
+        <button class="btn secondary" @click="flushConfirm=false">Cancel</button>
+      </div>
+    </template>
+    <template x-if="flushResult">
+      <div style="font-size:13px;color:var(--green)" x-text="'Done — withdrew ' + (flushResult.rib_announcements_cleared||0) + ' prefixes, cleared ' + (flushResult.db_blackholes_cleared||0) + ' blackholes'"></div>
+    </template>
+  </div>
+
+</div>
 </body>
 </html>

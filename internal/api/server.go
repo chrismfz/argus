@@ -169,15 +169,21 @@ func Start() {
 	mainMux.Handle("/debug/pprof/mutex",        WithMainIPOnlyHandler(pprof.Handler("mutex")))
 	mainMux.Handle("/debug/pprof/threadcreate", WithMainIPOnlyHandler(pprof.Handler("threadcreate")))
 
+	// Catch-all: unknown paths → 403 (don't leak route map to scanners)
+	mainMux.HandleFunc("/", notFoundHandler)
+
+	// Stack: panic recovery → global IP/rate/ban guard → mux routing → per-route auth
+	handler := withRecovery(globalGuard(mainMux))
+
 	apiAddr := fmt.Sprintf("%s:%d", config.AppConfig.API.ListenAddress, config.AppConfig.API.Port)
 	srv := &http.Server{
 		Addr:              apiAddr,
-		Handler:           mainMux,
-		ReadHeaderTimeout: 2 * time.Second,
+		Handler:           handler,
+		ReadHeaderTimeout: 2 * time.Second,  // slow-loris protection
 		ReadTimeout:       5 * time.Second,
 		WriteTimeout:      30 * time.Second, // pprof profile can take 30s
 		IdleTimeout:       60 * time.Second,
-		MaxHeaderBytes:    1 << 20,
+		MaxHeaderBytes:    8 << 10, // 8 KiB headers — reject oversized header floods
 	}
 
 	log.Printf("[API] Listening on %s", apiAddr)

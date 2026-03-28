@@ -334,3 +334,21 @@ All endpoints require `Authorization: Bearer <token>` header and source IP in `a
 #  /withdraw      — remove a blackhole
 #  /flush         — emergency: withdraw everything, clear all detections
 ```
+
+
+## Nginx 
+
+# 1. place the config
+sudo cp argus.example.tld.conf /etc/nginx/sites-available/argus.example.tld
+sudo ln -s /etc/nginx/sites-available/argus.example.tld /etc/nginx/sites-enabled/
+
+# 2. create htpasswd
+sudo htpasswd -c /etc/nginx/.htpasswd chris
+
+# 3. test + reload
+sudo nginx -t && sudo systemctl reload nginx
+
+# 4. when DNS is pointed, get the cert (modifies the config automatically)
+sudo certbot --nginx -d argus.example.tld
+
+

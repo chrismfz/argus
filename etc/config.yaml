@@ -28,9 +28,22 @@ clickhouse:
   table: "flows"
 
 
+<<<<<<< HEAD
 geoip:
   asn_db: "/etc/pmacct/GeoLite2-ASN.mmdb"
   city_db: "/etc/pmacct/GeoLite2-City.mmdb"
+=======
+maxmind:
+  enabled: true
+  account_id: "0000000"
+  license_key: "YOUR_LICENSE_KEY_HERE"
+  editions:
+    - GeoLite2-ASN
+    - GeoLite2-City
+  check_every: 24h
+  min_age: 72h
+  http_timeout: 30s
+>>>>>>> 5d49046 (add MaxMind auto-updater, clean config.go)
 
 
 dns:

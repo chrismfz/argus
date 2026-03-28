@@ -1,6 +1,6 @@
 BIN_DIR := bin
-SRC_DIR := src
 BINARY := $(BIN_DIR)/argus
+CMD_PATH := ./cmd/argus
 
 .PHONY: help setup update build run clean
 
@@ -11,22 +11,23 @@ help: ## Show this help message
 	@echo ""
 
 setup: ## First-time setup after git clone
-	cd $(SRC_DIR) && go mod tidy
+	go mod tidy
 	@echo "✅ Setup complete."
 
 update: ## Update all dependencies
 	@echo "🔍 Checking for module updates..."
-	cd $(SRC_DIR) && go list -m -u all | grep -E '\[|\.'
-	cd $(SRC_DIR) && go get -u ./...
-	cd $(SRC_DIR) && go mod tidy
+	go list -m -u all | grep -E '\[|\.'
+	go get -u ./...
+	go mod tidy
 	@echo "✅ Dependencies updated."
 
 build: ## Build the binary into ./bin/
 	@mkdir -p $(BIN_DIR)
-	cd $(SRC_DIR) && go build \
+	go build \
 		-ldflags "-X 'main.Version=$(shell date +%Y.%m.%d)' -X 'main.BuildTime=$(shell date +%Y-%m-%dT%H:%M:%S)'" \
-		-o ../$(BINARY)
+		-o $(BINARY) $(CMD_PATH)
 	@echo "✅ Built: $(BINARY)"
+
 run: build ## Run the application
 	@./$(BINARY)
 

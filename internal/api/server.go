@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"net/http/pprof"
 	"argus/internal/enrich"
-        "argus/internal/bgp"
+	"argus/internal/bgp"
 	"github.com/yl2chen/cidranger"
 	"log"
 	"fmt"
@@ -20,126 +20,190 @@ import (
 )
 
 type GeoIPResponse struct {
-	IP       string   `json:"ip"`
-	PTR      string   `json:"ptr,omitempty"`
-	ASN      uint32   `json:"asn,omitempty"`
-	ASNName  string   `json:"asn_name,omitempty"`
-	Country  string   `json:"country,omitempty"`
-	ASPath   []string `json:"as_path,omitempty"`
-	Communities []string `json:"communities,omitempty"` // ✅ νέο
+	IP          string   `json:"ip"`
+	PTR         string   `json:"ptr,omitempty"`
+	ASN         uint32   `json:"asn,omitempty"`
+	ASNName     string   `json:"asn_name,omitempty"`
+	Country     string   `json:"country,omitempty"`
+	ASPath      []string `json:"as_path,omitempty"`
+	Communities []string `json:"communities,omitempty"`
 }
 
-// Πρέπει να τους κάνεις pass απ’ το main
-var Geo *enrich.GeoIP
-var Resolver *enrich.DNSResolver
-var Ranger cidranger.Ranger
-var DB *sql.DB // για SQLite access
-var CFM *cfmapi.Client
+var Geo         *enrich.GeoIP
+var Resolver    *enrich.DNSResolver
+var Ranger      cidranger.Ranger
+var DB          *sql.DB
+var TelemetryDB *sql.DB
+var CFM         *cfmapi.Client
 
+// ── Middleware ────────────────────────────────────────────────────────────────
 
+// WithMainIPOnly allows access based on IP only (no token required).
+// Used for read-only telemetry and dashboard routes.
+func WithMainIPOnly(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !ipAllowed(r, config.AppConfig.API.AllowIPs) {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+		h(w, r)
+	}
+}
 
+// shared helper used by both middlewares
+func ipAllowed(r *http.Request, cidrs []string) bool {
+	host, _, _ := net.SplitHostPort(r.RemoteAddr)
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	for _, c := range cidrs {
+		if c == "127.0.0.1" && ip.IsLoopback() {
+			return true
+		}
+		if _, n, err := net.ParseCIDR(c); err == nil && n.Contains(ip) {
+			return true
+		}
+		if net.ParseIP(c) != nil && ip.Equal(net.ParseIP(c)) {
+			return true
+		}
+	}
+	return false
+}
+
+// For generic http.Handler (needed by pprof.Handler(...))
+func WithIPAllowOnly(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !ipAllowed(r, config.AppConfig.DebugAPI.AllowIPs) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		h.ServeHTTP(w, r)
+	})
+}
+
+// Adapter to use WithAuth(func) with http.Handler too
+func WithAuthHandler(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		WithAuth(func(w http.ResponseWriter, r *http.Request) {
+			h.ServeHTTP(w, r)
+		})(w, r)
+	})
+}
+
+// For HandlerFunc
+func WithIPAllowOnlyFunc(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !ipAllowed(r, config.AppConfig.DebugAPI.AllowIPs) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		h(w, r)
+	}
+}
+
+// ── Start ─────────────────────────────────────────────────────────────────────
 
 func Start() {
-    // --- Main API mux (token + IP protected via WithAuth) ---
-    mainMux := http.NewServeMux()
-    mainMux.HandleFunc("/infoip",      WithAuth(handleInfoIP))
-    mainMux.HandleFunc("/status",      WithAuth(handleStatus))
-    mainMux.HandleFunc("/communities", WithAuth(handleCommunities))
-    mainMux.HandleFunc("/announce",    WithAuth(handleAnnounce))
-    mainMux.HandleFunc("/withdraw",    WithAuth(handleWithdraw))
-    mainMux.HandleFunc("/announcements", WithAuth(handleListAnnouncements))
-    mainMux.HandleFunc("/bgpannouncements", WithAuth(handleAdjIn))
-    mainMux.HandleFunc("/aspathviz",   WithAuth(handleASPathViz))
-    mainMux.HandleFunc("/bgpstatus",   WithAuth(handleBGPStatus))
-    mainMux.HandleFunc("/blackhole-list", WithAuth(handleBlackholeList))
-    mainMux.HandleFunc("/blackhole-search", WithAuth(handleBlackholeSearch)) // specific IP
-    mainMux.HandleFunc("/flush",       WithAuth(handleFlush))
-    mainMux.HandleFunc("/snmp/interfaces", WithAuth(handleSNMPInterfaces))
+	// --- Main API mux (token + IP protected via WithAuth) ---
+	mainMux := http.NewServeMux()
+	mainMux.HandleFunc("/infoip",           WithAuth(handleInfoIP))
+	mainMux.HandleFunc("/status",           WithAuth(handleStatus))
+	mainMux.HandleFunc("/communities",      WithAuth(handleCommunities))
+	mainMux.HandleFunc("/announce",         WithAuth(handleAnnounce))
+	mainMux.HandleFunc("/withdraw",         WithAuth(handleWithdraw))
+	mainMux.HandleFunc("/announcements",    WithAuth(handleListAnnouncements))
+	mainMux.HandleFunc("/bgpannouncements", WithAuth(handleAdjIn))
+	mainMux.HandleFunc("/aspathviz",        WithAuth(handleASPathViz))
+	mainMux.HandleFunc("/bgpstatus",        WithAuth(handleBGPStatus))
+	mainMux.HandleFunc("/blackhole-list",   WithAuth(handleBlackholeList))
+	mainMux.HandleFunc("/blackhole-search", WithAuth(handleBlackholeSearch))
+	mainMux.HandleFunc("/flush",            WithAuth(handleFlush))
+	mainMux.HandleFunc("/snmp/interfaces",  WithAuth(handleSNMPInterfaces))
 
-    // Telemetry — monitoring data (read-only, IP-auth same as main API)
-    mainMux.HandleFunc("/tel/overview",   WithAuth(handleTelOverview))
-    mainMux.HandleFunc("/tel/timeseries", WithAuth(handleTelTimeSeries))
-    mainMux.HandleFunc("/tel/asn",        WithAuth(handleTelASN))
-    mainMux.HandleFunc("/tel/sankey",     WithAuth(handleTelSankey))
-    mainMux.HandleFunc("/tel/hosts",      WithAuth(handleTelHosts))
-    mainMux.HandleFunc("/tel/ports",      WithAuth(handleTelPorts))
-    mainMux.HandleFunc("/tel/snapshots",  WithAuth(handleTelSnapshots))
-    mainMux.HandleFunc("/tel/snapshot",   WithAuth(handleTelSnapshotGet))
-    mainMux.HandleFunc("/tel/history",    WithAuth(handleTelHistory))
-    // Dashboard HTML — served at /dashboard
-    mainMux.HandleFunc("/dashboard", WithAuth(func(w http.ResponseWriter, r *http.Request) {
-        w.Header().Set("Content-Type", "text/html; charset=utf-8")
-        w.Write(dashboardHTML)
-    }))
+	// Telemetry — read-only, IP-only (no token required)
+	mainMux.HandleFunc("/tel/overview",   WithMainIPOnly(handleTelOverview))
+	mainMux.HandleFunc("/tel/timeseries", WithMainIPOnly(handleTelTimeSeries))
+	mainMux.HandleFunc("/tel/asn",        WithMainIPOnly(handleTelASN))
+	mainMux.HandleFunc("/tel/sankey",     WithMainIPOnly(handleTelSankey))
+	mainMux.HandleFunc("/tel/hosts",      WithMainIPOnly(handleTelHosts))
+	mainMux.HandleFunc("/tel/ports",      WithMainIPOnly(handleTelPorts))
+	mainMux.HandleFunc("/tel/snapshots",  WithMainIPOnly(handleTelSnapshots))
+	mainMux.HandleFunc("/tel/snapshot",   WithMainIPOnly(handleTelSnapshotGet))
+	mainMux.HandleFunc("/tel/history",    WithMainIPOnly(handleTelHistory))
 
-    apiAddr := fmt.Sprintf("%s:%d", config.AppConfig.API.ListenAddress, config.AppConfig.API.Port)
-    mainSrv := &http.Server{
-        Addr:              apiAddr,
-        Handler:           mainMux,
-        ReadHeaderTimeout: 2 * time.Second,
-        ReadTimeout:       5 * time.Second,
-        WriteTimeout:      10 * time.Second,
-        IdleTimeout:       60 * time.Second,
-        MaxHeaderBytes:    1 << 20,
-    }
+	// Dashboard HTML — IP-only, no token
+	mainMux.HandleFunc("/dashboard", WithMainIPOnly(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(dashboardHTML)
+	}))
 
-    go func() {
-        log.Printf("[API] Listening on %s", apiAddr)
-        if err := mainSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-            log.Fatalf("[API] ListenAndServe: %v", err)
-        }
-    }()
+	apiAddr := fmt.Sprintf("%s:%d", config.AppConfig.API.ListenAddress, config.AppConfig.API.Port)
+	mainSrv := &http.Server{
+		Addr:              apiAddr,
+		Handler:           mainMux,
+		ReadHeaderTimeout: 2 * time.Second,
+		ReadTimeout:       5 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
+	}
 
-    // --- Debug/pprof mux (separate port) ---
-    if config.AppConfig.DebugAPI.Enabled {
-        dbgMux := http.NewServeMux()
+	go func() {
+		log.Printf("[API] Listening on %s", apiAddr)
+		if err := mainSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("[API] ListenAndServe: %v", err)
+		}
+	}()
 
-        // Choose guard: IP-only by default (pprof CLI friendly), or token+IP if required.
-var guardFunc func(http.HandlerFunc) http.HandlerFunc
-var guardHandler func(http.Handler) http.Handler
+	// --- Debug/pprof mux (separate port) ---
+	if config.AppConfig.DebugAPI.Enabled {
+		dbgMux := http.NewServeMux()
 
-if config.AppConfig.DebugAPI.RequireToken {
-    guardFunc = WithAuth
-    guardHandler = WithAuthHandler
-} else {
-    guardFunc = WithIPAllowOnlyFunc
-    guardHandler = WithIPAllowOnly
+		var guardFunc    func(http.HandlerFunc) http.HandlerFunc
+		var guardHandler func(http.Handler) http.Handler
+		if config.AppConfig.DebugAPI.RequireToken {
+			guardFunc    = WithAuth
+			guardHandler = WithAuthHandler
+		} else {
+			guardFunc    = WithIPAllowOnlyFunc
+			guardHandler = WithIPAllowOnly
+		}
+
+		dbgMux.HandleFunc("/debug/pprof/",          guardFunc(pprof.Index))
+		dbgMux.HandleFunc("/debug/pprof/cmdline",   guardFunc(pprof.Cmdline))
+		dbgMux.HandleFunc("/debug/pprof/profile",   guardFunc(pprof.Profile))
+		dbgMux.HandleFunc("/debug/pprof/symbol",    guardFunc(pprof.Symbol))
+		dbgMux.HandleFunc("/debug/pprof/trace",     guardFunc(pprof.Trace))
+
+		dbgMux.Handle("/debug/pprof/goroutine",     guardHandler(pprof.Handler("goroutine")))
+		dbgMux.Handle("/debug/pprof/heap",          guardHandler(pprof.Handler("heap")))
+		dbgMux.Handle("/debug/pprof/allocs",        guardHandler(pprof.Handler("allocs")))
+		dbgMux.Handle("/debug/pprof/block",         guardHandler(pprof.Handler("block")))
+		dbgMux.Handle("/debug/pprof/mutex",         guardHandler(pprof.Handler("mutex")))
+		dbgMux.Handle("/debug/pprof/threadcreate",  guardHandler(pprof.Handler("threadcreate")))
+
+		dbgAddr := fmt.Sprintf("%s:%d", config.AppConfig.DebugAPI.ListenAddress, config.AppConfig.DebugAPI.Port)
+		dbgSrv := &http.Server{
+			Addr:              dbgAddr,
+			Handler:           dbgMux,
+			ReadHeaderTimeout: 2 * time.Second,
+			ReadTimeout:       5 * time.Second,
+			WriteTimeout:      30 * time.Second,
+			IdleTimeout:       60 * time.Second,
+			MaxHeaderBytes:    1 << 20,
+		}
+
+		go func() {
+			log.Printf("[API][debug] pprof listening on %s", dbgAddr)
+			if err := dbgSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Printf("[API][debug] ListenAndServe: %v", err)
+			}
+		}()
+	}
 }
 
-        dbgMux.HandleFunc("/debug/pprof/",          guardFunc(pprof.Index))
-        dbgMux.HandleFunc("/debug/pprof/cmdline",   guardFunc(pprof.Cmdline))
-        dbgMux.HandleFunc("/debug/pprof/profile",   guardFunc(pprof.Profile))
-        dbgMux.HandleFunc("/debug/pprof/symbol",    guardFunc(pprof.Symbol))
-        dbgMux.HandleFunc("/debug/pprof/trace",     guardFunc(pprof.Trace))
-
-        dbgMux.Handle("/debug/pprof/goroutine",     guardHandler(pprof.Handler("goroutine")))
-        dbgMux.Handle("/debug/pprof/heap",          guardHandler(pprof.Handler("heap")))
-        dbgMux.Handle("/debug/pprof/allocs",        guardHandler(pprof.Handler("allocs")))
-        dbgMux.Handle("/debug/pprof/block",         guardHandler(pprof.Handler("block")))
-        dbgMux.Handle("/debug/pprof/mutex",         guardHandler(pprof.Handler("mutex")))
-        dbgMux.Handle("/debug/pprof/threadcreate",  guardHandler(pprof.Handler("threadcreate")))
-
-        dbgAddr := fmt.Sprintf("%s:%d", config.AppConfig.DebugAPI.ListenAddress, config.AppConfig.DebugAPI.Port)
-        dbgSrv := &http.Server{
-            Addr:              dbgAddr,
-            Handler:           dbgMux,
-            ReadHeaderTimeout: 2 * time.Second,
-            ReadTimeout:       5 * time.Second,
-            WriteTimeout:      30 * time.Second, // profile downloads can be longer
-            IdleTimeout:       60 * time.Second,
-            MaxHeaderBytes:    1 << 20,
-        }
-
-        go func() {
-            log.Printf("[API][debug] pprof listening on %s", dbgAddr)
-            if err := dbgSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-                log.Printf("[API][debug] ListenAndServe: %v", err)
-            }
-        }()
-    }
-}
-
-
+// ── Handlers ──────────────────────────────────────────────────────────────────
 
 func handleInfoIP(w http.ResponseWriter, r *http.Request) {
 	ipStr := r.URL.Query().Get("ip")
@@ -150,11 +214,11 @@ func handleInfoIP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	res := map[string]interface{}{
-		"ip":      ipStr,
-		"ptr":     Resolver.LookupPTR(ipStr),
-		"asn":     Geo.GetASNNumber(ipStr),
+		"ip":       ipStr,
+		"ptr":      Resolver.LookupPTR(ipStr),
+		"asn":      Geo.GetASNNumber(ipStr),
 		"asn_name": Geo.GetASNName(ipStr),
-		"country": Geo.GetCountry(ipStr),
+		"country":  Geo.GetCountry(ipStr),
 	}
 
 	if Ranger != nil {
@@ -166,26 +230,26 @@ func handleInfoIP(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-if bgpEntry, ok := longest.(bgp.BGPEnrichedEntry); ok {
-	netCopy := longest.Network()                      // ✅ Add this
-	res["prefix"] = netCopy.String()                  // ✅ Fix this line
+			if bgpEntry, ok := longest.(bgp.BGPEnrichedEntry); ok {
+				netCopy := longest.Network()
+				res["prefix"] = netCopy.String()
 
-	var hops []map[string]string
-	for _, asn := range bgpEntry.ASPath {
-		hops = append(hops, map[string]string{
-			"asn":      asn,
-			"asn_name": Geo.GetASNName(asn),
-			"country":  Geo.GetCountry(asn),
-		})
-	}
-	res["as_path"] = hops
+				var hops []map[string]string
+				for _, asn := range bgpEntry.ASPath {
+					hops = append(hops, map[string]string{
+						"asn":      asn,
+						"asn_name": Geo.GetASNName(asn),
+						"country":  Geo.GetCountry(asn),
+					})
+				}
+				res["as_path"] = hops
 
-	var comms []string
-	for _, c := range bgpEntry.Communities {
-		comms = append(comms, fmt.Sprintf("%d:%d", c>>16, c&0xFFFF))
-	}
-	res["communities"] = comms
-}
+				var comms []string
+				for _, c := range bgpEntry.Communities {
+					comms = append(comms, fmt.Sprintf("%d:%d", c>>16, c&0xFFFF))
+				}
+				res["communities"] = comms
+			}
 		}
 	}
 
@@ -193,35 +257,20 @@ if bgpEntry, ok := longest.(bgp.BGPEnrichedEntry); ok {
 	_ = json.NewEncoder(w).Encode(res)
 }
 
-
-
-
-
-
-
-
-
-
-
-
 func lenMask(mask net.IPMask) int {
 	ones, _ := mask.Size()
 	return ones
 }
 
-
-
 func handleStatus(w http.ResponseWriter, r *http.Request) {
 	status := map[string]bool{
-		"infoip":    Geo != nil,
+		"infoip":   Geo != nil,
 		"resolver": Resolver != nil,
 		"bgp":      Ranger != nil,
 	}
 	json.NewEncoder(w).Encode(status)
 }
 
-
-// list communities
 func handleCommunities(w http.ResponseWriter, r *http.Request) {
 	set := make(map[string]struct{})
 
@@ -252,21 +301,6 @@ func handleCommunities(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(result)
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 func handleBGPStatus(w http.ResponseWriter, r *http.Request) {
 	if bgp.AnnounceServer == nil {
 		http.Error(w, "BGP server not initialized", http.StatusServiceUnavailable)
@@ -274,14 +308,14 @@ func handleBGPStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type PeerStatus struct {
-		IP         string `json:"ip"`
-		RemoteASN  uint32 `json:"remote_as"`
-		State      string `json:"state"`
-		Uptime     string `json:"uptime,omitempty"`
-		LastDown   string `json:"last_downtime,omitempty"`
-		MessagesIn  uint64 `json:"messages_received"`
-		MessagesOut uint64 `json:"messages_sent"`
-		AFISAFI    []string `json:"afi_safi"`
+		IP          string   `json:"ip"`
+		RemoteASN   uint32   `json:"remote_as"`
+		State       string   `json:"state"`
+		Uptime      string   `json:"uptime,omitempty"`
+		LastDown    string   `json:"last_downtime,omitempty"`
+		MessagesIn  uint64   `json:"messages_received"`
+		MessagesOut uint64   `json:"messages_sent"`
+		AFISAFI     []string `json:"afi_safi"`
 	}
 
 	var peers []PeerStatus
@@ -323,14 +357,14 @@ func handleBGPStatus(w http.ResponseWriter, r *http.Request) {
 		}
 
 		peers = append(peers, PeerStatus{
-			IP:         peer.Conf.NeighborAddress,
-			RemoteASN:  peer.Conf.PeerAsn,
-			State:      state,
-			Uptime:     uptime,
-			LastDown:   lastDown,
-			MessagesIn: msgIn,
+			IP:          peer.Conf.NeighborAddress,
+			RemoteASN:   peer.Conf.PeerAsn,
+			State:       state,
+			Uptime:      uptime,
+			LastDown:    lastDown,
+			MessagesIn:  msgIn,
 			MessagesOut: msgOut,
-			AFISAFI:    afiSafi,
+			AFISAFI:     afiSafi,
 		})
 	})
 
@@ -340,73 +374,13 @@ func handleBGPStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	summary := map[string]interface{}{
-		"total_peers":          totalPeers,
-		"established_peers":    establishedPeers,
-		"prefixes_announced":   len(bgp.ListAnnouncements()),
-		"prefixes_received":    bgp.GetPathCount(), // ✅ We'll add this next
-		"peers":                peers,
+		"total_peers":        totalPeers,
+		"established_peers":  establishedPeers,
+		"prefixes_announced": len(bgp.ListAnnouncements()),
+		"prefixes_received":  bgp.GetPathCount(),
+		"peers":              peers,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(summary)
-}
-
-
-
-// shared helper used by both middlewares
-func ipAllowed(r *http.Request, cidrs []string) bool {
-    host, _, _ := net.SplitHostPort(r.RemoteAddr)
-    ip := net.ParseIP(host)
-    if ip == nil {
-        return false
-    }
-    for _, c := range cidrs {
-        if c == "127.0.0.1" && ip.IsLoopback() {
-            return true
-        }
-        if _, n, err := net.ParseCIDR(c); err == nil && n.Contains(ip) {
-            return true
-        }
-        if net.ParseIP(c) != nil && ip.Equal(net.ParseIP(c)) {
-            return true
-        }
-    }
-    return false
-}
-
-
-
-
-
-// For generic http.Handler (needed by pprof.Handler(...))
-func WithIPAllowOnly(h http.Handler) http.Handler {
-    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        if !ipAllowed(r, config.AppConfig.DebugAPI.AllowIPs) {
-            http.Error(w, "forbidden", http.StatusForbidden)
-            return
-        }
-        h.ServeHTTP(w, r)
-    })
-}
-
-// Adapter to use your existing WithAuth(func) with http.Handler too
-func WithAuthHandler(h http.Handler) http.Handler {
-    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        // Reuse your WithAuth middleware by wrapping ServeHTTP
-        WithAuth(func(w http.ResponseWriter, r *http.Request) {
-            h.ServeHTTP(w, r)
-        })(w, r)
-    })
-}
-
-
-// For HandlerFunc (what you already had)
-func WithIPAllowOnlyFunc(h http.HandlerFunc) http.HandlerFunc {
-    return func(w http.ResponseWriter, r *http.Request) {
-        if !ipAllowed(r, config.AppConfig.DebugAPI.AllowIPs) {
-            http.Error(w, "forbidden", http.StatusForbidden)
-            return
-        }
-        h(w, r)
-    }
 }

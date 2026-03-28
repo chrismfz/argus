@@ -1,7 +1,6 @@
 package api
 
 import (
-	"database/sql"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -9,10 +8,6 @@ import (
 
 	"argus/internal/telemetry"
 )
-
-// TelemetryDB is set from main.go before api.Start() is called.
-// It points to the same SQLite handle used by detections/blackholes.
-var TelemetryDB *sql.DB
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -104,8 +99,6 @@ func handleTelPorts(w http.ResponseWriter, r *http.Request) {
 }
 
 // ── /tel/overview ─────────────────────────────────────────────────────────────
-// Single endpoint for the dashboard's initial load / periodic refresh.
-// Returns everything needed for the main view in one round-trip.
 
 func handleTelOverview(w http.ResponseWriter, r *http.Request) {
 	if !telReady(w) {
@@ -119,7 +112,6 @@ func handleTelOverview(w http.ResponseWriter, r *http.Request) {
 	ports := telemetry.Global.QueryPorts(30)
 	ts := telemetry.Global.QueryTimeSeries(minutes)
 
-	// Compute summary totals from time-series
 	var totalIn, totalOut, flowsIn, flowsOut uint64
 	for _, b := range ts {
 		totalIn += b.BytesIn
@@ -129,19 +121,19 @@ func handleTelOverview(w http.ResponseWriter, r *http.Request) {
 	}
 
 	telJSON(w, map[string]any{
-		"ts":          time.Now().Unix(),
-		"total_in":    totalIn,
-		"total_out":   totalOut,
-		"flows_in":    flowsIn,
-		"flows_out":   flowsOut,
-		"timeseries":  ts,
-		"asn_in":      topIn,
-		"asn_out":     topOut,
-		"sankey_in":   sankeyIn,
-		"sankey_out":  sankeyOut,
-		"hosts_in":    hostsIn,
-		"hosts_out":   hostsOut,
-		"ports":       ports,
+		"ts":         time.Now().Unix(),
+		"total_in":   totalIn,
+		"total_out":  totalOut,
+		"flows_in":   flowsIn,
+		"flows_out":  flowsOut,
+		"timeseries": ts,
+		"asn_in":     topIn,
+		"asn_out":    topOut,
+		"sankey_in":  sankeyIn,
+		"sankey_out": sankeyOut,
+		"hosts_in":   hostsIn,
+		"hosts_out":  hostsOut,
+		"ports":      ports,
 	})
 }
 
@@ -151,7 +143,6 @@ func handleTelSnapshots(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 
 	case http.MethodGet:
-		// List all snapshots (metadata only).
 		if TelemetryDB == nil {
 			http.Error(w, `{"error":"db not ready"}`, http.StatusServiceUnavailable)
 			return
@@ -164,7 +155,6 @@ func handleTelSnapshots(w http.ResponseWriter, r *http.Request) {
 		telJSON(w, list)
 
 	case http.MethodPost:
-		// Trigger a manual snapshot: POST /tel/snapshots  {"note":"before upgrade"}
 		if TelemetryDB == nil || !telReady(w) {
 			return
 		}
@@ -186,7 +176,6 @@ func handleTelSnapshots(w http.ResponseWriter, r *http.Request) {
 }
 
 // ── /tel/snapshot ─────────────────────────────────────────────────────────────
-// GET /tel/snapshot?id=42  — fetch the full data blob for one snapshot.
 
 func handleTelSnapshotGet(w http.ResponseWriter, r *http.Request) {
 	if TelemetryDB == nil {
@@ -207,9 +196,6 @@ func handleTelSnapshotGet(w http.ResponseWriter, r *http.Request) {
 }
 
 // ── /tel/history ──────────────────────────────────────────────────────────────
-// GET /tel/history?asn=13335
-// Returns live + one row per snapshot period for the given ASN.
-// Perfect for the "Cloudflare 1 year ago" case study.
 
 func handleTelHistory(w http.ResponseWriter, r *http.Request) {
 	if !telReady(w) {
@@ -227,14 +213,12 @@ func handleTelHistory(w http.ResponseWriter, r *http.Request) {
 	}
 	asn := uint32(asn64)
 
-	// Historical data from snapshots
 	hist, err := telemetry.GetASNHistory(TelemetryDB, asn)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// Live 24 h data from in-memory ring
 	topIn, topOut := telemetry.Global.QueryTopASN(500, 1440)
 	var liveIn, liveOut, liveFlowsIn, liveFlowsOut uint64
 	var asnName string

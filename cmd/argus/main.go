@@ -421,7 +421,7 @@ bgp.LocalBGPAddress = cfg.BGP.Listener.ListenIP
 
 
     fmt.Println("[INFO] Warming up BGP session to collect prefixes...")
-    time.Sleep(45 * time.Second)
+	listener.WaitReady(ctx, 100_000, 60*time.Second)
     fmt.Printf("[INFO] BGP warm-up done. Known prefixes: %d\n", listener.PathCount)
 
 

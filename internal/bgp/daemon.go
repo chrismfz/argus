@@ -490,3 +490,26 @@ if p.Transport != nil {
 func GetPathCount() int {
 	return PathCount
 }
+
+
+
+// In bgp package
+func (b *BGPListener) WaitReady(ctx context.Context, minPrefixes int, timeout time.Duration) bool {
+    deadline := time.After(timeout)
+    tick := time.NewTicker(2 * time.Second)
+    defer tick.Stop()
+    for {
+        select {
+        case <-ctx.Done():
+            return false
+        case <-deadline:
+            log.Printf("[BGP] warm-up timeout — proceeding with %d prefixes", b.PathCount)
+            return false
+        case <-tick.C:
+            if b.PathCount >= minPrefixes {
+                log.Printf("[BGP] warm-up done, %d prefixes loaded", b.PathCount)
+                return true
+            }
+        }
+    }
+}

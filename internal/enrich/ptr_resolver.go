@@ -1,5 +1,5 @@
 // dns-enrich.go (updated)
-package main
+package enrich
 
 import (
     "context"
@@ -8,12 +8,11 @@ import (
     "time"
 
     "argus/internal/config"
-    "argus/internal/enrich"
     "argus/internal/clickhouse"
 )
 
-func StartPTRResolver(cfg *config.Config) {
-    resolver := enrich.NewDNSResolver(cfg.DNS.Nameserver)
+func StartPTRResolver(cfg *config.Config, geoIP *GeoIP, debugMode bool) {
+    resolver := NewDNSResolver(cfg.DNS.Nameserver)
     log.Printf("[INFO] DNS (PTR) enrichment is enabled with resolver: %s", cfg.DNS.Nameserver)
 
     // Ensure ptr_cache table exists
@@ -48,13 +47,13 @@ func StartPTRResolver(cfg *config.Config) {
         ticker := time.NewTicker(interval)
         defer ticker.Stop()
         for {
-            processPTRBatch(resolver, bs, lookback, maxThreads, skipPrivate)
+            processPTRBatch(resolver, bs, lookback, maxThreads, skipPrivate, geoIP, debugMode)
             <-ticker.C
         }
     }()
 }
 
-func processPTRBatch(resolver *enrich.DNSResolver, batchSize, lookbackMin, maxThreads int, skipPrivate bool) {
+func processPTRBatch(resolver *DNSResolver, batchSize, lookbackMin, maxThreads int, skipPrivate bool, geoIP *GeoIP, debugMode bool) {
     ctx := context.Background()
     table := fmt.Sprintf("%s.%s", config.AppConfig.ClickHouse.Database, config.AppConfig.ClickHouse.Table)
 
@@ -118,9 +117,9 @@ func processPTRBatch(resolver *enrich.DNSResolver, batchSize, lookbackMin, maxTh
         ipList = append(ipList, ip)
     }
 
-    // Quiet mode unless --debug is enabled
+    // Quiet mode unless --debugMode is enabled
     if len(ipList) == 0 {
-        if debug {
+        if debugMode {
             log.Printf("[PTR] No candidate IPs for PTR in last %d minutes", lookbackMin)
         }
         return
@@ -128,7 +127,7 @@ func processPTRBatch(resolver *enrich.DNSResolver, batchSize, lookbackMin, maxTh
 
 
     // 🔍 Summary when we actually have work
-if debug {
+if debugMode {
     log.Printf("[PTR] Resolving PTR for %d IPs (lookback=%d min, skipPrivate=%v)",
         len(ipList), lookbackMin, skipPrivate)
 }
@@ -137,17 +136,17 @@ if debug {
     for _, ip := range ipList {
         ptr := resolver.LookupPTR(ip)
         if ptr == "" {
-            ptr = enrich.NoPTR
+            ptr = NoPTR
         }
 
 
-        // 🔐 Safe usage of geo (may be nil)
+        // 🔐 Safe usage of geoIP (may be nil)
         var asn uint32
         var asnName, country string
-        if geo != nil {
-            asn = geo.GetASNNumber(ip)
-            asnName = geo.GetASNName(ip)
-            country = geo.GetCountry(ip)
+        if geoIP != nil {
+            asn = geoIP.GetASNNumber(ip)
+            asnName = geoIP.GetASNName(ip)
+            country = geoIP.GetCountry(ip)
         }
 
         records = append(records, clickhouse.PTRRecord{

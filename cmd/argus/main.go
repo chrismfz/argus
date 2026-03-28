@@ -396,7 +396,7 @@ if enrichEnabled(cfg, "snmp") && cfg.SNMP.Enabled {
         ifNameCache.StartRefreshLoop(snmpClient, 5*time.Minute)
 enrich.SNMPClient = snmpClient
 enrich.IFNames = ifNameCache
-StartSNMPStatsCollector() // ✅ ξεκινά το async writer
+enrich.StartSNMPStatsCollector() // ✅ ξεκινά το async writer
 
     }
 } else {
@@ -456,7 +456,7 @@ if enrichEnabled(cfg, "bgp") {
 if enrichEnabled(cfg, "ptr") {
 	log.Println("[INFO] PTR enrichment is ENABLED")
 	// start the async PTR resolver
-	StartPTRResolver(cfg)
+	enrich.StartPTRResolver(cfg, geo, debug)
 }
 
 

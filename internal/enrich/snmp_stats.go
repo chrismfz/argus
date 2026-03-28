@@ -1,9 +1,8 @@
-package main
+package enrich
 
 import (
     "log"
     "time"
-    "argus/internal/enrich"
     "argus/internal/clickhouse"
 )
 
@@ -14,7 +13,7 @@ func StartSNMPStatsCollector() {
 
         for {
             <-ticker.C
-            records, err := enrich.CollectSNMPStats()
+            records, err := CollectSNMPStats()
             if err != nil {
                 log.Printf("[SNMPStats] Failed to collect: %v", err)
                 continue

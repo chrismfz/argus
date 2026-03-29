@@ -110,7 +110,19 @@ button.btn.secondary{background:var(--bg3);color:var(--text);border:1px solid va
     <span>auto-refresh in <b x-text="nextRefresh"></b>s</span>
   </div>
 
-  <div class="grid grid-4" style="margin-bottom:16px">
+<div class="grid" style="grid-template-columns:repeat(6,1fr);margin-bottom:16px">
+
+  <div class="card">
+      <div class="card-title">current in</div>
+      <div class="stat" x-text="(overview.rateMbpsIn ?? '—') + ' Mbps'"></div>
+      <div class="stat-sub">1-min avg</div>
+    </div>
+    <div class="card">
+      <div class="card-title">current out</div>
+      <div class="stat" x-text="(overview.rateMbpsOut ?? '—') + ' Mbps'"></div>
+      <div class="stat-sub">1-min avg</div>
+    </div>
+
     <div class="card">
       <div class="card-title">total inbound</div>
       <div class="stat" x-text="fmtBytes(overview.total_in ?? 0)"></div>
@@ -141,11 +153,11 @@ button.btn.secondary{background:var(--bg3);color:var(--text);border:1px solid va
   <div class="grid grid-2">
     <div class="card">
       <div class="card-title">top 10 inbound AS (24h)</div>
-      <div id="chart-asn-in" style="height:220px"></div>
+      <div id="chart-asn-in" style="height:260px"></div>
     </div>
     <div class="card">
       <div class="card-title">top 10 outbound AS (24h)</div>
-      <div id="chart-asn-out" style="height:220px"></div>
+      <div id="chart-asn-out" style="height:260px"></div>
     </div>
   </div>
 </div>
@@ -431,7 +443,14 @@ function app() { return {
     try {
       const r = await fetch(`/tel/overview?minutes=${this.overviewMinutes}`)
       if (!r.ok) throw new Error(r.status)
-      this.overview = await r.json()
+      const d = await r.json()
+      const ts = d.timeseries ?? []
+      if (ts.length >= 2) {
+        const b = ts[ts.length - 2]  // last fully-closed 1-min bucket
+        d.rateMbpsIn  = ((b.bytes_in  * 8) / 60 / 1_000_000).toFixed(1)
+        d.rateMbpsOut = ((b.bytes_out * 8) / 60 / 1_000_000).toFixed(1)
+      }
+      this.overview = d
       this.live = true
       this.lastUpdated = new Date().toLocaleTimeString()
       this.$nextTick(()=>{
@@ -732,7 +751,7 @@ function app() { return {
     c.setOption({
       backgroundColor:'transparent',
       tooltip:{trigger:'axis',formatter:p=>`${p[0].name}: ${fmtBytesS(p[0].value)}`},
-      grid:{top:10,right:20,bottom:10,left:160,containLabel:false},
+      grid:{top:10,right:20,bottom:40,left:10,containLabel:true},
       xAxis:{type:'value',axisLabel:{color:'#6c7086',formatter:v=>fmtBytesS(v)},splitLine:{lineStyle:{color:'#2a3147'}}},
       yAxis:{type:'category',data:top.map(a=>a.name||`AS${a.asn}`),axisLabel:{color:'#cdd6f4',width:150,overflow:'truncate'}},
       series:[{type:'bar',data:top.map(a=>a[field]),itemStyle:{color,borderRadius:[0,4,4,0]},barMaxWidth:22}]

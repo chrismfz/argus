@@ -265,7 +265,7 @@ systemctl enable --now argus
 ## MikroTik setup
 
 This section documents the complete RouterOS configuration required for argus to function correctly.
-The minimal snippet of "three commands" is not enough — the BGP session in particular requires
+The BGP session in particular requires
 specific policy plumbing to give argus its full RIB, accept blackhole announcements safely, and
 prevent internal/blackhole routes from leaking to peers.
 

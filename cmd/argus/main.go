@@ -261,6 +261,27 @@ if err := telemetry.InitRingSchema(db); err != nil {
     }
 }
 
+if err := telemetry.InitASNRingSchema(db); err != nil {
+    log.Printf("[telemetry] ASN ring schema init failed: %v", err)
+} else {
+    n, err := telemetry.WarmupASNRingFromDB(db)
+    if err != nil {
+        log.Printf("[telemetry] ASN ring warmup failed: %v", err)
+    } else if n > 0 {
+        log.Printf("[telemetry] ASN ring warmed up: %d slot×ASN entries", n)
+    }
+}
+ 
+if err := telemetry.InitIfaceRingSchema(db); err != nil {
+    log.Printf("[telemetry] iface ring schema init failed: %v", err)
+} else {
+    n, err := telemetry.WarmupIfaceRingFromDB(db)
+    if err != nil {
+        log.Printf("[telemetry] iface ring warmup failed: %v", err)
+    } else if n > 0 {
+        log.Printf("[telemetry] iface ring warmed up: %d slot×iface entries", n)
+    }
+}
 
 	telemetry.StartScheduler(ctx, db)
 	log.Printf("[telemetry] aggregator ready (myASN=%d nets=%d)", cfg.MyASN, len(myNets))

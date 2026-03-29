@@ -104,6 +104,8 @@ button.btn.secondary{background:var(--bg3);color:var(--text);border:1px solid va
       <option value="60">last hour</option>
       <option value="360">last 6 h</option>
       <option value="1440" selected>last 24 h</option>
+      <option value="2880">last 48 h</option>
+      <option value="10080">last week</option>
     </select></label>
     <span>auto-refresh in <b x-text="nextRefresh"></b>s</span>
   </div>
@@ -150,9 +152,18 @@ button.btn.secondary{background:var(--bg3);color:var(--text);border:1px solid va
 
 <!-- ── TRAFFIC BY AS ── -->
 <div class="content" x-show="tab==='asn'">
+  <div class="refresh-bar" style="margin-bottom:14px">
+    <label>window <select x-model="asnMinutes" @change="loadASN()">
+      <option value="60">last hour</option>
+      <option value="360">last 6 h</option>
+      <option value="1440" selected>last 24 h</option>
+      <option value="2880">last 48 h</option>
+      <option value="10080">last week</option>
+    </select></label>
+  </div>
   <div class="grid grid-2" style="margin-bottom:16px">
     <div class="card">
-      <div class="card-title">top inbound ASNs (last 24h)</div>
+      <div class="card-title" x-text="'top inbound ASNs (' + fmtWindow(asnMinutes) + ')'"></div>
       <table>
         <thead><tr><th>ASN</th><th>Name</th><th>In</th><th style="width:80px"></th><th style="width:120px">via</th></tr></thead>
         <tbody>
@@ -169,7 +180,7 @@ button.btn.secondary{background:var(--bg3);color:var(--text);border:1px solid va
       </table>
     </div>
     <div class="card">
-      <div class="card-title">top outbound ASNs (last 24h)</div>
+      <div class="card-title" x-text="'top outbound ASNs (' + fmtWindow(asnMinutes) + ')'"></div>
       <table>
         <thead><tr><th>ASN</th><th>Name</th><th>Out</th><th style="width:80px"></th><th style="width:120px">via</th></tr></thead>
         <tbody>
@@ -382,6 +393,7 @@ function app() { return {
   flushResult: null,
   ifaceSankeyOut: [],
   upstreamMinutes: 1440,
+  asnMinutes: 1440,
   snapNote: '',
   snapLoading: false,
   snapMsg: '',
@@ -433,7 +445,7 @@ function app() { return {
   },
 
   async loadASN() {
-    const r = await fetch('/tel/asn?n=20&minutes=1440')
+    const r = await fetch(`/tel/asn?n=20&minutes=${this.asnMinutes}`)
     if (!r.ok) return
     this.asnData = await r.json()
     const sankey = await fetch('/tel/sankey?limit=25').then(r=>r.json()).catch(()=>({incoming:[],outgoing:[]}))
@@ -793,7 +805,14 @@ function app() { return {
 
   // ── util ──
   pct(v, max) { return max > 0 ? Math.round(v/max*100) : 0 },
-  fmtDate(ts) { return new Date(ts*1000).toLocaleString() }
+  fmtDate(ts) { return new Date(ts*1000).toLocaleString() },
+  fmtWindow(minutes) {
+    if (minutes <= 60)   return 'last hour'
+    if (minutes <= 360)  return 'last 6 h'
+    if (minutes <= 1440) return 'last 24 h'
+    if (minutes <= 2880) return 'last 48 h'
+    return 'last week'
+  }
 }}
 
 // Standalone byte formatters (used inside chart tooltip formatters outside Alpine context)
@@ -816,6 +835,8 @@ function fmtBytes(b) { return fmtBytesS(b) }
       <option value="60">last hour</option>
       <option value="360">last 6 h</option>
       <option value="1440" selected>last 24 h</option>
+      <option value="2880">last 48 h</option>
+      <option value="10080">last week</option>
     </select></label>
   </div>
 

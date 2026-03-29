@@ -27,6 +27,7 @@ func telReady(w http.ResponseWriter) bool {
 	return true
 }
 
+// queryInt parses an integer query parameter with a default and min/max clamp.
 func queryInt(r *http.Request, key string, def, min, max int) int {
 	v, err := strconv.Atoi(r.URL.Query().Get(key))
 	if err != nil || v < min || v > max {
@@ -35,14 +36,17 @@ func queryInt(r *http.Request, key string, def, min, max int) int {
 	return v
 }
 
+// MaxWindowMinutes is the largest window the UI can request — 1 week.
+const MaxWindowMinutes = 10080
+
 // ── /tel/timeseries ───────────────────────────────────────────────────────────
 
 func handleTelTimeSeries(w http.ResponseWriter, r *http.Request) {
 	if !telReady(w) {
 		return
 	}
-	minutes := queryInt(r, "minutes", 1440, 1, 1440)
-	telJSON(w, telemetry.Global.QueryTimeSeries(minutes))
+	minutes := queryInt(r, "minutes", 1440, 1, MaxWindowMinutes)
+	telJSON(w, telemetry.QueryTimeSeriesAny(TelemetryDB, minutes))
 }
 
 // ── /tel/asn ─────────────────────────────────────────────────────────────────
@@ -52,8 +56,8 @@ func handleTelASN(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	n := queryInt(r, "n", 20, 1, 200)
-	minutes := queryInt(r, "minutes", 1440, 1, 1440)
-	topIn, topOut := telemetry.Global.QueryTopASN(n, minutes)
+	minutes := queryInt(r, "minutes", 1440, 1, MaxWindowMinutes)
+	topIn, topOut := telemetry.QueryTopASNAny(TelemetryDB, n, minutes)
 	telJSON(w, map[string]any{
 		"top_in":  topIn,
 		"top_out": topOut,
@@ -104,13 +108,17 @@ func handleTelOverview(w http.ResponseWriter, r *http.Request) {
 	if !telReady(w) {
 		return
 	}
-	minutes := queryInt(r, "minutes", 60, 1, 1440)
+	minutes := queryInt(r, "minutes", 60, 1, MaxWindowMinutes)
 
-	topIn, topOut := telemetry.Global.QueryTopASN(10, 1440)
+	// Top ASN / sankey / hosts use the same window as the timeseries.
+	// For sankey and hosts we stay ring-only (accumulators aren't persisted)
+	// but clamp to 1440 so they silently degrade gracefully.
+	asnMinutes := minutes
+	topIn, topOut := telemetry.QueryTopASNAny(TelemetryDB, 10, asnMinutes)
 	sankeyIn, sankeyOut := telemetry.Global.QuerySankey(25)
 	hostsIn, hostsOut := telemetry.Global.QueryTopHosts(10)
 	ports := telemetry.Global.QueryPorts(30)
-	ts := telemetry.Global.QueryTimeSeries(minutes)
+	ts := telemetry.QueryTimeSeriesAny(TelemetryDB, minutes)
 
 	var totalIn, totalOut, flowsIn, flowsOut uint64
 	for _, b := range ts {
@@ -137,62 +145,28 @@ func handleTelOverview(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ── /tel/snapshots ────────────────────────────────────────────────────────────
+// ── /tel/interfaces ───────────────────────────────────────────────────────────
 
-func handleTelSnapshots(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-
-	case http.MethodGet:
-		if TelemetryDB == nil {
-			http.Error(w, `{"error":"db not ready"}`, http.StatusServiceUnavailable)
-			return
-		}
-		list, err := telemetry.ListSnapshots(TelemetryDB)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		telJSON(w, list)
-
-	case http.MethodPost:
-		if TelemetryDB == nil || !telReady(w) {
-			return
-		}
-		var req struct {
-			Note string `json:"note"`
-		}
-		_ = json.NewDecoder(r.Body).Decode(&req)
-
-		id, err := telemetry.TakeManualSnapshot(TelemetryDB, req.Note)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		telJSON(w, map[string]any{"id": id, "note": req.Note, "ok": true})
-
-	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+func handleTelInterfaces(w http.ResponseWriter, r *http.Request) {
+	if !telReady(w) {
+		return
 	}
+	minutes := queryInt(r, "minutes", 1440, 1, MaxWindowMinutes)
+	telJSON(w, telemetry.QueryInterfacesAny(TelemetryDB, minutes))
 }
 
-// ── /tel/snapshot ─────────────────────────────────────────────────────────────
+// ── /tel/iface-sankey ─────────────────────────────────────────────────────────
 
-func handleTelSnapshotGet(w http.ResponseWriter, r *http.Request) {
-	if TelemetryDB == nil {
-		http.Error(w, `{"error":"db not ready"}`, http.StatusServiceUnavailable)
+func handleTelIfaceSankey(w http.ResponseWriter, r *http.Request) {
+	if !telReady(w) {
 		return
 	}
-	id, err := strconv.ParseInt(r.URL.Query().Get("id"), 10, 64)
-	if err != nil || id <= 0 {
-		http.Error(w, `{"error":"invalid id"}`, http.StatusBadRequest)
-		return
-	}
-	data, meta, err := telemetry.GetSnapshot(TelemetryDB, id)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
-		return
-	}
-	telJSON(w, map[string]any{"meta": meta, "data": data})
+	limit := queryInt(r, "limit", 30, 1, 200)
+	sankeyIn, sankeyOut := telemetry.Global.QueryIfaceASNSankey(limit)
+	telJSON(w, map[string]any{
+		"incoming": sankeyIn,
+		"outgoing": sankeyOut,
+	})
 }
 
 // ── /tel/history ──────────────────────────────────────────────────────────────
@@ -254,25 +228,54 @@ func handleTelHistory(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ── /tel/snapshots ────────────────────────────────────────────────────────────
 
-
-func handleTelInterfaces(w http.ResponseWriter, r *http.Request) {
-	if !telReady(w) {
+func handleTelSnapshots(w http.ResponseWriter, r *http.Request) {
+	if TelemetryDB == nil {
+		http.Error(w, `{"error":"db not ready"}`, http.StatusServiceUnavailable)
 		return
 	}
-	minutes := queryInt(r, "minutes", 1440, 1, 1440)
-	telJSON(w, telemetry.Global.QueryInterfaces(minutes))
+	if r.Method == http.MethodPost {
+		var body struct {
+			Note string `json:"note"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		id, err := telemetry.TakeManualSnapshot(TelemetryDB, body.Note)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		telJSON(w, map[string]any{"id": id, "note": body.Note, "ok": true})
+		return
+	}
+	// GET — list all snapshots
+	snaps, err := telemetry.ListSnapshots(TelemetryDB)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if snaps == nil {
+		snaps = []telemetry.SnapshotMeta{}
+	}
+	telJSON(w, snaps)
 }
 
+// ── /tel/snapshot ─────────────────────────────────────────────────────────────
 
-func handleTelIfaceSankey(w http.ResponseWriter, r *http.Request) {
-	if !telReady(w) {
+func handleTelSnapshotGet(w http.ResponseWriter, r *http.Request) {
+	if TelemetryDB == nil {
+		http.Error(w, `{"error":"db not ready"}`, http.StatusServiceUnavailable)
 		return
 	}
-	limit := queryInt(r, "limit", 30, 1, 200)
-	sankeyIn, sankeyOut := telemetry.Global.QueryIfaceASNSankey(limit)
-	telJSON(w, map[string]any{
-		"incoming": sankeyIn,
-		"outgoing": sankeyOut,
-	})
+	id, err := strconv.ParseInt(r.URL.Query().Get("id"), 10, 64)
+	if err != nil || id <= 0 {
+		http.Error(w, `{"error":"invalid id"}`, http.StatusBadRequest)
+		return
+	}
+	data, meta, err := telemetry.GetSnapshot(TelemetryDB, id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	telJSON(w, map[string]any{"meta": meta, "data": data})
 }

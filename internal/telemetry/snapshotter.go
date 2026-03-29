@@ -253,16 +253,22 @@ go func() {
     defer t.Stop()
     for {
         select {
-        case <-ctx.Done():
-            // Final flush on shutdown
-            if err := PersistRing(db); err != nil {
-                log.Printf("[telemetry] final ring flush failed: %v", err)
-            }
-            return
-        case <-t.C:
-            if err := PersistRing(db); err != nil {
-                log.Printf("[telemetry] ring persist failed: %v", err)
-            }
+case <-ctx.Done():
+    _ = PersistRing(db)
+    _ = PersistASNRing(db)
+    _ = PersistIfaceRing(db)
+    return
+   case <-t.C:
+       if err := PersistRing(db); err != nil {
+           log.Printf("[telemetry] ring persist failed: %v", err)
+       }
+       if err := PersistASNRing(db); err != nil {
+           log.Printf("[telemetry] ASN ring persist failed: %v", err)
+       }
+       if err := PersistIfaceRing(db); err != nil {
+           log.Printf("[telemetry] iface ring persist failed: %v", err)
+       }
+
         }
     }
 }()

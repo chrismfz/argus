@@ -262,19 +262,223 @@ cp etc/systemd/system/argus.service /etc/systemd/system/
 systemctl enable --now argus
 ```
 
-**MikroTik setup:**
+## MikroTik setup
+
+This section documents the complete RouterOS configuration required for argus to function correctly.
+The minimal snippet of "three commands" is not enough — the BGP session in particular requires
+specific policy plumbing to give argus its full RIB, accept blackhole announcements safely, and
+prevent internal/blackhole routes from leaking to peers.
+
+---
+
+### 1. Blackhole next-hop route
+
 ```
-# Blackhole next-hop route (required for BGP blackholing)
+# RFC 5635 / RFC 7999 discard address. This static blackhole route must exist so that
+# when argus announces a /32 with next-hop 192.0.2.1, the router has somewhere to
+# forward it — i.e. into a black hole. Without this, the BGP route is accepted but
+# traffic silently continues to flow because the next-hop is unreachable.
 /ip route add dst-address=192.0.2.1/32 blackhole comment="BGP Blackhole Nexthop"
-
-# NetFlow v9 export to argus
-/ip traffic-flow set enabled=yes interfaces=all
-/ip traffic-flow target add dst-address=<argus-ip> port=2055 version=9
-
-# eBGP peer
-/routing bgp peer add name=argus remote-address=<argus-ip> \
-    remote-as=65001 multihop=yes ttl=default
 ```
+
+---
+
+### 2. BGP community list
+
+```
+# A named community list that maps the blackhole signal communities to a label the
+# routing policy engine can reference. This serves two purposes:
+#   - The argus BGP peer uses it in input.accept-communities to only install routes
+#     that carry the blackhole tag (see peer config below).
+#   - Additional upstream blackhole communities (e.g. your transit's RTBH community)
+#     can be added here so the same policy covers both argus-originated and
+#     transit-triggered blackholes.
+/routing filter community-list
+add communities=65001:666 list=blackhole-mark   # argus internal blackhole signal
+add communities=<your-transit-rtbh> list=blackhole-mark   # e.g. transit RTBH community
+```
+
+---
+
+### 3. Routing filter chains
+
+Three filter chains are required. None of them are optional.
+
+```
+# ── blackhole-input-filter ────────────────────────────────────────────────────
+# Applied on the input side of the argus BGP session.
+# Accepts all routes coming from argus unconditionally. The community-based
+# guard happens at the peer level (input.accept-communities), not here.
+/routing filter rule
+add chain=blackhole-input-filter rule=accept
+
+
+# ── blackhole-out ─────────────────────────────────────────────────────────────
+# Applied on the output side of any peer that should NOT receive blackhole routes.
+# Drops any route carrying a community from the blackhole-mark list before it is
+# sent out. This prevents blackhole /32s from leaking to your transit, IX peers,
+# route collectors, or any other eBGP session — which would cause those peers to
+# also null-route traffic toward your customers, or flag you as a route hijacker.
+add chain=blackhole-out \
+    rule="if (bgp-communities any-list blackhole-mark) { reject }"
+
+
+# ── no65001-out ───────────────────────────────────────────────────────────────
+# Applied on the output side of any session used for route collection / visibility
+# (bgptools, RIPE RIS, RouteViews, etc.).
+# Drops routes that have AS65001 in the AS path. AS65001 is the internal ASN
+# used by the argus BGP speaker — these routes must never be exported to the
+# public internet. Also drops RFC1918 space as a safety net.
+add chain=no65001-out rule="if (bgp-as-path 65001) { reject }"
+add chain=no65001-out rule="if (dst in 10.0.0.0/8 || dst in 172.16.0.0/12 || dst in 192.168.0.0/16) { reject }"
+add chain=no65001-out rule=accept
+```
+
+---
+
+### 4. BGP peer (argus / "watchdog")
+
+This is the core of the integration. The peer config is substantially more involved than
+a basic `remote-as=65001` entry.
+
+```
+/routing bgp connection
+add \
+    name=watchdog \
+    comment="argus panoptes — NetFlow enrichment + blackhole control" \
+    \
+    # Dual-stack: argus enriches both IPv4 and IPv6 flows and can blackhole both.
+    afi=ip,ipv6 \
+    \
+    as=<your-ASN> \
+    local.address=<router-IP> \
+    remote.address=<argus-IP>/32 \
+    .as=65001 \
+    .role=ebgp \
+    multihop=yes \
+    \
+    # ── Input (router → argus) ────────────────────────────────────────────────
+    # Only install routes from argus that carry a recognised blackhole community.
+    # Without this, argus could announce any prefix and the router would install
+    # it — a significant security risk. With it, only community-tagged /32s land
+    # in the RIB as blackhole routes.
+    input.accept-communities=blackhole-mark \
+    input.filter=blackhole-input-filter \
+    \
+    # ── Output (argus ← router) ───────────────────────────────────────────────
+    # Redistribute all route sources so argus receives the full RIB. This is what
+    # enables BGP AS path enrichment for every flow: argus does a longest-prefix
+    # match against this RIB to determine which AS path traffic is using.
+    output.redistribute=connected,static,bgp \
+    \
+    # Keep BGP attributes (communities, local-pref, MED) on outbound updates so
+    # argus can see the full policy context of each route, not just the prefix.
+    output.keep-sent-attributes=yes \
+    \
+    # Do not strip AS65001 from the path before sending to argus. If private ASNs
+    # were removed, argus would lose visibility of its own announcements in the RIB
+    # and could not verify blackhole routes it previously sent.
+    .remove-private-as=no \
+    \
+    # Send all available paths for each prefix, not just the best path. This gives
+    # argus multi-path visibility — important for detecting asymmetric routing and
+    # for the routewatch path quality comparison module.
+    add-path-out=all \
+    \
+    routing-table=main
+```
+
+---
+
+### 5. NetFlow export
+
+```
+# Enable NetFlow. sampling-interval and sampling-space control how many packets
+# are sampled per flow export.
+#
+# sampling-interval=1 sampling-space=1 means every packet is counted (1:1 ratio).
+# This gives argus the most accurate data for detection and telemetry, and is the
+# recommended starting point for networks under ~1 Gbps sustained.
+#
+# If you observe high CPU on the router or excessive UDP traffic toward the argus
+# server, step up sampling-interval in powers of 10 (10, 100, 1000). At 1:100 the
+# detection engine still catches DDoS patterns reliably — the statistical loss only
+# meaningfully affects low-pps anomalies. For a CCR2004 at typical SME/ISP load,
+# 1:1 is fine.
+/ip traffic-flow set enabled=yes sampling-interval=1 sampling-space=1
+
+# v9-template-refresh=30 forces the router to resend the flow template every 30
+# data packets. Without this, if argus restarts or the UDP stream is interrupted,
+# it may receive flow records before it has seen the template and will drop them
+# silently. 30 is conservative and safe; you can raise it to 100 if you want to
+# reduce template overhead on high-volume links.
+/ip traffic-flow target add \
+    dst-address=<argus-IP> \
+    port=2055 \
+    version=9 \
+    v9-template-refresh=30
+```
+
+---
+
+### 6. SNMP
+
+```
+# argus uses SNMP to resolve INPUT_SNMP / OUTPUT_SNMP interface indices in flow
+# records to human-readable names (e.g. index 2 → "sfp1-Synapsecom"). Without
+# this, the direction classification and the /snmp/interfaces endpoint will not
+# work. The default "public" community is disabled by default on modern RouterOS —
+# you must create a dedicated community and reference it in argus config.yaml under
+# snmp.community.
+/snmp community add name=<your-community> addresses=<argus-IP>/32
+/snmp set enabled=yes
+```
+
+---
+
+### 7. API access (required for routewatch auto-mitigation)
+
+```
+# The routewatch module uses the MikroTik REST API to apply and revert routing
+# filter rules automatically (api_assisted and api_auto mitigation modes).
+# Restrict the API service to the management network and the argus server IP only.
+# Never expose the API on a public interface.
+/ip service set api address=<mgmt-subnet>,<argus-IP>
+/ip service set api-ssl address=<mgmt-subnet>,<argus-IP>
+
+# Create a dedicated user with the minimum permissions required. The apiOnly group
+# below grants API and REST-API access but explicitly denies local console, reboot,
+# and other sensitive capabilities.
+/user group add name=apiOnly \
+    policy="ssh,read,write,api,rest-api,!local,!telnet,!ftp,!reboot,!policy,!test,!winbox,!password,!web,!sniff,!sensitive,!romon"
+
+/user add name=argus group=apiOnly password=<strong-password>
+```
+
+---
+
+### Summary of what each piece does
+
+| Config item | Why it is needed |
+|---|---|
+| `192.0.2.1/32 blackhole` route | Provides a valid discard next-hop so BGP blackhole /32s actually drop traffic |
+| `blackhole-mark` community list | Translates community strings into a named policy object reusable across filter chains |
+| `blackhole-input-filter` | Accept-all on the argus-facing input; the real guard is `input.accept-communities` |
+| `input.accept-communities=blackhole-mark` | Only installs routes from argus that carry the blackhole tag — prevents arbitrary prefix injection |
+| `blackhole-out` filter chain | Prevents blackhole /32s from leaking to transit, IX, or collectors — critical for operational safety |
+| `no65001-out` filter chain | Prevents argus-internal AS65001 routes and RFC1918 space from appearing in public route tables |
+| `output.redistribute=connected,static,bgp` | Sends the full RIB to argus — required for AS path enrichment of every flow |
+| `output.keep-sent-attributes=yes` | Preserves BGP communities and policy attributes in the stream to argus |
+| `output.remove-private-as=no` | Keeps AS65001 visible so argus can track its own announcements in the RIB |
+| `add-path-out=all` | Multi-path visibility for routewatch path quality and asymmetric routing detection |
+| `afi=ip,ipv6` | Dual-stack RIB and dual-stack blackhole capability |
+| `v9-template-refresh=30` | Ensures argus always has a valid flow template after restarts or UDP gaps |
+| `sampling-interval=1 sampling-space=1` | 1:1 flow sampling for maximum detection accuracy |
+| SNMP community (custom, not "public") | Required for interface index → name resolution; default "public" is disabled in RouterOS |
+| API service IP restriction + apiOnly group | Least-privilege access for routewatch auto-mitigation; never expose the API publicly |
+
+```
+
 
 ---
 

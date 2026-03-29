@@ -602,14 +602,13 @@ function app() { return {
     el.style.height = h + 'px'
 
     if (!charts[id]) charts[id] = echarts.init(el, 'dark')
-    else charts[id].resize()
 
-    // Interface label: "sfp1-Synapsecom (idx 3)"  — name + index
+    // Interface label: "sfp1-Synapsecom (idx 3)"
     const ifLabel  = p => p.iface_name
       ? `${p.iface_name} (idx ${p.iface_idx})`
       : `if${p.iface_idx}`
 
-    // ASN label: "AS8280 · Synapsecom S.A."  — number + name
+    // ASN label: "AS8280 · Synapsecom S.A."
     const asnLabel = p => p.asn_name
       ? `AS${p.asn} · ${p.asn_name}`
       : `AS${p.asn}`
@@ -631,12 +630,18 @@ function app() { return {
       }},
       series:[{
         type:'sankey', layout:'none', emphasis:{focus:'adjacency'},
+        // explicit margins so nodes use the full card width
+        left: '5%', right: '35%', top: '5%', bottom: '5%',
         data:nodes, links,
         lineStyle:{color:'gradient',opacity:.4},
-        label:{color:'#cdd6f4',fontSize:12},
+        label:{color:'#cdd6f4',fontSize:11},
         nodeWidth:12, nodeGap:8,
       }]
     })
+
+    // Force resize after paint — ECharts may have initialised on a
+    // partially-hidden element and captured a stale width
+    setTimeout(() => { if (charts[id]) charts[id].resize() }, 60)
   },
 
   drawIfaceChart(iface) {
@@ -818,7 +823,7 @@ function fmtBytes(b) { return fmtBytesS(b) }
   <div class="grid" :style="'grid-template-columns:repeat('+Math.min(upstreamsData.length||1,4)+',1fr);margin-bottom:16px'">
     <template x-for="iface in upstreamsData" :key="iface.index">
       <div class="card">
-        <div class="card-title" style="flex-direction:column;align-items:flex-start;gap:2px">
+        <div class="card-title" style="display:flex;flex-direction:column;align-items:flex-start;gap:2px">
           <span x-text="iface.name || ('if'+iface.index)"></span>
           <span style="font-size:10px;color:var(--muted);font-weight:400;letter-spacing:0;text-transform:none" x-text="'idx '+iface.index"></span>
         </div>

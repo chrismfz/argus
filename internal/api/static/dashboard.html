@@ -22,10 +22,8 @@ nav{display:flex;gap:2px;padding:0 20px;background:var(--bg2);border-bottom:1px 
 nav .sep{margin-left:auto;width:1px;height:20px;background:var(--border)}
 nav a.dbg{padding:6px 12px;font-size:12px;color:var(--yellow);text-decoration:none;border:1px solid rgba(249,226,175,.25);border-radius:4px;margin-left:8px;transition:.15s}
 nav a.dbg:hover{background:rgba(249,226,175,.1);border-color:var(--yellow)}
-
 nav a.page{padding:10px 18px;color:var(--muted);font-size:13px;text-decoration:none;border-bottom:2px solid transparent;display:inline-block;transition:.1s}
 nav a.page:hover{color:var(--text)}
-
 nav button{padding:10px 18px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;border-bottom:2px solid transparent;transition:.15s}
 nav button.active{color:var(--accent);border-color:var(--accent)}
 nav button:hover:not(.active){color:var(--text)}
@@ -474,7 +472,6 @@ function app() { return {
   loadControl() {
     this.loadBGPStatus()
     this.loadBlackholes()
-
   },
 
   authHeaders() {
@@ -500,7 +497,6 @@ function app() { return {
     } catch(e) { this.blackholes = [] }
     finally { this.bhLoading = false }
   },
-
 
   async doWithdraw(prefix) {
     if (!confirm('Withdraw ' + prefix + '?')) return
@@ -563,7 +559,6 @@ function app() { return {
 
   countryFlag(cc) {
     if (!cc || cc.length !== 2) return ''
-    // Convert country code to regional indicator emoji (flag)
     return [...cc.toUpperCase()].map(c => String.fromCodePoint(0x1F1E6 + c.charCodeAt(0) - 65)).join('')
   },
 
@@ -596,21 +591,38 @@ function app() { return {
     finally { this.loading = false }
   },
 
+  // ── FIX 3 & 4: dynamic height + ID·name labels on both node types ──────────
   drawIfaceSankeyChart(id, pairs, inbound) {
     const el = document.getElementById(id)
     if (!el || !pairs.length) return
+
+    // Dynamic height: give each unique ASN node ~26px of room, min 380px
+    const uniqueASNs = new Set(pairs.map(p => p.asn)).size
+    const h = Math.max(380, uniqueASNs * 26 + 80)
+    el.style.height = h + 'px'
+
     if (!charts[id]) charts[id] = echarts.init(el, 'dark')
+    else charts[id].resize()
+
+    // Interface label: "sfp1-Synapsecom (idx 3)"  — name + index
+    const ifLabel  = p => p.iface_name
+      ? `${p.iface_name} (idx ${p.iface_idx})`
+      : `if${p.iface_idx}`
+
+    // ASN label: "AS8280 · Synapsecom S.A."  — number + name
+    const asnLabel = p => p.asn_name
+      ? `AS${p.asn} · ${p.asn_name}`
+      : `AS${p.asn}`
+
     const nodeSet = new Set()
-    pairs.forEach(p => {
-      nodeSet.add(p.iface_name || ('if'+p.iface_idx))
-      nodeSet.add(p.asn_name   || ('AS'+p.asn))
-    })
+    pairs.forEach(p => { nodeSet.add(ifLabel(p)); nodeSet.add(asnLabel(p)) })
     const nodes = [...nodeSet].map(name => ({name}))
     const links = pairs.map(p => ({
-      source: inbound ? (p.iface_name||'if'+p.iface_idx) : (p.iface_name||'if'+p.iface_idx),
-      target: inbound ? (p.asn_name||'AS'+p.asn)         : (p.asn_name||'AS'+p.asn),
+      source: ifLabel(p),
+      target: asnLabel(p),
       value:  p.bytes,
     }))
+
     charts[id].setOption({
       backgroundColor:'transparent',
       tooltip:{trigger:'item',formatter:p=>{
@@ -802,13 +814,13 @@ function fmtBytes(b) { return fmtBytesS(b) }
     </select></label>
   </div>
 
-  <!-- summary cards -->
+  <!-- FIX 1: summary cards — name on top, idx below -->
   <div class="grid" :style="'grid-template-columns:repeat('+Math.min(upstreamsData.length||1,4)+',1fr);margin-bottom:16px'">
     <template x-for="iface in upstreamsData" :key="iface.index">
       <div class="card">
-        <div class="card-title">
-          <span x-text="iface.name || ('interface '+iface.index)"></span>
-          <span class="tag-pill" style="margin-left:6px;font-size:10px" x-text="'idx '+iface.index"></span>
+        <div class="card-title" style="flex-direction:column;align-items:flex-start;gap:2px">
+          <span x-text="iface.name || ('if'+iface.index)"></span>
+          <span style="font-size:10px;color:var(--muted);font-weight:400;letter-spacing:0;text-transform:none" x-text="'idx '+iface.index"></span>
         </div>
         <div style="display:flex;gap:12px;margin-top:4px">
           <div>
@@ -826,10 +838,13 @@ function fmtBytes(b) { return fmtBytesS(b) }
     </template>
   </div>
 
-  <!-- per-interface time-series charts -->
+  <!-- FIX 2: per-interface chart titles — name + idx tag -->
   <template x-for="(iface, i) in upstreamsData" :key="iface.index">
     <div class="card" style="margin-bottom:16px">
-      <div class="card-title" x-text="(iface.name || ('interface '+iface.index)) + ' — throughput (bytes/min)'"></div>
+      <div class="card-title" style="display:flex;align-items:center">
+        <span x-text="(iface.name || ('if'+iface.index)) + ' — throughput (bytes/min)'"></span>
+        <span class="tag-pill" style="margin-left:8px;font-size:10px;font-weight:400;text-transform:none;letter-spacing:0" x-text="'idx '+iface.index"></span>
+      </div>
       <div :id="'chart-iface-'+iface.index" class="chart" x-init="$nextTick(()=>drawIfaceChart(iface))"></div>
     </div>
   </template>
@@ -838,6 +853,7 @@ function fmtBytes(b) { return fmtBytesS(b) }
     <p class="notice">No interface data yet — traffic accumulates per minute. Check that upstream_interfaces is set in config.yaml.</p>
   </template>
 
+  <!-- FIX 3 & 4 handled in drawIfaceSankeyChart() above — dynamic height + labels -->
   <div class="card" style="margin-bottom:16px" x-show="ifaceSankeyOut.length > 0">
     <div class="card-title">outgoing traffic — upstream × AS sankey</div>
     <div id="chart-iface-sankey-out" class="chart-tall"></div>
@@ -1069,7 +1085,6 @@ function fmtBytes(b) { return fmtBytesS(b) }
       </table>
     </template>
   </div>
-
 
   <!-- Emergency flush -->
   <div class="card" style="border-color:rgba(243,139,168,.3)">

@@ -137,6 +137,7 @@ textarea{resize:vertical;min-height:70px;font-family:monospace}
   <a href="/dashboard">overview</a>
   <a href="/detection">detection</a>
   <a href="/alerts" class="active">alerts</a>
+
   <button class="active">alerts</button>
 </nav>
 
@@ -578,21 +579,32 @@ function alertApp() { return {
   },
 
   // ── Contacts ──
-  async loadContacts() {
-    try {
-      const r = await fetch('/alerter/contacts')
-      if (r.ok) this.contacts = await r.json()
-    } catch(e) {}
-  },
+async loadContacts() {
+  try {
+    const r = await fetch('/alerter/contacts')
+    if (r.ok) {
+      const data = await r.json()
+      this.contacts = (data || []).map(c => ({
+        ...c,
+        _testing: false,
+        _testResult: '',
+        _testError: '',
+      }))
+    }
+  } catch(e) {}
+},
 
-  async toggleContact(c) {
-    c.enabled = !c.enabled
-    await fetch(`/alerter/contacts/${c.id}/toggle`, {
-      method: 'PATCH',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({enabled: c.enabled})
-    })
-  },
+async toggleContact(c) {
+  const i = this.contacts.indexOf(c)
+  if (i < 0) return
+  const newEnabled = !c.enabled
+  this.contacts[i] = {...c, enabled: newEnabled}
+  await fetch(`/alerter/contacts/${c.id}/toggle`, {
+    method: 'PATCH',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({enabled: newEnabled})
+  })
+},
 
   async deleteContact(c) {
     if (!confirm(`Delete contact "${c.name}"?`)) return
@@ -600,23 +612,24 @@ function alertApp() { return {
     this.loadContacts()
   },
 
-  async testContact(c) {
-    c._testing = true
-    c._testResult = ''
-    c._testError = ''
-    try {
-      const r = await fetch(`/alerter/contacts/${c.id}/test`, {method:'POST'})
-      const d = await r.json()
-      c._testResult = d.status
-      if (d.error) c._testError = d.error
-    } catch(e) {
-      c._testResult = 'failed'
-      c._testError = e.message
-    } finally {
-      c._testing = false
-      setTimeout(()=>{ c._testResult=''; c._testError='' }, 8000)
-    }
-  },
+async testContact(c) {
+  const i = this.contacts.indexOf(c)
+  if (i < 0) return
+  this.contacts[i] = {...c, _testing: true, _testResult: '', _testError: ''}
+  try {
+    const r = await fetch(`/alerter/contacts/${c.id}/test`, {method:'POST'})
+    const d = await r.json()
+    this.contacts[i] = {...this.contacts[i], _testing: false, _testResult: d.status, _testError: d.error || ''}
+  } catch(e) {
+    this.contacts[i] = {...this.contacts[i], _testing: false, _testResult: 'failed', _testError: e.message}
+  } finally {
+    const snap = this.contacts[i]
+    setTimeout(()=>{
+      const j = this.contacts.findIndex(x => x.id === snap.id)
+      if (j >= 0) this.contacts[j] = {...this.contacts[j], _testResult: '', _testError: ''}
+    }, 8000)
+  }
+},
 
   openNewContact() {
     this.editingContact = { name:'', type:'slack', enabled:true, min_severity:'info', sources:'' }

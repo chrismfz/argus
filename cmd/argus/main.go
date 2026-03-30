@@ -34,7 +34,7 @@ import (
         _ "argus/internal/alerter/backend/logbackend"
         _ "argus/internal/alerter/backend/slack"
         _ "argus/internal/alerter/backend/smtp"
-
+	"argus/internal/pathfinder"
 )
 
 var debug bool
@@ -543,6 +543,19 @@ telemetry.RawTap.Publish("mikrotik", func() map[uint16]string {
 	} else {
 		log.Print("[INFO] Detection engine disabled")
 	}
+
+
+  // ── Pathfinder ────────────────────────────────────────────────────────
+  {
+      um := pathfinder.NewUpstreamMap(
+          config.AppConfig.Pathfinder.CommunityMap,
+          config.AppConfig.Pathfinder.TransitASNMap,
+          config.AppConfig.Pathfinder.NextHopMap,
+          config.AppConfig.MyASN,
+      )
+      api.PathfinderResolver = pathfinder.NewResolver(bgpListener.Server, um)
+      log.Printf("[Pathfinder] resolver ready")
+  }
 
 	// ── API ───────────────────────────────────────────────────────────────────
 	go func() {

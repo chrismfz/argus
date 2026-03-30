@@ -13,3 +13,6 @@ var detectionHTML []byte
 
 //go:embed static/alerts.html
 var alertsHTML []byte
+
+//go:embed static/pathfinder.html
+var pathfinderHTML []byte

@@ -198,6 +198,15 @@ func Start() {
 	mainMux.HandleFunc("/alerter/stream", WithMainIPOnly(handleAlerterStream))
 
 
+  // ── Pathfinder — BGP path intelligence ───────────────────────────────
+  mainMux.HandleFunc("/pathfinder", WithMainIPOnly(func(w http.ResponseWriter, r *http.Request) {
+      w.Header().Set("Content-Type", "text/html; charset=utf-8")
+      w.Write(pathfinderHTML)
+  }))
+  mainMux.HandleFunc("/pathfinder/asn",    WithMainIPOnly(handlePathfinderASN))
+  mainMux.HandleFunc("/pathfinder/prefix", WithMainIPOnly(handlePathfinderPrefix))
+
+
 	// ── Dashboard & flow debug — IP-only ─────────────────────────────────
 	mainMux.HandleFunc("/dashboard", WithMainIPOnly(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")

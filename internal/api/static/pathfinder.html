@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>argus · pathfinder</title>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>
+<style>
+:root {
+  --bg:      #1e1e2e;
+  --bg2:     #181825;
+  --bg3:     #313244;
+  --border:  #45475a;
+  --text:    #cdd6f4;
+  --muted:   #6c7086;
+  --accent:  #89b4fa;
+  --green:   #a6e3a1;
+  --red:     #f38ba8;
+  --orange:  #fab387;
+  --yellow:  #f9e2af;
+  --teal:    #94e2d5;
+  --purple:  #cba6f7;
+}
+* { box-sizing: border-box; margin: 0; padding: 0 }
+body { background: var(--bg2); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; min-height: 100vh }
+header { background: var(--bg); border-bottom: 1px solid var(--border); padding: 10px 20px; display: flex; align-items: center; gap: 12px }
+header h1 { font-size: 16px; font-weight: 700; letter-spacing: -.3px; color: var(--accent) }
+.tag { background: var(--bg3); border: 1px solid var(--border); border-radius: 4px; padding: 2px 8px; font-size: 11px; color: var(--muted) }
+nav { background: var(--bg); border-bottom: 1px solid var(--border); padding: 0 20px; display: flex; gap: 2px; align-items: center }
+nav a { color: var(--muted); text-decoration: none; padding: 10px 14px; font-size: 13px; border-bottom: 2px solid transparent; display: inline-block }
+nav a:hover { color: var(--text) }
+nav a.active { color: var(--accent); border-color: var(--accent) }
+.content { max-width: 1100px; margin: 0 auto; padding: 24px 20px }
+
+/* search bar */
+.search-row { display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap }
+.search-row input { flex: 1; min-width: 220px; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 8px 12px; font-size: 14px; outline: none }
+.search-row input:focus { border-color: var(--accent) }
+.search-row select { background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 8px 12px; font-size: 13px; outline: none; cursor: pointer }
+.btn { background: var(--accent); color: var(--bg); border: none; border-radius: 6px; padding: 8px 18px; font-size: 13px; cursor: pointer; font-weight: 600 }
+.btn:hover { opacity: .85 }
+.btn.secondary { background: var(--bg3); color: var(--text); border: 1px solid var(--border) }
+.btn.sm { padding: 4px 10px; font-size: 12px }
+
+/* result cards */
+.section-title { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 12px }
+.prefix-card { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 12px; overflow: hidden }
+.prefix-header { padding: 10px 14px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); background: var(--bg3) }
+.prefix-label { font-family: monospace; font-size: 13px; color: var(--accent) }
+.badge { padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600 }
+.badge.best { background: rgba(166,227,161,.15); color: var(--green); border: 1px solid rgba(166,227,161,.3) }
+.badge.alt  { background: rgba(249,226,175,.10); color: var(--yellow); border: 1px solid rgba(249,226,175,.25) }
+.path-row { padding: 10px 14px; display: grid; grid-template-columns: 130px 1fr; gap: 8px 16px; align-items: start }
+.path-row + .path-row { border-top: 1px solid var(--border) }
+.path-key { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; padding-top: 2px }
+.path-val { font-size: 13px; color: var(--text) }
+.path-val.mono { font-family: monospace }
+.path-val.upstream { color: var(--teal); font-weight: 600 }
+.path-val.unknown-upstream { color: var(--muted) }
+
+/* AS path pill row */
+.asp-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center }
+.asp-asn { background: var(--bg3); border: 1px solid var(--border); border-radius: 4px; padding: 2px 8px; font-family: monospace; font-size: 12px; color: var(--text) }
+.asp-asn.origin { border-color: var(--accent); color: var(--accent) }
+.asp-arr { color: var(--muted); font-size: 12px }
+
+/* community tag */
+.comm-tag { background: var(--bg3); border: 1px solid var(--border); border-radius: 4px; padding: 1px 7px; font-size: 11px; font-family: monospace; color: var(--purple) }
+
+/* empty / error */
+.notice { padding: 16px 18px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--muted); font-size: 13px }
+.notice.err { border-color: var(--red); color: var(--red) }
+
+/* spinner */
+.spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-right: 6px }
+@keyframes spin { to { transform: rotate(360deg) } }
+
+/* tip box */
+.tip { background: rgba(137,180,250,.07); border: 1px solid rgba(137,180,250,.2); border-radius: 8px; padding: 12px 16px; font-size: 12px; color: var(--muted); line-height: 1.6; margin-bottom: 20px }
+.tip strong { color: var(--accent) }
+</style>
+</head>
+<body x-data="pf()" x-init="init()">
+
+<header>
+  <h1>argus telemetry</h1>
+  <span class="tag">pathfinder</span>
+  <span class="tag" style="color:var(--purple)">BGP path intelligence</span>
+</header>
+
+<nav>
+  <a href="/dashboard">overview</a>
+  <a href="/detection">detection</a>
+  <a href="/alerts">alerts</a>
+  <a href="/pathfinder" class="active">pathfinder</a>
+</nav>
+
+<div class="content">
+
+  <div class="tip">
+    <strong>Pathfinder</strong> queries the live GoBGP RIB to explain which BGP path is being used for any ASN or prefix.
+    Enter an <strong>ASN</strong> (e.g. <code>8280</code>) to see all its prefixes and their paths, or a <strong>prefix</strong>
+    (e.g. <code>62.103.0.0/16</code>) for a single-prefix deep-dive. Results are live — no caching.
+  </div>
+
+  <!-- Search bar -->
+  <div class="search-row">
+    <select x-model="mode">
+      <option value="asn">ASN</option>
+      <option value="prefix">Prefix</option>
+    </select>
+    <input
+      x-model="query"
+      :placeholder="mode === 'asn' ? 'e.g. 8280 or 5408' : 'e.g. 62.103.0.0/16'"
+      @keydown.enter="search()"
+    />
+    <button class="btn" @click="search()" :disabled="loading">
+      <span x-show="loading"><span class="spinner"></span>resolving…</span>
+      <span x-show="!loading">🔍 resolve path</span>
+    </button>
+    <button class="btn secondary" x-show="result || error" @click="clear()">clear</button>
+  </div>
+
+  <!-- Error -->
+  <div class="notice err" x-show="error" x-text="error"></div>
+
+  <!-- ASN result -->
+  <template x-if="result && mode === 'asn'">
+    <div>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+        <div class="section-title" style="margin-bottom:0">
+          AS<span x-text="result.asn"></span>
+          <span x-show="result.name" style="color:var(--text);font-weight:400;text-transform:none;letter-spacing:0" x-text="' — ' + result.name"></span>
+        </div>
+        <span class="badge best" x-text="result.prefixes.length + ' prefixes in RIB'"></span>
+      </div>
+
+      <template x-if="result.prefixes.length === 0">
+        <div class="notice">No prefixes found for this ASN in the current RIB. The BGP session may still be loading, or this ASN originates no routes.</div>
+      </template>
+
+      <template x-for="pp in result.prefixes" :key="pp.prefix">
+        <div class="prefix-card">
+          <div class="prefix-header">
+            <span class="prefix-label" x-text="pp.prefix"></span>
+            <span class="badge best" x-show="pp.best_path">best path</span>
+            <span class="badge alt" x-show="pp.alt_paths && pp.alt_paths.length" x-text="pp.alt_paths.length + ' alt'"></span>
+            <span style="margin-left:auto">
+              <button class="btn secondary sm" @click="switchToPrefix(pp.prefix)">inspect prefix →</button>
+            </span>
+          </div>
+
+          <!-- best path -->
+          <template x-if="pp.best_path">
+            <div>
+              <template x-if="pp.best_path.upstream">
+                <div class="path-row">
+                  <div class="path-key">upstream</div>
+                  <div class="path-val upstream" x-text="pp.best_path.upstream"></div>
+                </div>
+              </template>
+              <div class="path-row">
+                <div class="path-key">AS-path</div>
+                <div class="path-val">
+                  <div class="asp-row">
+                    <template x-for="(a, i) in pp.best_path.as_path" :key="i">
+                      <span>
+                        <span class="asp-asn" :class="i === pp.best_path.as_path.length-1 ? 'origin' : ''" x-text="a"></span>
+                        <span class="asp-arr" x-show="i < pp.best_path.as_path.length-1"> →</span>
+                      </span>
+                    </template>
+                  </div>
+                </div>
+              </div>
+              <div class="path-row">
+                <div class="path-key">next-hop</div>
+                <div class="path-val mono" x-text="pp.best_path.next_hop || '—'"></div>
+              </div>
+              <template x-if="pp.best_path.local_pref">
+                <div class="path-row">
+                  <div class="path-key">local-pref</div>
+                  <div class="path-val" x-text="pp.best_path.local_pref"></div>
+                </div>
+              </template>
+              <template x-if="pp.best_path.communities && pp.best_path.communities.length">
+                <div class="path-row">
+                  <div class="path-key">communities</div>
+                  <div class="path-val" style="display:flex;flex-wrap:wrap;gap:4px">
+                    <template x-for="c in pp.best_path.communities" :key="c">
+                      <span class="comm-tag" x-text="c"></span>
+                    </template>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </template>
+
+          <!-- alt paths -->
+          <template x-if="pp.alt_paths && pp.alt_paths.length">
+            <template x-for="(ap, ai) in pp.alt_paths" :key="ai">
+              <div style="border-top:1px dashed var(--border);opacity:.7">
+                <div class="path-row" style="background:rgba(249,226,175,.04)">
+                  <div class="path-key"><span class="badge alt">alt</span></div>
+                  <div class="path-val">
+                    <div class="asp-row">
+                      <template x-for="(a, i) in ap.as_path" :key="i">
+                        <span>
+                          <span class="asp-asn" :class="i === ap.as_path.length-1 ? 'origin' : ''" x-text="a"></span>
+                          <span class="asp-arr" x-show="i < ap.as_path.length-1"> →</span>
+                        </span>
+                      </template>
+                    </div>
+                    <div style="margin-top:4px;font-size:12px;color:var(--muted)" x-text="'next-hop: ' + (ap.next_hop || '—') + (ap.upstream ? '  ·  via ' + ap.upstream : '')"></div>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </template>
+
+        </div>
+      </template>
+    </div>
+  </template>
+
+  <!-- Prefix result -->
+  <template x-if="result && mode === 'prefix'">
+    <div>
+      <div class="section-title" style="margin-bottom:16px">prefix <span style="color:var(--accent);font-family:monospace" x-text="result.prefix"></span></div>
+
+      <template x-if="!result.best_path">
+        <div class="notice">Prefix not found in the current RIB. It may not be advertised, or the BGP session is still loading.</div>
+      </template>
+
+      <template x-if="result.best_path">
+        <div class="prefix-card">
+          <div class="prefix-header">
+            <span class="prefix-label" x-text="result.prefix"></span>
+            <span class="badge best">best path</span>
+            <span class="badge alt" x-show="result.alt_paths && result.alt_paths.length" x-text="result.alt_paths.length + ' alt'"></span>
+          </div>
+
+          <template x-if="result.best_path.upstream">
+            <div class="path-row">
+              <div class="path-key">upstream</div>
+              <div class="path-val upstream" x-text="result.best_path.upstream"></div>
+            </div>
+          </template>
+
+          <div class="path-row">
+            <div class="path-key">AS-path</div>
+            <div class="path-val">
+              <div class="asp-row">
+                <template x-for="(a, i) in result.best_path.as_path" :key="i">
+                  <span>
+                    <span class="asp-asn" :class="i === result.best_path.as_path.length-1 ? 'origin' : ''" x-text="a"></span>
+                    <span class="asp-arr" x-show="i < result.best_path.as_path.length-1"> →</span>
+                  </span>
+                </template>
+              </div>
+            </div>
+          </div>
+
+          <div class="path-row">
+            <div class="path-key">origin AS</div>
+            <div class="path-val">AS<span x-text="result.best_path.origin_as"></span></div>
+          </div>
+
+          <div class="path-row">
+            <div class="path-key">next-hop</div>
+            <div class="path-val mono" x-text="result.best_path.next_hop || '—'"></div>
+          </div>
+
+          <template x-if="result.best_path.local_pref">
+            <div class="path-row">
+              <div class="path-key">local-pref</div>
+              <div class="path-val" x-text="result.best_path.local_pref"></div>
+            </div>
+          </template>
+
+          <template x-if="result.best_path.communities && result.best_path.communities.length">
+            <div class="path-row">
+              <div class="path-key">communities</div>
+              <div class="path-val" style="display:flex;flex-wrap:wrap;gap:4px">
+                <template x-for="c in result.best_path.communities" :key="c">
+                  <span class="comm-tag" x-text="c"></span>
+                </template>
+              </div>
+            </div>
+          </template>
+
+          <!-- alt paths -->
+          <template x-if="result.alt_paths && result.alt_paths.length">
+            <template x-for="(ap, ai) in result.alt_paths" :key="ai">
+              <div style="border-top:1px dashed var(--border);opacity:.7">
+                <div class="path-row" style="background:rgba(249,226,175,.04)">
+                  <div class="path-key"><span class="badge alt">alt <span x-text="ai+1"></span></span></div>
+                  <div class="path-val">
+                    <div class="asp-row">
+                      <template x-for="(a, i) in ap.as_path" :key="i">
+                        <span>
+                          <span class="asp-asn" :class="i === ap.as_path.length-1 ? 'origin' : ''" x-text="a"></span>
+                          <span class="asp-arr" x-show="i < ap.as_path.length-1"> →</span>
+                        </span>
+                      </template>
+                    </div>
+                    <div style="margin-top:4px;font-size:12px;color:var(--muted)"
+                         x-text="'next-hop: ' + (ap.next_hop || '—') + (ap.upstream ? '  ·  via ' + ap.upstream : '') + (ap.local_pref ? '  ·  local-pref ' + ap.local_pref : '')">
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </template>
+
+        </div>
+      </template>
+    </div>
+  </template>
+
+</div>
+
+<script>
+function pf() { return {
+  mode:    'asn',
+  query:   '',
+  loading: false,
+  result:  null,
+  error:   null,
+
+  init() {
+    // Pre-fill from URL query params: /pathfinder?asn=8280  or  ?prefix=62.103.0.0/16
+    const p = new URLSearchParams(location.search)
+    if (p.has('asn'))    { this.mode = 'asn';    this.query = p.get('asn');    this.search() }
+    if (p.has('prefix')) { this.mode = 'prefix'; this.query = p.get('prefix'); this.search() }
+  },
+
+  async search() {
+    const q = this.query.trim()
+    if (!q) return
+    this.loading = true; this.result = null; this.error = null
+    try {
+      let url
+      if (this.mode === 'asn') {
+        url = `/pathfinder/asn?asn=${encodeURIComponent(q)}`
+      } else {
+        url = `/pathfinder/prefix?prefix=${encodeURIComponent(q)}`
+      }
+      const r = await fetch(url)
+      const d = await r.json()
+      if (!r.ok) { this.error = d.error || ('HTTP ' + r.status); return }
+      this.result = d
+    } catch(e) {
+      this.error = e.message
+    } finally {
+      this.loading = false
+    }
+  },
+
+  switchToPrefix(prefix) {
+    this.mode  = 'prefix'
+    this.query = prefix
+    this.search()
+  },
+
+  clear() {
+    this.result = null; this.error = null; this.query = ''
+  }
+}}
+</script>
+</body>
+</html>

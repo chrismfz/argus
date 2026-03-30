@@ -135,6 +135,17 @@ service_install_unit() {
 }
 
 service_enable_start() {
+    # Ensure the binary is executable
+    chmod 755 "$INSTALL_DIR/$BINARY"
+    ok "chmod 755 → $INSTALL_DIR/$BINARY"
+
+    # Ensure log directory exists (service unit uses append:/var/log/argus/*)
+    if [[ ! -d /var/log/argus ]]; then
+        mkdir -p /var/log/argus
+        chmod 750 /var/log/argus
+        ok "Created /var/log/argus"
+    fi
+
     systemctl enable "$SERVICE_NAME" &>/dev/null
     if $WAS_RUNNING; then
         info "Restarting $SERVICE_NAME (was running before update)..."

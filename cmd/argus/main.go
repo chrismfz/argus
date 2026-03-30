@@ -29,6 +29,12 @@ import (
 	"argus/internal/flow"
 	"argus/internal/sqlite"
 	"argus/internal/telemetry"
+
+        "argus/internal/alerter"
+        _ "argus/internal/alerter/backend/logbackend"
+        _ "argus/internal/alerter/backend/slack"
+        _ "argus/internal/alerter/backend/smtp"
+
 )
 
 var debug bool
@@ -188,6 +194,19 @@ func main() {
 			}
 		}
 	}()
+
+
+    // ── Alerter ───────────────────────────────────────────────────────────────
+    if err := alerter.InitSchema(db); err != nil {
+        log.Printf("[alerter] schema init failed: %v", err)
+    } else {
+        d := alerter.New(db)
+        if err := d.Reload(); err != nil {
+            log.Printf("[alerter] initial contact load failed: %v", err)
+        }
+        alerter.Global = d
+        log.Printf("[alerter] ready (%d contacts loaded)", len(d.Snapshot()))
+    }
 
 
 	// ── MaxMind preflight ─────────────────────────────────────────────────────

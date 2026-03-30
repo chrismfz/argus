@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>argus — alerts</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/alpinejs/3.13.3/cdn.min.js" defer></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f1117;--bg2:#161b27;--bg3:#1e2535;
+  --border:#2a3147;--text:#cdd6f4;--muted:#6c7086;
+  --accent:#89b4fa;--green:#a6e3a1;--red:#f38ba8;--yellow:#f9e2af;
+  --purple:#cba6f7;--teal:#94e2d5;--orange:#fab387;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;font-size:14px}
+header{display:flex;align-items:center;gap:16px;padding:12px 20px;background:var(--bg2);border-bottom:1px solid var(--border)}
+header h1{font-size:16px;font-weight:600;color:var(--accent)}
+header .tag{font-size:11px;padding:2px 8px;border-radius:4px;background:var(--bg3);color:var(--muted)}
+nav{display:flex;gap:2px;padding:0 20px;background:var(--bg2);border-bottom:1px solid var(--border)}
+nav a{padding:10px 18px;color:var(--muted);font-size:13px;text-decoration:none;border-bottom:2px solid transparent;display:inline-block}
+nav a:hover{color:var(--text)}
+nav button{padding:10px 18px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;border-bottom:2px solid transparent;transition:.15s}
+nav button.active{color:var(--accent);border-color:var(--accent)}
+nav button:hover:not(.active){color:var(--text)}
+.content{padding:20px;max-width:1400px;margin:0 auto}
+.grid{display:grid;gap:16px}
+.grid-4{grid-template-columns:repeat(4,1fr)}
+.grid-2{grid-template-columns:1fr 1fr}
+@media(max-width:900px){.grid-4,.grid-2{grid-template-columns:1fr 1fr}}
+@media(max-width:600px){.grid-4,.grid-2{grid-template-columns:1fr}}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px}
+.card-title{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.stat{font-size:28px;font-weight:700;color:var(--text)}
+.stat-sub{font-size:12px;color:var(--muted);margin-top:2px}
+.stat.red{color:var(--red)}
+.stat.green{color:var(--green)}
+
+/* severity dots */
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.dot.critical{background:var(--red)}
+.dot.warning{background:var(--orange)}
+.dot.info{background:var(--accent)}
+
+/* status badges */
+.badge{display:inline-block;font-size:11px;padding:2px 7px;border-radius:4px;background:var(--bg3)}
+.badge.sent{color:var(--green);background:rgba(166,227,161,.1)}
+.badge.failed{color:var(--red);background:rgba(243,139,168,.1)}
+.badge.suppressed{color:var(--muted)}
+.badge.test{color:var(--yellow);background:rgba(249,226,175,.1)}
+
+/* source badges */
+.src{display:inline-block;font-size:10px;padding:1px 6px;border-radius:3px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.src.bgp{color:var(--teal);background:rgba(148,226,213,.1)}
+.src.routewatch{color:var(--purple);background:rgba(203,166,247,.1)}
+.src.blackhole{color:var(--red);background:rgba(243,139,168,.1)}
+.src.detection{color:var(--orange);background:rgba(250,179,135,.1)}
+.src.system{color:var(--muted);background:var(--bg3)}
+.src.test{color:var(--yellow);background:rgba(249,226,175,.1)}
+
+/* live feed */
+.feed{display:flex;flex-direction:column;gap:8px;max-height:420px;overflow-y:auto}
+.feed-row{border:1px solid var(--border);border-radius:6px;background:var(--bg3);overflow:hidden;cursor:pointer;transition:.1s}
+.feed-row:hover{border-color:var(--accent)}
+.feed-row.new{animation:slideIn .35s ease}
+@keyframes slideIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+.feed-header{display:flex;align-items:center;gap:10px;padding:10px 14px}
+.feed-time{font-size:11px;color:var(--muted);font-family:monospace;white-space:nowrap}
+.feed-title{flex:1;font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.feed-body{padding:0 14px 12px;font-size:12px;color:var(--muted);white-space:pre-wrap;border-top:1px solid var(--border);margin-top:0;padding-top:10px}
+.deliveries{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.delivery-pill{display:flex;align-items:center;gap:5px;font-size:11px;padding:3px 8px;border-radius:4px;background:var(--bg2);border:1px solid var(--border)}
+
+/* filter bar */
+.filter-bar{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.filter-bar label{font-size:12px;color:var(--muted)}
+
+/* table */
+table{width:100%;border-collapse:collapse}
+thead th{text-align:left;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;padding:6px 8px;border-bottom:1px solid var(--border)}
+tbody td{padding:7px 8px;border-bottom:1px solid var(--border);font-size:13px;white-space:nowrap}
+tbody tr:hover{background:var(--bg3)}
+tbody tr:last-child td{border:none}
+.ellipsis{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* contact panel */
+.contact-row{display:flex;align-items:center;gap:10px;padding:10px 14px;border:1px solid var(--border);border-radius:6px;background:var(--bg3)}
+.contact-row:hover{border-color:var(--border)}
+.contact-name{font-weight:600;font-size:13px;flex:1}
+.contact-meta{font-size:11px;color:var(--muted)}
+.toggle{width:36px;height:20px;border-radius:10px;border:none;cursor:pointer;position:relative;transition:.2s;flex-shrink:0}
+.toggle.on{background:var(--accent)}
+.toggle.off{background:var(--bg2);border:1px solid var(--border)}
+.toggle::after{content:'';position:absolute;width:14px;height:14px;border-radius:50%;background:#fff;top:3px;transition:.2s}
+.toggle.on::after{left:19px}
+.toggle.off::after{left:3px}
+
+/* modal / slide-over */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10;display:flex;align-items:flex-start;justify-content:flex-end}
+.panel{background:var(--bg2);border-left:1px solid var(--border);width:min(480px,100vw);height:100vh;overflow-y:auto;padding:24px;display:flex;flex-direction:column;gap:16px}
+.panel h2{font-size:15px;font-weight:600}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:12px;color:var(--muted)}
+input,select,textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:7px 10px;font-size:13px;outline:none;width:100%}
+input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+textarea{resize:vertical;min-height:70px;font-family:monospace}
+.btn{background:var(--accent);color:var(--bg);border:none;border-radius:6px;padding:7px 16px;font-size:13px;cursor:pointer;font-weight:600}
+.btn:hover{opacity:.85}
+.btn.secondary{background:var(--bg3);color:var(--text);border:1px solid var(--border)}
+.btn.danger{background:rgba(243,139,168,.15);color:var(--red);border:1px solid rgba(243,139,168,.3)}
+.btn.danger:hover{background:rgba(243,139,168,.25)}
+.btn.sm{padding:4px 10px;font-size:12px}
+.btn-row{display:flex;gap:8px;flex-wrap:wrap}
+.notice{padding:10px 14px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--muted);font-size:12px}
+
+/* SSE indicator */
+.live-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.live-dot.on{background:var(--green);box-shadow:0 0 6px var(--green);animation:pulse 2s infinite}
+.live-dot.off{background:var(--red)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* to-list tag input */
+.tag-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.tag-item{display:flex;align-items:center;gap:4px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:12px}
+.tag-item button{background:none;border:none;color:var(--muted);cursor:pointer;padding:0;line-height:1;font-size:14px}
+.tag-item button:hover{color:var(--red)}
+</style>
+</head>
+<body x-data="alertApp()" x-init="init()">
+
+<header>
+  <h1>argus telemetry</h1>
+  <span class="tag">alerts & contacts</span>
+</header>
+<nav>
+  <a href="/dashboard">overview</a>
+  <button class="active">alerts</button>
+</nav>
+
+<div class="content" x-data>
+
+  <!-- ── Tab bar ── -->
+  <div style="display:flex;gap:4px;margin-bottom:20px;border-bottom:1px solid var(--border)">
+    <template x-for="t in ['live','history','contacts']" :key="t">
+      <button
+        :class="tab===t ? 'active' : ''"
+        style="padding:8px 16px;background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;font-size:13px;transition:.15s"
+        :style="tab===t ? 'color:var(--accent);border-color:var(--accent)' : 'color:var(--muted)'"
+        @click="tab=t"
+        x-text="t"></button>
+    </template>
+  </div>
+
+  <!-- ── STAT CARDS ── (always visible) -->
+  <div class="grid grid-4" style="margin-bottom:20px">
+    <div class="card">
+      <div class="card-title">fired (24h)</div>
+      <div class="stat" x-text="stats.fired ?? '—'"></div>
+      <div class="stat-sub">alert events generated</div>
+    </div>
+    <div class="card">
+      <div class="card-title">sent (24h)</div>
+      <div class="stat green" x-text="stats.sent ?? '—'"></div>
+      <div class="stat-sub">delivery attempts succeeded</div>
+    </div>
+    <div class="card">
+      <div class="card-title">failed (24h)</div>
+      <div class="stat" :class="(stats.failed||0) > 0 ? 'red' : ''" x-text="stats.failed ?? '—'"></div>
+      <div class="stat-sub">delivery attempts failed</div>
+    </div>
+    <div class="card">
+      <div class="card-title">suppressed (24h)</div>
+      <div class="stat" x-text="stats.suppressed ?? '—'"></div>
+      <div class="stat-sub">filtered by severity/source</div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════ LIVE TAB ══ -->
+  <div x-show="tab==='live'">
+    <div class="card">
+      <div class="card-title">
+        <span class="live-dot" :class="sseConnected ? 'on' : 'off'"></span>
+        live alert feed
+        <span style="margin-left:auto;font-size:11px;color:var(--muted)" x-text="sseConnected ? 'connected' : 'reconnecting…'"></span>
+      </div>
+
+      <div x-show="liveFeed.length === 0" class="notice" style="margin-top:4px">
+        No alerts yet. Events will appear here in real-time when Argus fires them.
+      </div>
+
+      <div class="feed" id="live-feed">
+        <template x-for="(fe, i) in liveFeed" :key="fe.id ?? i">
+          <div class="feed-row" :class="i===0 && fe._new ? 'new' : ''" @click="fe._open = !fe._open">
+            <div class="feed-header">
+              <span class="dot" :class="fe.event.severity"></span>
+              <span class="src" :class="fe.event.source" x-text="fe.event.source"></span>
+              <span class="feed-title" x-text="fe.event.title"></span>
+              <span class="feed-time" x-text="fmtTime(fe.event.time)"></span>
+            </div>
+            <template x-if="fe._open">
+              <div class="feed-body">
+                <div x-show="fe.event.body" x-text="fe.event.body" style="margin-bottom:10px;color:var(--text)"></div>
+                <div x-show="fe.event.tags && Object.keys(fe.event.tags).length">
+                  <template x-for="[k,v] in Object.entries(fe.event.tags||{})">
+                    <div style="font-size:11px"><span style="color:var(--muted)" x-text="k+': '"></span><span x-text="v"></span></div>
+                  </template>
+                </div>
+                <div class="deliveries" style="margin-top:10px">
+                  <template x-for="d in (fe.deliveries||[])">
+                    <div class="delivery-pill">
+                      <span x-text="d.contact_name"></span>
+                      <span class="badge" :class="d.status" x-text="d.status"></span>
+                      <span x-show="d.error" style="color:var(--red);font-size:10px" x-text="d.error"></span>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </template>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════ HISTORY TAB ══ -->
+  <div x-show="tab==='history'">
+    <div class="card">
+      <div class="card-title" style="margin-bottom:14px">
+        alert history
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <button class="btn sm secondary" @click="loadHistory()">↺ refresh</button>
+          <button class="btn sm danger" @click="clearHistory()" x-show="historyRows.length > 0">clear all</button>
+        </div>
+      </div>
+
+      <div class="filter-bar">
+        <label>source</label>
+        <select x-model="histFilter.source" @change="loadHistory()" style="width:130px">
+          <option value="">all</option>
+          <option value="bgp">bgp</option>
+          <option value="routewatch">routewatch</option>
+          <option value="blackhole">blackhole</option>
+          <option value="detection">detection</option>
+          <option value="system">system</option>
+          <option value="test">test</option>
+        </select>
+
+        <label>severity</label>
+        <select x-model="histFilter.severity" @change="loadHistory()" style="width:120px">
+          <option value="">all</option>
+          <option value="critical">critical</option>
+          <option value="warning">warning</option>
+          <option value="info">info</option>
+        </select>
+
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" x-model="histFilter.onlyFailed" @change="loadHistory()" style="width:auto">
+          only failed
+        </label>
+      </div>
+
+      <div x-show="historyRows.length === 0" class="notice">No events match the current filter.</div>
+
+      <table x-show="historyRows.length > 0">
+        <thead>
+          <tr>
+            <th>time</th><th>sev</th><th>source</th><th>title</th><th>deliveries</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="row in historyRows" :key="row.id">
+            <tr style="cursor:pointer" @click="row._open = !row._open">
+              <td style="font-family:monospace;font-size:11px;color:var(--muted)" x-text="fmtTime(row.fired_at)"></td>
+              <td><span class="dot" :class="row.severity" style="display:inline-block"></span></td>
+              <td><span class="src" :class="row.source" x-text="row.source"></span></td>
+              <td class="ellipsis" x-text="row.title"></td>
+              <td>
+                <template x-for="d in (row.deliveries||[]).slice(0,3)">
+                  <span class="badge" :class="d.status" x-text="d.contact_name+' '+deliveryIcon(d.status)" style="margin-right:4px"></span>
+                </template>
+                <span x-show="(row.deliveries||[]).length > 3" style="font-size:11px;color:var(--muted)"
+                      x-text="'+'+(row.deliveries.length-3)+' more'"></span>
+              </td>
+            </tr>
+            <!-- expanded detail row -->
+            <tr x-show="row._open">
+              <td colspan="5" style="background:var(--bg3);padding:12px 14px">
+                <div x-show="row.body" x-text="row.body" style="color:var(--text);font-size:12px;white-space:pre-wrap;margin-bottom:8px"></div>
+                <div x-show="row.tags && Object.keys(row.tags||{}).length > 0" style="margin-bottom:8px">
+                  <template x-for="[k,v] in Object.entries(row.tags||{})">
+                    <div style="font-size:11px"><span style="color:var(--muted)" x-text="k+': '"></span><span x-text="v"></span></div>
+                  </template>
+                </div>
+                <div class="deliveries">
+                  <template x-for="d in (row.deliveries||[])">
+                    <div class="delivery-pill">
+                      <span x-text="d.contact_name"></span>
+                      <span style="color:var(--muted);font-size:10px" x-text="d.contact_type"></span>
+                      <span class="badge" :class="d.status" x-text="d.status"></span>
+                      <span x-show="d.error" style="color:var(--red);font-size:10px" x-text="d.error"></span>
+                    </div>
+                  </template>
+                </div>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+
+      <!-- pagination -->
+      <div style="display:flex;gap:8px;margin-top:12px;align-items:center" x-show="historyRows.length > 0">
+        <button class="btn sm secondary" :disabled="histOffset===0" @click="histOffset=Math.max(0,histOffset-50);loadHistory()">← prev</button>
+        <span style="font-size:12px;color:var(--muted)" x-text="'showing '+histOffset+'–'+(histOffset+historyRows.length)"></span>
+        <button class="btn sm secondary" :disabled="historyRows.length < 50" @click="histOffset+=50;loadHistory()">next →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════ CONTACTS TAB ══ -->
+  <div x-show="tab==='contacts'">
+    <div class="card">
+      <div class="card-title">
+        contacts
+        <button class="btn sm" style="margin-left:auto" @click="openNewContact()">+ add contact</button>
+      </div>
+
+      <div x-show="contacts.length === 0" class="notice">
+        No contacts configured. Add a Slack webhook or email address to start receiving alerts.
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <template x-for="c in contacts" :key="c.id">
+          <div class="contact-row">
+            <button class="toggle" :class="c.enabled ? 'on' : 'off'" @click="toggleContact(c)"></button>
+            <div style="flex:1;min-width:0">
+              <div class="contact-name" x-text="c.name"></div>
+              <div class="contact-meta">
+                <span x-text="c.type"></span>
+                · min <span x-text="c.min_severity"></span>
+                · sources: <span x-text="c.sources || 'all'"></span>
+              </div>
+            </div>
+            <div style="display:flex;gap:6px;flex-shrink:0">
+              <button class="btn sm secondary"
+                      @click="testContact(c)"
+                      :disabled="c._testing"
+                      x-text="c._testing ? 'sending…' : 'test'"></button>
+              <span x-show="c._testResult" class="badge"
+                    :class="c._testResult==='sent'||c._testResult==='test' ? 'sent' : 'failed'"
+                    x-text="c._testResult==='sent'||c._testResult==='test' ? '✓ sent' : '✗ '+c._testError"
+                    style="max-width:180px;overflow:hidden;text-overflow:ellipsis"></span>
+              <button class="btn sm secondary" @click="editContact(c)">edit</button>
+              <button class="btn sm danger" @click="deleteContact(c)">×</button>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /content -->
+
+<!-- ══════════════════════════════ CONTACT EDIT PANEL ══ -->
+<div class="overlay" x-show="panelOpen" x-cloak @click.self="panelOpen=false">
+  <div class="panel" @click.stop>
+    <h2 x-text="editingContact.id ? 'edit contact' : 'new contact'"></h2>
+
+    <div class="field">
+      <label>name</label>
+      <input x-model="editingContact.name" placeholder="e.g. NOC Slack, Chris email">
+    </div>
+
+    <div class="field">
+      <label>type</label>
+      <select x-model="editingContact.type" @change="resetConfig()">
+        <option value="slack">slack webhook</option>
+        <option value="smtp">email (SMTP)</option>
+        <option value="log">log only (stdout)</option>
+      </select>
+    </div>
+
+    <!-- Slack fields -->
+    <template x-if="editingContact.type==='slack'">
+      <div class="field">
+        <label>webhook URL</label>
+        <input x-model="editingConfig.webhook" placeholder="https://hooks.slack.com/services/…" type="url">
+      </div>
+    </template>
+
+    <!-- SMTP fields -->
+    <template x-if="editingContact.type==='smtp'">
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div class="grid-2 grid" style="gap:8px">
+          <div class="field">
+            <label>SMTP host</label>
+            <input x-model="editingConfig.host" placeholder="mail.example.com">
+          </div>
+          <div class="field">
+            <label>port</label>
+            <input x-model.number="editingConfig.port" type="number" placeholder="587">
+          </div>
+        </div>
+        <div class="grid-2 grid" style="gap:8px">
+          <div class="field">
+            <label>username</label>
+            <input x-model="editingConfig.username" placeholder="argus@example.com">
+          </div>
+          <div class="field">
+            <label>password</label>
+            <input x-model="editingConfig.password" type="password" placeholder="••••••">
+          </div>
+        </div>
+        <div class="field">
+          <label>from address</label>
+          <input x-model="editingConfig.from" placeholder="argus@myip.gr">
+        </div>
+        <div class="field">
+          <label>to addresses</label>
+          <div style="display:flex;gap:6px">
+            <input x-model="toInput" placeholder="noc@myip.gr" @keyup.enter="addTo()" style="flex:1">
+            <button class="btn sm secondary" @click="addTo()">add</button>
+          </div>
+          <div class="tag-list" x-show="(editingConfig.to||[]).length > 0">
+            <template x-for="(addr,i) in (editingConfig.to||[])" :key="i">
+              <div class="tag-item">
+                <span x-text="addr"></span>
+                <button @click="editingConfig.to.splice(i,1)">×</button>
+              </div>
+            </template>
+          </div>
+        </div>
+        <div class="field">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" x-model="editingConfig.tls" style="width:auto">
+            use TLS (port 465) instead of STARTTLS
+          </label>
+        </div>
+      </div>
+    </template>
+
+    <!-- Log: nothing to configure -->
+    <template x-if="editingContact.type==='log'">
+      <div class="notice">Events will be written to the Argus log (stdout / journald). No configuration needed.</div>
+    </template>
+
+    <div class="field">
+      <label>minimum severity</label>
+      <select x-model="editingContact.min_severity">
+        <option value="info">info — all alerts</option>
+        <option value="warning">warning — warnings and critical</option>
+        <option value="critical">critical — critical only</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>sources (leave empty for all)</label>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        <template x-for="src in ['bgp','routewatch','blackhole','detection','system']">
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px">
+            <input type="checkbox" :value="src"
+                   :checked="sourcesArr.includes(src)"
+                   @change="toggleSource(src)"
+                   style="width:auto">
+            <span class="src" :class="src" x-text="src"></span>
+          </label>
+        </template>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">
+        <span x-text="sourcesArr.length === 0 ? 'all sources' : 'only: '+sourcesArr.join(', ')"></span>
+      </div>
+    </div>
+
+    <div class="field">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" x-model="editingContact.enabled" style="width:auto">
+        enabled
+      </label>
+    </div>
+
+    <div x-show="panelError" style="color:var(--red);font-size:12px;padding:8px;border:1px solid rgba(243,139,168,.3);border-radius:4px;background:rgba(243,139,168,.05)" x-text="panelError"></div>
+
+    <div class="btn-row" style="margin-top:4px">
+      <button class="btn" @click="saveContact()" x-text="saving ? 'saving…' : 'save'"></button>
+      <button class="btn secondary" @click="panelOpen=false">cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function alertApp() { return {
+  tab: 'live',
+  stats: {},
+  contacts: [],
+  liveFeed: [],
+  historyRows: [],
+  histOffset: 0,
+  histFilter: { source:'', severity:'', onlyFailed:false },
+  sseConnected: false,
+  sseSource: null,
+
+  // panel state
+  panelOpen: false,
+  panelError: '',
+  saving: false,
+  editingContact: {},
+  editingConfig: {},
+  sourcesArr: [],
+  toInput: '',
+
+  init() {
+    this.loadStats()
+    this.loadContacts()
+    this.loadHistory()
+    this.connectSSE()
+    setInterval(()=>this.loadStats(), 60000)
+  },
+
+  // ── SSE ──
+  connectSSE() {
+    if (this.sseSource) { this.sseSource.close() }
+    const es = new EventSource('/alerter/stream')
+    this.sseSource = es
+    es.onopen = () => { this.sseConnected = true }
+    es.onerror = () => {
+      this.sseConnected = false
+      setTimeout(()=>this.connectSSE(), 5000)
+    }
+    es.onmessage = (e) => {
+      try {
+        const fe = JSON.parse(e.data)
+        fe._new = true
+        fe._open = false
+        this.liveFeed.unshift(fe)
+        if (this.liveFeed.length > 100) this.liveFeed.pop()
+        // also prepend to history if on that tab
+        if (this.tab === 'history') this.loadHistory()
+        this.loadStats()
+        // clear _new flag after animation
+        setTimeout(()=>{ fe._new = false }, 400)
+      } catch(err) { /* ignore parse errors (heartbeat comments) */ }
+    }
+  },
+
+  // ── Stats ──
+  async loadStats() {
+    try {
+      const r = await fetch('/alerter/events/stats')
+      if (r.ok) this.stats = await r.json()
+    } catch(e) {}
+  },
+
+  // ── History ──
+  async loadHistory() {
+    const params = new URLSearchParams({
+      limit: 50,
+      offset: this.histOffset,
+      source: this.histFilter.source,
+      severity: this.histFilter.severity,
+      only_failed: this.histFilter.onlyFailed ? '1' : '0',
+    })
+    try {
+      const r = await fetch('/alerter/events?' + params)
+      if (r.ok) {
+        this.historyRows = (await r.json()).map(row => ({...row, _open:false}))
+      }
+    } catch(e) {}
+  },
+
+  async clearHistory() {
+    if (!confirm('Delete all alert history?')) return
+    await fetch('/alerter/events', {method:'DELETE'})
+    this.historyRows = []
+    this.liveFeed = []
+    this.loadStats()
+  },
+
+  // ── Contacts ──
+  async loadContacts() {
+    try {
+      const r = await fetch('/alerter/contacts')
+      if (r.ok) this.contacts = await r.json()
+    } catch(e) {}
+  },
+
+  async toggleContact(c) {
+    c.enabled = !c.enabled
+    await fetch(`/alerter/contacts/${c.id}/toggle`, {
+      method: 'PATCH',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({enabled: c.enabled})
+    })
+  },
+
+  async deleteContact(c) {
+    if (!confirm(`Delete contact "${c.name}"?`)) return
+    await fetch(`/alerter/contacts/${c.id}`, {method:'DELETE'})
+    this.loadContacts()
+  },
+
+  async testContact(c) {
+    c._testing = true
+    c._testResult = ''
+    c._testError = ''
+    try {
+      const r = await fetch(`/alerter/contacts/${c.id}/test`, {method:'POST'})
+      const d = await r.json()
+      c._testResult = d.status
+      if (d.error) c._testError = d.error
+    } catch(e) {
+      c._testResult = 'failed'
+      c._testError = e.message
+    } finally {
+      c._testing = false
+      setTimeout(()=>{ c._testResult=''; c._testError='' }, 8000)
+    }
+  },
+
+  openNewContact() {
+    this.editingContact = { name:'', type:'slack', enabled:true, min_severity:'info', sources:'' }
+    this.editingConfig = { webhook:'' }
+    this.sourcesArr = []
+    this.toInput = ''
+    this.panelError = ''
+    this.panelOpen = true
+  },
+
+  editContact(c) {
+    this.editingContact = {...c}
+    try { this.editingConfig = JSON.parse(c.config || '{}') } catch(e) { this.editingConfig = {} }
+    if (!this.editingConfig.to) this.editingConfig.to = []
+    this.sourcesArr = c.sources ? c.sources.split(',').map(s=>s.trim()).filter(Boolean) : []
+    this.toInput = ''
+    this.panelError = ''
+    this.panelOpen = true
+  },
+
+  resetConfig() {
+    const t = this.editingContact.type
+    if (t === 'slack') this.editingConfig = { webhook:'' }
+    else if (t === 'smtp') this.editingConfig = { host:'', port:587, username:'', password:'', from:'', to:[], tls:false }
+    else this.editingConfig = {}
+  },
+
+  addTo() {
+    const v = this.toInput.trim()
+    if (!v) return
+    if (!this.editingConfig.to) this.editingConfig.to = []
+    if (!this.editingConfig.to.includes(v)) this.editingConfig.to.push(v)
+    this.toInput = ''
+  },
+
+  toggleSource(src) {
+    const i = this.sourcesArr.indexOf(src)
+    if (i >= 0) this.sourcesArr.splice(i,1)
+    else this.sourcesArr.push(src)
+  },
+
+  async saveContact() {
+    this.panelError = ''
+    this.saving = true
+    const payload = {
+      ...this.editingContact,
+      config: JSON.stringify(this.editingConfig),
+      sources: this.sourcesArr.join(','),
+    }
+    try {
+      const url = payload.id ? `/alerter/contacts/${payload.id}` : '/alerter/contacts'
+      const method = payload.id ? 'PUT' : 'POST'
+      const r = await fetch(url, {
+        method,
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+      })
+      if (!r.ok) {
+        const txt = await r.text()
+        this.panelError = txt || `HTTP ${r.status}`
+        return
+      }
+      this.panelOpen = false
+      this.loadContacts()
+    } catch(e) {
+      this.panelError = e.message
+    } finally {
+      this.saving = false
+    }
+  },
+
+  // ── helpers ──
+  fmtTime(ts) {
+    if (!ts) return '—'
+    const d = new Date(ts)
+    return d.toLocaleDateString() + ' ' + d.toLocaleTimeString()
+  },
+
+  deliveryIcon(status) {
+    return status === 'sent' || status === 'test' ? '✓' : status === 'failed' ? '✗' : '–'
+  },
+}}
+</script>
+</body>
+</html>

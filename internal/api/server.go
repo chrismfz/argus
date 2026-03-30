@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"sort"
 	"time"
+	"strings"
 	apipb "github.com/osrg/gobgp/v3/api"
 	"database/sql"
 	"argus/internal/config"
@@ -143,6 +144,59 @@ func Start() {
 	mainMux.HandleFunc("/tel/history",      WithMainIPOnly(handleTelHistory))
 	mainMux.HandleFunc("/tel/interfaces",   WithMainIPOnly(handleTelInterfaces))
 	mainMux.HandleFunc("/tel/iface-sankey", WithMainIPOnly(handleTelIfaceSankey))
+
+	// ── Alerter page ──────────────────────────────────────────────────────
+	mainMux.HandleFunc("/alerts", WithMainIPOnly(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(alertsHTML)
+	}))
+
+	// ── Alerter contacts CRUD ─────────────────────────────────────────────
+	mainMux.HandleFunc("/alerter/contacts", WithMainIPOnly(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			handleAlerterContactsList(w, r)
+		case http.MethodPost:
+			handleAlerterContactsCreate(w, r)
+		default:
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		}
+	}))
+	// /alerter/contacts/{id}  /alerter/contacts/{id}/test  /alerter/contacts/{id}/toggle
+	mainMux.HandleFunc("/alerter/contacts/", WithMainIPOnly(func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+		switch {
+		case strings.HasSuffix(path, "/test") && r.Method == http.MethodPost:
+			handleAlerterContactsTest(w, r)
+		case strings.HasSuffix(path, "/toggle") && r.Method == http.MethodPatch:
+			handleAlerterContactsToggle(w, r)
+		case r.Method == http.MethodPut:
+			handleAlerterContactsUpdate(w, r)
+		case r.Method == http.MethodDelete:
+			handleAlerterContactsDelete(w, r)
+		default:
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		}
+	}))
+
+	// ── Alerter events & stats ────────────────────────────────────────────
+	// /stats must be registered before /events to avoid prefix conflict
+	mainMux.HandleFunc("/alerter/events/stats", WithMainIPOnly(handleAlerterEventsStats))
+	mainMux.HandleFunc("/alerter/events", WithMainIPOnly(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			handleAlerterEventsList(w, r)
+		case http.MethodDelete:
+			handleAlerterEventsClear(w, r)
+		default:
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		}
+	}))
+
+	// ── Alerter SSE live feed ─────────────────────────────────────────────
+	// nginx: needs its own location block with proxy_buffering off
+	mainMux.HandleFunc("/alerter/stream", WithMainIPOnly(handleAlerterStream))
+
 
 	// ── Dashboard & flow debug — IP-only ─────────────────────────────────
 	mainMux.HandleFunc("/dashboard", WithMainIPOnly(func(w http.ResponseWriter, r *http.Request) {

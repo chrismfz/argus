@@ -10,3 +10,6 @@ var dashboardHTML []byte
 
 //go:embed static/detection.html
 var detectionHTML []byte
+
+//go:embed static/alerts.html
+var alertsHTML []byte

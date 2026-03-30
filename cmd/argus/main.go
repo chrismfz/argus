@@ -545,17 +545,16 @@ telemetry.RawTap.Publish("mikrotik", func() map[uint16]string {
 	}
 
 
-  // ── Pathfinder ────────────────────────────────────────────────────────
-  {
-      um := pathfinder.NewUpstreamMap(
-          config.AppConfig.Pathfinder.CommunityMap,
-          config.AppConfig.Pathfinder.TransitASNMap,
-          config.AppConfig.Pathfinder.NextHopMap,
-          config.AppConfig.MyASN,
-      )
-      api.PathfinderResolver = pathfinder.NewResolver(bgpListener.Server, um)
-      log.Printf("[Pathfinder] resolver ready")
-  }
+
+// ── Pathfinder ────────────────────────────────────────────────────────
+
+if listener != nil {
+	api.PathfinderResolver = pathfinder.NewResolver(listener.Server, cfg.MyASN)
+	log.Printf("[Pathfinder] resolver ready")
+} else {
+	log.Printf("[Pathfinder] disabled / not ready (BGP listener not initialized)")
+}
+
 
 	// ── API ───────────────────────────────────────────────────────────────────
 	go func() {

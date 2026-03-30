@@ -13,13 +13,13 @@ import (
 // Resolver queries GoBGP's in-memory global RIB to resolve paths.
 // It is safe for concurrent use — ListPath is read-only.
 type Resolver struct {
-	server   *gobgpserver.BgpServer
-	upstream *UpstreamMap
+	server *gobgpserver.BgpServer
+	myASN  uint32
 }
 
 // NewResolver creates a Resolver backed by the given GoBGP server instance.
-func NewResolver(s *gobgpserver.BgpServer, um *UpstreamMap) *Resolver {
-	return &Resolver{server: s, upstream: um}
+func NewResolver(s *gobgpserver.BgpServer, myASN uint32) *Resolver {
+	return &Resolver{server: s, myASN: myASN}
 }
 
 // ResolvePrefix returns the best path (and alt paths if ADD-PATH is enabled)
@@ -94,6 +94,7 @@ func (r *Resolver) ResolveASN(asn uint32, asnName string) (*ASNResult, error) {
 	return result, nil
 }
 
+
 // parsePath extracts a strongly-typed Path from a raw api.Path.
 func (r *Resolver) parsePath(prefix string, p *api.Path) Path {
 	out := Path{
@@ -120,7 +121,6 @@ func (r *Resolver) parsePath(prefix string, p *api.Path) Path {
 					}
 				}
 			}
-			// Origin AS = last element of the AS-path
 			if len(out.ASPath) > 0 {
 				out.OriginAS = out.ASPath[len(out.ASPath)-1]
 			}
@@ -129,7 +129,6 @@ func (r *Resolver) parsePath(prefix string, p *api.Path) Path {
 			out.NextHop = v.Value.String()
 
 		case *bgppkt.PathAttributeMpReachNLRI:
-			// IPv6 next-hop
 			if v.Nexthop != nil {
 				out.NextHop = v.Nexthop.String()
 			}
@@ -145,14 +144,28 @@ func (r *Resolver) parsePath(prefix string, p *api.Path) Path {
 		case *bgppkt.PathAttributeLargeCommunities:
 			for _, c := range v.Values {
 				out.Communities = append(out.Communities,
-					fmt.Sprintf("%d:%d:%d", c.GlobalAdministrator, c.LocalData1, c.LocalData2))
+					fmt.Sprintf("%d:%d:%d", c.ASN, c.LocalData1, c.LocalData2))
 			}
 		}
 	}
 
-	if r.upstream != nil {
-		out.Upstream = r.upstream.Resolve(out.Communities, out.ASPath, out.NextHop)
-	}
+	out.PeerASN = firstExternalASN(out.ASPath, r.myASN)
 
 	return out
+}
+
+
+
+
+
+
+
+
+func firstExternalASN(path []uint32, myASN uint32) uint32 {
+	for _, asn := range path {
+		if asn != 0 && asn != myASN {
+			return asn
+		}
+	}
+	return 0
 }

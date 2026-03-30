@@ -70,9 +70,6 @@ func DiffSnapshots(before, after *RIBSnapshot) []PathChange {
 		} else if !asPathEqual(b.ASPath, a.ASPath) {
 			bc, ac := b, a
 			changes = append(changes, PathChange{Prefix: prefix, ChangeType: ChangeASPath, Before: &bc, After: &ac})
-		} else if b.Upstream != a.Upstream {
-			bc, ac := b, a
-			changes = append(changes, PathChange{Prefix: prefix, ChangeType: ChangeUpstream, Before: &bc, After: &ac})
 		} else if b.LocalPref != a.LocalPref {
 			bc, ac := b, a
 			changes = append(changes, PathChange{Prefix: prefix, ChangeType: ChangeLocalPref, Before: &bc, After: &ac})

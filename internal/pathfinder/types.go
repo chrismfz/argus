@@ -6,9 +6,9 @@ import "time"
 type Path struct {
 	Prefix      string   `json:"prefix"`
 	OriginAS    uint32   `json:"origin_as"`
+	PeerASN     uint32   `json:"peer_asn,omitempty"`   // first external ASN
 	ASPath      []uint32 `json:"as_path"`
 	NextHop     string   `json:"next_hop"`
-	Upstream    string   `json:"upstream,omitempty"` // derived from communities / next-hop / transit ASN
 	LocalPref   uint32   `json:"local_pref"`
 	Communities []string `json:"communities,omitempty"`
 	IsBest      bool     `json:"is_best"`
@@ -21,22 +21,17 @@ type PrefixPaths struct {
 	AltPaths []Path `json:"alt_paths,omitempty"`
 }
 
-// ASNResult is the top-level response for an ASN-level query.
 type ASNResult struct {
 	ASN      uint32        `json:"asn"`
 	Name     string        `json:"name,omitempty"`
 	Prefixes []PrefixPaths `json:"prefixes"`
 }
 
-// ── Snapshot / diff types — ROUTEWATCH foundation ─────────────────────────────
-
-// RIBSnapshot is a point-in-time copy of the best-path global RIB.
 type RIBSnapshot struct {
 	Timestamp time.Time       `json:"timestamp"`
-	Paths     map[string]Path `json:"paths"` // keyed by prefix string
+	Paths     map[string]Path `json:"paths"`
 }
 
-// ChangeKind describes what changed between two snapshots.
 type ChangeKind string
 
 const (
@@ -44,11 +39,9 @@ const (
 	ChangeNewPrefix ChangeKind = "new_prefix"
 	ChangeNextHop   ChangeKind = "nexthop_changed"
 	ChangeASPath    ChangeKind = "aspath_changed"
-	ChangeUpstream  ChangeKind = "upstream_changed"
 	ChangeLocalPref ChangeKind = "localpref_changed"
 )
 
-// PathChange describes a single change between two RIB snapshots.
 type PathChange struct {
 	Prefix     string     `json:"prefix"`
 	ChangeType ChangeKind `json:"change_type"`

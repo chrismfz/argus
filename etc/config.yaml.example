@@ -28,7 +28,7 @@ maxmind:
   enabled: true
   account_id: "0000000"
   license_key: "YOUR_LICENSE_KEY_HERE"
- db_path: "/opt/argus/data/geoip"
+  db_path: "/opt/argus/data/geoip"
   editions:
     - GeoLite2-ASN
     - GeoLite2-City

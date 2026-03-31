@@ -166,5 +166,3 @@ func StateColor(s BGPSessionState) string {
 	}
 }
 
-// UptimeString formats a duration compactly.
-func UptimeString(d fmt.Stringer) string { return d.String() }

@@ -207,6 +207,11 @@ func Start() {
   mainMux.HandleFunc("/pathfinder/prefix", WithMainIPOnly(handlePathfinderPrefix))
 
 
+  // ── RouterOS / BGP session monitoring ────────────────────────────────
+  mainMux.HandleFunc("/routeros/bgp/sessions", WithMainIPOnly(handleROSBGPSessions))
+  mainMux.HandleFunc("/routeros/bgp/peers",    WithMainIPOnly(handleROSBGPPeers))
+  mainMux.HandleFunc("/routeros/router/info",  WithMainIPOnly(handleROSRouterInfo))
+
 	// ── Dashboard & flow debug — IP-only ─────────────────────────────────
 	mainMux.HandleFunc("/dashboard", WithMainIPOnly(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")

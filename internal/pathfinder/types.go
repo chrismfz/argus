@@ -1,6 +1,10 @@
 package pathfinder
 
-import "time"
+import (
+"time"
+//"argus/internal/routeros"
+)
+
 
 // Path represents a single BGP path for a prefix.
 type Path struct {
@@ -15,11 +19,13 @@ type Path struct {
 }
 
 // PrefixPaths holds the best path and any alternative paths for a prefix.
-type PrefixPaths struct {
-	Prefix   string `json:"prefix"`
-	BestPath *Path  `json:"best_path,omitempty"`
-	AltPaths []Path `json:"alt_paths,omitempty"`
-}
+  type PrefixPaths struct {
+      Prefix        string          `json:"prefix"`
+      BestPath      *Path           `json:"best_path,omitempty"`
+      AltPaths      []Path          `json:"alt_paths,omitempty"`
+      AllPaths      []RouteSummary  `json:"all_paths,omitempty"`  // from RouterOS
+  }
+
 
 type ASNResult struct {
 	ASN      uint32        `json:"asn"`
@@ -48,3 +54,14 @@ type PathChange struct {
 	Before     *Path      `json:"before,omitempty"`
 	After      *Path      `json:"after,omitempty"`
 }
+
+  // RouteSummary is a simplified multi-path entry from RouterOS.
+  // It avoids importing the routeros package into pathfinder.
+  type RouteSummary struct {
+      Gateway      string `json:"gateway"`
+      Interface    string `json:"interface"`
+      Distance     int    `json:"distance"`
+      Active       bool   `json:"active"`
+      Upstream     string `json:"upstream,omitempty"` // auto-resolved label
+  }
+

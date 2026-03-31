@@ -34,7 +34,9 @@ import (
         _ "argus/internal/alerter/backend/logbackend"
         _ "argus/internal/alerter/backend/slack"
         _ "argus/internal/alerter/backend/smtp"
+
 	"argus/internal/pathfinder"
+	"argus/internal/routeros"
 )
 
 var debug bool
@@ -543,6 +545,71 @@ telemetry.RawTap.Publish("mikrotik", func() map[uint16]string {
 	} else {
 		log.Print("[INFO] Detection engine disabled")
 	}
+
+
+
+  // ── RouterOS API client ───────────────────────────────────────────────
+  var rosClient *routeros.Client
+  if config.AppConfig.RouterOS.Enabled {
+      rosCfg := routeros.Config{
+          Address:        config.AppConfig.RouterOS.Address,
+          Username:       config.AppConfig.RouterOS.Username,
+          Password:       config.AppConfig.RouterOS.Password,
+          UseTLS:         config.AppConfig.RouterOS.UseTLS,
+          InsecureTLS:    config.AppConfig.RouterOS.InsecureTLS,
+          TimeoutSeconds: config.AppConfig.RouterOS.TimeoutSeconds,
+      }
+      rosClient, err = routeros.Dial(rosCfg)
+      if err != nil {
+          log.Printf("[RouterOS] connection failed (non-fatal): %v", err)
+          rosClient = nil
+      } else {
+          log.Printf("[RouterOS] connected")
+          api.ROSClient = rosClient
+      }
+  }
+ 
+  // ── Pathfinder ────────────────────────────────────────────────────────
+  {
+      // Try auto-discovering upstream names from RouterOS IP address table.
+      // Falls back to manual config.yaml pathfinder: section if unavailable.
+      var um *pathfinder.UpstreamMap
+ 
+      if rosClient != nil {
+          ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+          addrs, err := rosClient.ListIPAddresses(ctx)
+          cancel()
+          if err == nil {
+              nextHopMap := routeros.BuildNextHopMap(addrs)
+              log.Printf("[Pathfinder] auto-discovered %d interface subnets for upstream resolution", len(addrs))
+              // Manual config overrides auto-discovery
+              for k, v := range config.AppConfig.Pathfinder.NextHopMap {
+                  nextHopMap[k] = v
+              }
+              um = pathfinder.NewUpstreamMap(
+                  config.AppConfig.Pathfinder.CommunityMap,
+                  config.AppConfig.Pathfinder.TransitASNMap,
+                  nextHopMap,
+                  config.AppConfig.MyASN,
+              )
+          } else {
+              log.Printf("[Pathfinder] RouterOS IP address fetch failed, using config only: %v", err)
+          }
+      }
+ 
+      if um == nil {
+          um = pathfinder.NewUpstreamMap(
+              config.AppConfig.Pathfinder.CommunityMap,
+              config.AppConfig.Pathfinder.TransitASNMap,
+              config.AppConfig.Pathfinder.NextHopMap,
+              config.AppConfig.MyASN,
+          )
+      }
+ 
+      api.PathfinderResolver = pathfinder.NewResolver(bgpListener.Server, um)
+      api.PathfinderROSClient = rosClient // may be nil — handlers degrade gracefully
+      log.Printf("[Pathfinder] resolver ready")
+  }
 
 
 

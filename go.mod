@@ -5,6 +5,7 @@ go 1.25.0
 require (
 	github.com/e-XpertSolutions/go-iforest/v2 v2.0.0
 	github.com/fsnotify/fsnotify v1.9.0
+	github.com/go-routeros/routeros/v3 v3.0.1
 	github.com/gosnmp/gosnmp v1.43.2
 	github.com/miekg/dns v1.1.72
 	github.com/oschwald/geoip2-golang v1.13.0

@@ -57,7 +57,7 @@ func (r *Resolver) ResolvePrefix(prefix string) (*PrefixPaths, error) {
 // ResolveASN returns all prefixes in the RIB where the origin AS matches asn.
 // asnName is optional enrichment from MaxMind / telemetry.
 func (r *Resolver) ResolveASN(asn uint32, asnName string) (*ASNResult, error) {
-	result := &ASNResult{ASN: asn, Name: asnName}
+result := &ASNResult{ASN: asn, Name: asnName, Prefixes: []PrefixPaths{}}
 	byPrefix := map[string]*PrefixPaths{}
 
 	err := r.server.ListPath(context.Background(), &api.ListPathRequest{

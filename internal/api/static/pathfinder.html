@@ -125,16 +125,16 @@ nav a.active { color: var(--accent); border-color: var(--accent) }
           AS<span x-text="result.asn"></span>
           <span x-show="result.name" style="color:var(--text);font-weight:400;text-transform:none;letter-spacing:0" x-text="' — ' + result.name"></span>
         </div>
-        <span class="badge best" x-text="result.prefixes.length + ' prefixes in RIB'"></span>
+        <span class="badge best" x-text="(result.prefixes?.length ?? 0) + ' prefixes in RIB'"></span>
       </div>
 
       <!-- empty state -->
-      <template x-if="result.prefixes.length === 0">
+<template x-if="!result.prefixes?.length">
         <div class="notice">No prefixes found for this ASN in the current RIB.</div>
       </template>
 
       <!-- ── one card per prefix ── -->
-      <template x-for="pp in result.prefixes" :key="pp.prefix">
+<template x-for="pp in (result.prefixes ?? [])" :key="pp.prefix">
         <div class="prefix-card">
 
           <!-- card header -->

@@ -4,44 +4,48 @@ import "time"
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 
-// Route represents a single entry from /ip/route or /routing/route.
-// RouterOS can have multiple routes for the same prefix with different distances —
-// this is the multi-path visibility that eBGP alone cannot provide.
+// Route represents a single entry from /routing/route (full RIB, all candidates).
 type Route struct {
 	ID           string `json:"id"`
 	DstAddress   string `json:"dst_address"`
 	Gateway      string `json:"gateway"`      // next-hop IP
-	Interface    string `json:"interface"`    // outgoing interface name (sfp1-Synapsecom etc.)
+	Interface    string `json:"interface"`    // outgoing interface (sfp1-Synapsecom)
 	RoutingTable string `json:"routing_table"`
 	Distance     int    `json:"distance"`
 	Scope        int    `json:"scope"`
 	TargetScope  int    `json:"target_scope"`
 
-	// Route status flags
-	Active    bool `json:"active"`    // A flag — currently used
-	Dynamic   bool `json:"dynamic"`   // D flag — learned dynamically
-	IsBGP     bool `json:"is_bgp"`    // b flag
-	Blackhole bool `json:"blackhole"` // blackhole route
-	ECMP      bool `json:"ecmp"`      // equal-cost multipath
+	// Route status
+	Active    bool `json:"active"`    // contribution == "active"
+	Dynamic   bool `json:"dynamic"`
+	IsBGP     bool `json:"is_bgp"`
+	Blackhole bool `json:"blackhole"`
+	ECMP      bool `json:"ecmp"`
 
-	// BGP-specific attributes (populated if IsBGP)
+	// Full BGP attributes (from /routing/route detail)
 	BGPAttr *BGPRouteAttr `json:"bgp_attr,omitempty"`
 }
 
-// BGPRouteAttr holds BGP-specific attributes for a route as reported by RouterOS.
+// BGPRouteAttr holds BGP-specific attributes as reported by RouterOS.
+// Fields from /routing/route print detail (RouterOS 7).
 type BGPRouteAttr struct {
 	LocalPref   int      `json:"local_pref"`
 	MED         int      `json:"med"`
 	Origin      string   `json:"origin"` // "igp", "egp", "incomplete"
 	ASPath      []uint32 `json:"as_path"`
-	Communities []string `json:"communities"`
+	Communities []string `json:"communities,omitempty"`
+	LargeCommunities []string `json:"large_communities,omitempty"`
 	NextHop     string   `json:"next_hop"`
 	OriginAS    uint32   `json:"origin_as"` // last ASN in path
+
+	// RouterOS 7 /routing/route detail specific fields
+	SessionName  string `json:"session_name"`  // e.g. "AS8280-1", "rs1.thess.gr-ix.gr-IPv4-1"
+	BelongsTo    string `json:"belongs_to"`    // e.g. "bgp-IP-78.108.36.244"
+	Contribution string `json:"contribution"`  // "active", "candidate", "best-candidate"
 }
 
 // ── BGP Sessions ──────────────────────────────────────────────────────────────
 
-// BGPSessionState mirrors RouterOS session states.
 type BGPSessionState string
 
 const (
@@ -54,7 +58,6 @@ const (
 	StateUnknown     BGPSessionState = "unknown"
 )
 
-// BGPSession represents a single BGP peer session from /routing/bgp/session.
 type BGPSession struct {
 	ID            string          `json:"id"`
 	Name          string          `json:"name"`
@@ -64,56 +67,55 @@ type BGPSession struct {
 	LocalAS       uint32          `json:"local_as"`
 	State         BGPSessionState `json:"state"`
 	Established   bool            `json:"established"`
-
-	// Uptime is only meaningful when Established == true
-	Uptime   time.Duration `json:"uptime_seconds"`
-	UptimeRaw string       `json:"uptime_raw"` // raw RouterOS format e.g. "2d3h14m"
-
-	// Prefix counts
-	PrefixesReceived  int `json:"prefixes_received"`
-	PrefixesAccepted  int `json:"prefixes_accepted"`
-	PrefixesAdv       int `json:"prefixes_advertised"`
-
-	// Flags
-	Disabled bool `json:"disabled"`
-	Dynamic  bool `json:"dynamic"`
-
-	// The connection name in BGP peer config (useful for grouping)
-	ConnectionName string `json:"connection_name,omitempty"`
+	Uptime        time.Duration   `json:"uptime_seconds"`
+	UptimeRaw     string          `json:"uptime_raw"`
+	PrefixesReceived int          `json:"prefixes_received"`
+	PrefixesAdv      int          `json:"prefixes_advertised"`
+	Disabled      bool            `json:"disabled"`
+	Dynamic       bool            `json:"dynamic"`
+	ConnectionName string         `json:"connection_name,omitempty"`
 }
 
 // ── Filter Rules ──────────────────────────────────────────────────────────────
 
-// FilterRule represents a single rule from /routing/filter/rule.
-// Useful for understanding *why* a route has a certain local-pref or distance.
 type FilterRule struct {
 	ID       string `json:"id"`
-	Chain    string `json:"chain"`    // e.g. "bgp-in-synapsecom"
-	Rule     string `json:"rule"`     // raw rule text, e.g. "if (bgp-as-path 52055) { set bgp-local-pref 150; }"
+	Chain    string `json:"chain"`
+	Rule     string `json:"rule"`
 	Disabled bool   `json:"disabled"`
 	Comment  string `json:"comment"`
 }
 
 // ── IP Addresses ──────────────────────────────────────────────────────────────
 
-// IPAddress represents an entry from /ip/address — interface IP + subnet.
-// Used by Pathfinder's upstream auto-discovery: next-hop IP falls in a subnet
-// → we know which interface it belongs to → interface name = upstream label.
 type IPAddress struct {
 	ID        string `json:"id"`
-	Address   string `json:"address"`   // e.g. "195.48.96.25/27" (includes prefix length)
-	Network   string `json:"network"`   // e.g. "195.48.96.0" (just the network address)
-	Interface string `json:"interface"` // e.g. "sfp2-GRIX"
+	Address   string `json:"address"` // includes prefix len: "195.48.96.25/27"
+	Network   string `json:"network"` // "195.48.96.0"
+	Interface string `json:"interface"`
 	Disabled  bool   `json:"disabled"`
 }
 
 // ── NextHop ───────────────────────────────────────────────────────────────────
 
-// NextHop represents an entry from /routing/nexthop.
 type NextHop struct {
 	ID        string `json:"id"`
 	Gateway   string `json:"gateway"`
 	Interface string `json:"interface"`
 	Resolved  bool   `json:"resolved"`
-	Immediate string `json:"immediate_gw,omitempty"` // resolved next-hop if recursive
+	Immediate string `json:"immediate_gw,omitempty"`
+}
+
+// ── Ping ──────────────────────────────────────────────────────────────────────
+
+// PingResult holds the result of a /ping call to RouterOS.
+type PingResult struct {
+	Host     string  `json:"host"`
+	Sent     int     `json:"sent"`
+	Received int     `json:"received"`
+	AvgRTTms float64 `json:"avg_rtt_ms"`
+	MinRTTms float64 `json:"min_rtt_ms"`
+	MaxRTTms float64 `json:"max_rtt_ms"`
+	LossPct  float64 `json:"loss_pct"`
+	Error    string  `json:"error,omitempty"`
 }

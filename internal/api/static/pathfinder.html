@@ -31,6 +31,8 @@ nav a { color: var(--muted); text-decoration: none; padding: 10px 14px; font-siz
 nav a:hover { color: var(--text) }
 nav a.active { color: var(--accent); border-color: var(--accent) }
 .content { max-width: 1100px; margin: 0 auto; padding: 24px 20px }
+
+/* search */
 .search-row { display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap }
 .search-row input { flex: 1; min-width: 220px; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 8px 12px; font-size: 14px; outline: none }
 .search-row input:focus { border-color: var(--accent) }
@@ -39,6 +41,8 @@ nav a.active { color: var(--accent); border-color: var(--accent) }
 .btn:hover { opacity: .85 }
 .btn.secondary { background: var(--bg3); color: var(--text); border: 1px solid var(--border) }
 .btn.sm { padding: 4px 10px; font-size: 12px }
+
+/* cards */
 .section-title { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 12px }
 .prefix-card { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 12px; overflow: hidden }
 .prefix-header { padding: 10px 14px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); background: var(--bg3) }
@@ -46,6 +50,9 @@ nav a.active { color: var(--accent); border-color: var(--accent) }
 .badge { padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600 }
 .badge.best { background: rgba(166,227,161,.15); color: var(--green); border: 1px solid rgba(166,227,161,.3) }
 .badge.alt  { background: rgba(249,226,175,.10); color: var(--yellow); border: 1px solid rgba(249,226,175,.25) }
+.badge.cand { background: rgba(203,166,247,.10); color: var(--purple); border: 1px solid rgba(203,166,247,.25) }
+
+/* GoBGP path rows */
 .path-row { padding: 10px 14px; display: grid; grid-template-columns: 130px 1fr; gap: 8px 16px; align-items: start }
 .path-row + .path-row { border-top: 1px solid var(--border) }
 .path-key { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; padding-top: 2px }
@@ -57,10 +64,42 @@ nav a.active { color: var(--accent); border-color: var(--accent) }
 .asp-asn.origin { border-color: var(--accent); color: var(--accent) }
 .asp-arr { color: var(--muted); font-size: 12px }
 .comm-tag { background: var(--bg3); border: 1px solid var(--border); border-radius: 4px; padding: 1px 7px; font-size: 11px; font-family: monospace; color: var(--purple) }
-.ros-row { display: flex; gap: 16px; align-items: center; padding: 5px 0; font-size: 12px; border-bottom: 1px solid var(--border) }
-.ros-section { border-top: 1px solid var(--border); padding: 10px 14px; background: rgba(148,226,213,.04) }
-.ros-section-title { font-size: 11px; color: var(--teal); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px }
-.dist-badge { margin-left: auto; background: var(--bg3); border: 1px solid var(--border); border-radius: 4px; padding: 1px 8px; font-family: monospace }
+
+/* RouterOS all-paths section */
+.ros-section { border-top: 1px solid var(--border); background: rgba(148,226,213,.03) }
+.ros-section-title { padding: 8px 14px; font-size: 11px; color: var(--teal); text-transform: uppercase; letter-spacing: .06em; border-bottom: 1px solid var(--border) }
+.ros-path { padding: 10px 14px; border-bottom: 1px solid var(--border) }
+.ros-path:last-child { border-bottom: none }
+.ros-path.inactive { opacity: .6 }
+
+.ros-top { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; flex-wrap: wrap }
+.ros-active-badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px }
+.ros-active-badge.active   { background: rgba(166,227,161,.15); color: var(--green); border: 1px solid rgba(166,227,161,.3) }
+.ros-active-badge.candidate { background: rgba(203,166,247,.10); color: var(--purple); border: 1px solid rgba(203,166,247,.25) }
+.ros-active-badge.best-candidate { background: rgba(249,226,175,.10); color: var(--yellow); border: 1px solid rgba(249,226,175,.25) }
+
+.ros-gw { font-family: monospace; font-size: 13px; color: var(--text) }
+.ros-iface { font-size: 12px; color: var(--teal) }
+.ros-session { font-size: 11px; color: var(--muted); font-family: monospace }
+
+.ros-stats { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px }
+.ros-stat { display: flex; align-items: center; gap: 5px; font-size: 12px }
+.ros-stat-key { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em }
+.ros-stat-val { color: var(--text); font-family: monospace }
+.ros-stat-val.better { color: var(--green) }
+.ros-stat-val.worse  { color: var(--orange) }
+
+/* RTT badge */
+.rtt-badge { padding: 2px 8px; border-radius: 4px; font-size: 11px; font-family: monospace; border: 1px solid var(--border); background: var(--bg3) }
+.rtt-badge.fast { color: var(--green); border-color: rgba(166,227,161,.3) }
+.rtt-badge.ok   { color: var(--yellow); border-color: rgba(249,226,175,.25) }
+.rtt-badge.slow { color: var(--red); border-color: rgba(243,139,168,.3) }
+.rtt-badge.loss { color: var(--orange) }
+
+/* hops badge */
+.hops-badge { padding: 2px 8px; border-radius: 4px; font-size: 11px; font-family: monospace; background: var(--bg3); border: 1px solid var(--border); color: var(--text) }
+
+/* notices */
 .notice { padding: 16px 18px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--muted); font-size: 13px }
 .notice.err { border-color: var(--red); color: var(--red) }
 .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-right: 6px }
@@ -87,9 +126,9 @@ nav a.active { color: var(--accent); border-color: var(--accent) }
 <div class="content">
 
   <div class="tip">
-    <strong>Pathfinder</strong> queries the live GoBGP RIB to explain which BGP path is being used for any ASN or prefix.
-    Enter an <strong>ASN</strong> (e.g. <code>8280</code>) to see all its prefixes and their paths, or a <strong>prefix</strong>
-    (e.g. <code>62.103.0.0/16</code>) for a single-prefix deep-dive. Results are live — no caching.
+    <strong>Pathfinder</strong> queries GoBGP (best path) and RouterOS (all paths) to explain routing decisions.
+    Enter an <strong>ASN</strong> to see all its prefixes, or a <strong>prefix</strong> for a full deep-dive
+    including alternative paths, AS-path hops, local-pref, and RTT from the router.
   </div>
 
   <!-- ── Search bar ── -->
@@ -98,11 +137,9 @@ nav a.active { color: var(--accent); border-color: var(--accent) }
       <option value="asn">ASN</option>
       <option value="prefix">Prefix</option>
     </select>
-    <input
-      x-model="query"
+    <input x-model="query"
       :placeholder="mode === 'asn' ? 'e.g. 8280 or 5408' : 'e.g. 62.103.0.0/16'"
-      @keydown.enter="search()"
-    />
+      @keydown.enter="search()" />
     <button class="btn" @click="search()" :disabled="loading">
       <span x-show="loading"><span class="spinner"></span>resolving…</span>
       <span x-show="!loading">🔍 resolve path</span>
@@ -110,7 +147,7 @@ nav a.active { color: var(--accent); border-color: var(--accent) }
     <button class="btn secondary" x-show="result || error" @click="clear()">clear</button>
   </div>
 
-  <!-- ── Error ── -->
+  <!-- Error -->
   <div class="notice err" x-show="error" x-text="error"></div>
 
   <!-- ══════════════════════════════════════════════════════════
@@ -119,35 +156,35 @@ nav a.active { color: var(--accent); border-color: var(--accent) }
   <template x-if="result && mode === 'asn'">
     <div>
 
-      <!-- header row -->
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
         <div class="section-title" style="margin-bottom:0">
           AS<span x-text="result.asn"></span>
-          <span x-show="result.name" style="color:var(--text);font-weight:400;text-transform:none;letter-spacing:0" x-text="' — ' + result.name"></span>
+          <span x-show="result.name" style="color:var(--text);font-weight:400;text-transform:none;letter-spacing:0"
+                x-text="' — ' + result.name"></span>
         </div>
         <span class="badge best" x-text="(result.prefixes?.length ?? 0) + ' prefixes in RIB'"></span>
       </div>
 
-      <!-- empty state -->
-<template x-if="!result.prefixes?.length">
+      <template x-if="!result.prefixes?.length">
         <div class="notice">No prefixes found for this ASN in the current RIB.</div>
       </template>
 
-      <!-- ── one card per prefix ── -->
-<template x-for="pp in (result.prefixes ?? [])" :key="pp.prefix">
+      <!-- one card per prefix -->
+      <template x-for="pp in (result.prefixes ?? [])" :key="pp.prefix">
         <div class="prefix-card">
 
-          <!-- card header -->
+          <!-- header -->
           <div class="prefix-header">
             <span class="prefix-label" x-text="pp.prefix"></span>
             <span class="badge best" x-show="pp.best_path">best path</span>
-            <span class="badge alt" x-show="pp.alt_paths?.length" x-text="(pp.alt_paths?.length ?? 0) + ' alt'"></span>
+            <span class="badge alt" x-show="pp.alt_paths?.length"
+                  x-text="(pp.alt_paths?.length ?? 0) + ' alt'"></span>
             <span style="margin-left:auto">
-              <button class="btn secondary sm" @click="switchToPrefix(pp.prefix)">inspect prefix →</button>
+              <button class="btn secondary sm" @click="switchToPrefix(pp.prefix)">inspect prefix + all paths →</button>
             </span>
           </div>
 
-          <!-- best path details -->
+          <!-- GoBGP best path -->
           <template x-if="pp.best_path">
             <div>
               <template x-if="pp.best_path.upstream">
@@ -166,6 +203,7 @@ nav a.active { color: var(--accent); border-color: var(--accent) }
                         <span class="asp-arr" x-show="i < pp.best_path.as_path.length-1"> →</span>
                       </span>
                     </template>
+                    <span class="hops-badge" x-text="pp.best_path.as_path.length + ' hops'"></span>
                   </div>
                 </div>
               </div>
@@ -206,6 +244,7 @@ nav a.active { color: var(--accent); border-color: var(--accent) }
                           <span class="asp-arr" x-show="i < ap.as_path.length-1"> →</span>
                         </span>
                       </template>
+                      <span class="hops-badge" x-text="ap.as_path.length + ' hops'"></span>
                     </div>
                     <div style="margin-top:4px;font-size:12px;color:var(--muted)"
                          x-text="'next-hop: ' + (ap.next_hop || '—') + (ap.upstream ? '  ·  via ' + ap.upstream : '')"></div>
@@ -213,23 +252,6 @@ nav a.active { color: var(--accent); border-color: var(--accent) }
                 </div>
               </div>
             </template>
-          </template>
-
-          <!-- RouterOS all paths (distance 20 vs 30 etc.) -->
-          <template x-if="pp.all_paths && pp.all_paths.length">
-            <div class="ros-section">
-              <div class="ros-section-title">router paths — all (from RouterOS)</div>
-              <template x-for="(rp, ri) in pp.all_paths" :key="ri">
-                <div class="ros-row" :style="rp.active ? '' : 'opacity:.5'">
-                  <span :style="rp.active ? 'color:var(--green);font-weight:600' : 'color:var(--muted)'"
-                        x-text="rp.active ? '▶ active' : '○ inactive'"></span>
-                  <span style="font-family:monospace;color:var(--text)" x-text="rp.gateway"></span>
-                  <span style="color:var(--teal)" x-show="rp.upstream" x-text="rp.upstream"></span>
-                  <span style="color:var(--muted)" x-show="rp.interface && !rp.upstream" x-text="rp.interface"></span>
-                  <span class="dist-badge" x-text="'distance ' + rp.distance"></span>
-                </div>
-              </template>
-            </div>
           </template>
 
         </div><!-- end .prefix-card -->
@@ -249,30 +271,28 @@ nav a.active { color: var(--accent); border-color: var(--accent) }
         prefix <span style="color:var(--accent);font-family:monospace" x-text="result.prefix"></span>
       </div>
 
-      <!-- not found -->
       <template x-if="!result.best_path">
-        <div class="notice">Prefix not found in the current RIB. It may not be advertised, or the BGP session is still loading.</div>
+        <div class="notice">Prefix not found in the current RIB.</div>
       </template>
 
-      <!-- found -->
       <template x-if="result.best_path">
         <div class="prefix-card">
 
           <!-- card header -->
           <div class="prefix-header">
             <span class="prefix-label" x-text="result.prefix"></span>
-            <span class="badge best">best path</span>
-            <span class="badge alt" x-show="result.alt_paths?.length" x-text="(result.alt_paths?.length ?? 0) + ' alt'"></span>
+            <span class="badge best">best path (GoBGP)</span>
+            <span class="badge alt" x-show="result.alt_paths?.length"
+                  x-text="(result.alt_paths?.length ?? 0) + ' alt'"></span>
           </div>
 
-          <!-- best path details -->
+          <!-- GoBGP best path -->
           <template x-if="result.best_path.upstream">
             <div class="path-row">
               <div class="path-key">upstream</div>
               <div class="path-val upstream" x-text="result.best_path.upstream"></div>
             </div>
           </template>
-
           <div class="path-row">
             <div class="path-key">AS-path</div>
             <div class="path-val">
@@ -283,27 +303,24 @@ nav a.active { color: var(--accent); border-color: var(--accent) }
                     <span class="asp-arr" x-show="i < result.best_path.as_path.length-1"> →</span>
                   </span>
                 </template>
+                <span class="hops-badge" x-text="result.best_path.as_path.length + ' hops'"></span>
               </div>
             </div>
           </div>
-
           <div class="path-row">
             <div class="path-key">origin AS</div>
             <div class="path-val">AS<span x-text="result.best_path.origin_as"></span></div>
           </div>
-
           <div class="path-row">
             <div class="path-key">next-hop</div>
             <div class="path-val mono" x-text="result.best_path.next_hop || '—'"></div>
           </div>
-
           <template x-if="result.best_path.local_pref">
             <div class="path-row">
               <div class="path-key">local-pref</div>
               <div class="path-val" x-text="result.best_path.local_pref"></div>
             </div>
           </template>
-
           <template x-if="result.best_path.communities && result.best_path.communities.length">
             <div class="path-row">
               <div class="path-key">communities</div>
@@ -315,7 +332,7 @@ nav a.active { color: var(--accent); border-color: var(--accent) }
             </div>
           </template>
 
-          <!-- GoBGP alt paths (ADD-PATH) -->
+          <!-- GoBGP alt paths -->
           <template x-if="result.alt_paths && result.alt_paths.length">
             <template x-for="(ap, ai) in result.alt_paths" :key="ai">
               <div style="border-top:1px dashed var(--border);opacity:.7">
@@ -329,9 +346,10 @@ nav a.active { color: var(--accent); border-color: var(--accent) }
                           <span class="asp-arr" x-show="i < ap.as_path.length-1"> →</span>
                         </span>
                       </template>
+                      <span class="hops-badge" x-text="ap.as_path.length + ' hops'"></span>
                     </div>
                     <div style="margin-top:4px;font-size:12px;color:var(--muted)"
-                         x-text="'next-hop: ' + (ap.next_hop || '—') + (ap.upstream ? '  ·  via ' + ap.upstream : '') + (ap.local_pref ? '  ·  local-pref ' + ap.local_pref : '')">
+                         x-text="'next-hop: '+(ap.next_hop||'—')+(ap.upstream?'  ·  via '+ap.upstream:'')+(ap.local_pref?'  ·  local-pref '+ap.local_pref:'')">
                     </div>
                   </div>
                 </div>
@@ -339,22 +357,105 @@ nav a.active { color: var(--accent); border-color: var(--accent) }
             </template>
           </template>
 
-          <!-- RouterOS all paths (distance 20 vs 30 etc.) -->
+          <!-- ── RouterOS all paths ── -->
           <template x-if="result.all_paths && result.all_paths.length">
             <div class="ros-section">
-              <div class="ros-section-title">router paths — all (from RouterOS)</div>
+              <div class="ros-section-title">
+                all paths from RouterOS — explaining the decision
+              </div>
+
               <template x-for="(rp, ri) in result.all_paths" :key="ri">
-                <div class="ros-row" :style="rp.active ? '' : 'opacity:.5'">
-                  <span :style="rp.active ? 'color:var(--green);font-weight:600' : 'color:var(--muted)'"
-                        x-text="rp.active ? '▶ active' : '○ inactive'"></span>
-                  <span style="font-family:monospace;color:var(--text)" x-text="rp.gateway"></span>
-                  <span style="color:var(--teal)" x-show="rp.upstream" x-text="rp.upstream"></span>
-                  <span style="color:var(--muted)" x-show="rp.interface && !rp.upstream" x-text="rp.interface"></span>
-                  <span class="dist-badge" x-text="'distance ' + rp.distance"></span>
-                </div>
-              </template>
-            </div>
-          </template>
+                <div class="ros-path" :class="rp.active ? '' : 'inactive'">
+
+                  <!-- top row: status badge + gateway + interface + session -->
+                  <div class="ros-top">
+                    <span class="ros-active-badge"
+                          :class="rp.contribution || (rp.active ? 'active' : 'candidate')"
+                          x-text="rp.contribution || (rp.active ? 'active' : 'inactive')"></span>
+                    <span class="ros-gw" x-text="rp.gateway"></span>
+                    <span class="ros-iface" x-show="rp.upstream" x-text="rp.upstream"></span>
+                    <span class="ros-iface" x-show="!rp.upstream && rp.interface" x-text="rp.interface"></span>
+                    <span class="ros-session" x-show="rp.session_name" x-text="rp.session_name"></span>
+
+                    <!-- RTT badge -->
+                    <template x-if="rp.rtt_ms > 0">
+                      <span class="rtt-badge"
+                            :class="rp.rtt_ms < 5 ? 'fast' : rp.rtt_ms < 20 ? 'ok' : 'slow'"
+                            x-text="rp.rtt_ms.toFixed(1) + ' ms'"></span>
+                    </template>
+                    <template x-if="rp.rtt_loss > 0 && rp.rtt_ms === 0">
+                      <span class="rtt-badge loss" x-text="'100% loss'"></span>
+                    </template>
+                    <template x-if="rp.rtt_error && rp.rtt_ms === 0 && rp.rtt_loss === 0">
+                      <span class="rtt-badge" style="color:var(--muted)" x-text="'ping err'"></span>
+                    </template>
+                  </div>
+
+                  <!-- stats row: hops / local-pref / MED / distance -->
+                  <div class="ros-stats">
+                    <template x-if="rp.as_path && rp.as_path.length">
+                      <div class="ros-stat">
+                        <span class="ros-stat-key">AS-path</span>
+                        <span class="ros-stat-val">
+                          <span class="asp-row" style="gap:2px">
+                            <template x-for="(a, i) in rp.as_path" :key="i">
+                              <span>
+                                <span style="background:var(--bg3);border:1px solid var(--border);border-radius:3px;padding:1px 5px;font-family:monospace;font-size:11px"
+                                      :style="i===rp.as_path.length-1?'border-color:var(--accent);color:var(--accent)':''"
+                                      x-text="a"></span>
+                                <span style="color:var(--muted);font-size:10px" x-show="i < rp.as_path.length-1"> →</span>
+                              </span>
+                            </template>
+                          </span>
+                        </span>
+                        <span class="hops-badge" x-text="rp.hops + ' hops'"></span>
+                      </div>
+                    </template>
+
+                    <div class="ros-stat">
+                      <span class="ros-stat-key">local-pref</span>
+                      <span class="ros-stat-val" x-text="rp.local_pref"></span>
+                    </div>
+
+                    <template x-if="rp.med > 0">
+                      <div class="ros-stat">
+                        <span class="ros-stat-key">MED</span>
+                        <span class="ros-stat-val" x-text="rp.med"></span>
+                      </div>
+                    </template>
+
+                    <div class="ros-stat">
+                      <span class="ros-stat-key">distance</span>
+                      <span class="ros-stat-val" x-text="rp.distance"></span>
+                    </div>
+
+                    <template x-if="rp.rtt_ms > 0 && rp.rtt_loss > 0">
+                      <div class="ros-stat">
+                        <span class="ros-stat-key">loss</span>
+                        <span class="ros-stat-val loss" x-text="rp.rtt_loss.toFixed(0) + '%'"></span>
+                      </div>
+                    </template>
+                  </div>
+
+                  <!-- communities (collapsible on click) -->
+                  <template x-if="rp.communities && rp.communities.length">
+                    <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:3px">
+                      <template x-for="c in rp.communities" :key="c">
+                        <span class="comm-tag" x-text="c"></span>
+                      </template>
+                      <template x-if="rp.large_communities && rp.large_communities.length">
+                        <template x-for="c in rp.large_communities" :key="c">
+                          <span class="comm-tag" style="color:var(--teal)" x-text="c"></span>
+                        </template>
+                      </template>
+                    </div>
+                  </template>
+
+                </div><!-- end .ros-path -->
+              </template><!-- end x-for all_paths -->
+
+            </div><!-- end .ros-section -->
+          </template><!-- end x-if all_paths -->
 
         </div><!-- end .prefix-card -->
       </template><!-- end x-if best_path -->
@@ -403,9 +504,7 @@ function pf() { return {
     this.search()
   },
 
-  clear() {
-    this.result = null; this.error = null; this.query = ''
-  }
+  clear() { this.result = null; this.error = null; this.query = '' }
 }}
 </script>
 </body>

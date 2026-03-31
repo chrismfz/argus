@@ -13,6 +13,7 @@ type Path struct {
 	PeerASN     uint32   `json:"peer_asn,omitempty"`   // first external ASN
 	ASPath      []uint32 `json:"as_path"`
 	NextHop     string   `json:"next_hop"`
+	Upstream    string   `json:"upstream,omitempty"`
 	LocalPref   uint32   `json:"local_pref"`
 	Communities []string `json:"communities,omitempty"`
 	IsBest      bool     `json:"is_best"`

@@ -565,16 +565,17 @@ telemetry.RawTap.Publish("mikrotik", func() map[uint16]string {
           rosClient = nil
       } else {
           log.Printf("[RouterOS] connected")
-          api.ROSClient = rosClient
+          api.PathfinderROSClient = rosClient
+
       }
   }
- 
+
   // ── Pathfinder ────────────────────────────────────────────────────────
   {
       // Try auto-discovering upstream names from RouterOS IP address table.
       // Falls back to manual config.yaml pathfinder: section if unavailable.
       var um *pathfinder.UpstreamMap
- 
+
       if rosClient != nil {
           ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
           addrs, err := rosClient.ListIPAddresses(ctx)
@@ -596,7 +597,7 @@ telemetry.RawTap.Publish("mikrotik", func() map[uint16]string {
               log.Printf("[Pathfinder] RouterOS IP address fetch failed, using config only: %v", err)
           }
       }
- 
+
       if um == nil {
           um = pathfinder.NewUpstreamMap(
               config.AppConfig.Pathfinder.CommunityMap,
@@ -605,22 +606,22 @@ telemetry.RawTap.Publish("mikrotik", func() map[uint16]string {
               config.AppConfig.MyASN,
           )
       }
- 
-      api.PathfinderResolver = pathfinder.NewResolver(bgpListener.Server, um)
+
+if listener != nil {
+    api.PathfinderResolver = pathfinder.NewResolver(listener.Server, um)
+} else {
+    log.Printf("[Pathfinder] BGP listener not ready, resolver unavailable")
+}
+
+
       api.PathfinderROSClient = rosClient // may be nil — handlers degrade gracefully
       log.Printf("[Pathfinder] resolver ready")
   }
 
 
+// ── Pathfinder end ──────────────────────────────────────────────────────
 
-// ── Pathfinder ────────────────────────────────────────────────────────
 
-if listener != nil {
-	api.PathfinderResolver = pathfinder.NewResolver(listener.Server, cfg.MyASN)
-	log.Printf("[Pathfinder] resolver ready")
-} else {
-	log.Printf("[Pathfinder] disabled / not ready (BGP listener not initialized)")
-}
 
 
 	// ── API ───────────────────────────────────────────────────────────────────

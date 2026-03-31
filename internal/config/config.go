@@ -47,6 +47,12 @@ type RouterOSConfig struct {
     TimeoutSeconds int    `yaml:"timeout_seconds"`
 }
 
+type PathfinderConfig struct {
+    CommunityMap  map[string]string `yaml:"community_map"`
+    TransitASNMap map[uint32]string `yaml:"transit_asn_map"`
+    NextHopMap    map[string]string `yaml:"nexthop_map"`
+}
+
 // ✅ Το κύριο Config struct
 type Config struct {
     BGP BGPConfig `yaml:"bgp"`
@@ -55,6 +61,8 @@ type Config struct {
 
     CFM CFMConfig `yaml:"cfm"`
 RouterOS RouterOSConfig `yaml:"routeros"`
+Pathfinder PathfinderConfig `yaml:"pathfinder"`
+
 
 MaxMind MaxMindConfig `yaml:"maxmind"`
 GeoIP struct {

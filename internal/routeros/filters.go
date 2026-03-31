@@ -72,8 +72,8 @@ func (c *Client) ListIPAddresses(ctx context.Context) ([]IPAddress, error) {
 	for _, s := range reply.Re {
 		a := IPAddress{
 			ID:        s.Map[".id"],
-			Address:   s.Map["address"],   // includes prefix len: "195.48.96.25/27"
-			Network:   s.Map["network"],   // just the net: "195.48.96.0"
+			Address:   s.Map["address"], // includes prefix len: "195.48.96.25/27"
+			Network:   s.Map["network"], // just the net: "195.48.96.0"
 			Interface: s.Map["interface"],
 			Disabled:  parseBool(s.Map["disabled"]),
 		}
@@ -86,7 +86,6 @@ func (c *Client) ListIPAddresses(ctx context.Context) ([]IPAddress, error) {
 // the IP address table from the router.
 //
 // The interface name encodes the upstream: "sfp2-GRIX" → "GRIX", "sfp1-Synapsecom" → "Synapsecom".
-// The part after the first "-" is used as the label (stripping the port prefix).
 func UpstreamNameForNextHop(nextHop string, addrs []IPAddress) string {
 	nhIP := net.ParseIP(nextHop)
 	if nhIP == nil {
@@ -96,27 +95,26 @@ func UpstreamNameForNextHop(nextHop string, addrs []IPAddress) string {
 		if a.Disabled {
 			continue
 		}
-		// a.Address is in CIDR notation e.g. "195.48.96.25/27"
 		_, ipNet, err := net.ParseCIDR(a.Address)
 		if err != nil {
 			continue
 		}
 		if ipNet.Contains(nhIP) {
-			return upstreamLabelFromIface(a.Interface)
+			return UpstreamLabelFromIface(a.Interface)
 		}
 	}
 	return ""
 }
 
-// upstreamLabelFromIface strips the port prefix from interface names.
+// UpstreamLabelFromIface strips the port prefix from interface names.
+// Exported so pathfinder handlers can use it without a full IPAddress lookup.
 //
 //	"sfp2-GRIX"       → "GRIX"
 //	"sfp1-Synapsecom" → "Synapsecom"
 //	"ether1-NetIX"    → "NetIX"
-//	"GR-IX"           → "GR-IX"   (no prefix to strip)
-func upstreamLabelFromIface(name string) string {
+//	"GR-IX"           → "GR-IX"   (no port prefix to strip)
+func UpstreamLabelFromIface(name string) string {
 	if idx := strings.Index(name, "-"); idx != -1 {
-		// Check if the prefix looks like a port name (sfpN, etherN, bondN etc.)
 		prefix := name[:idx]
 		if looksLikePort(prefix) {
 			return name[idx+1:]
@@ -136,22 +134,15 @@ func looksLikePort(s string) bool {
 	return false
 }
 
-// BuildNextHopMap creates a nextHop→upstreamName map from the IP address table.
-// This can be passed to pathfinder.NewUpstreamMap as the NextHopMap override,
-// or used directly by the RouterOS-backed resolver.
+// BuildNextHopMap creates a nextHop-IP → upstreamName map from the IP address table.
 func BuildNextHopMap(addrs []IPAddress) map[string]string {
-	// We build a cidr→label index, then resolve each next-hop dynamically.
-	// Returning a pre-built IP→name map isn't practical (IPs not known in advance),
-	// so callers should use UpstreamNameForNextHop() with the full addr slice.
-	// This function is a convenience for pre-seeding known gateway IPs.
 	m := make(map[string]string)
 	for _, a := range addrs {
 		if a.Disabled {
 			continue
 		}
-		// Use the interface's own IP as a known gateway entry
 		ip := strings.Split(a.Address, "/")[0]
-		m[ip] = upstreamLabelFromIface(a.Interface)
+		m[ip] = UpstreamLabelFromIface(a.Interface)
 	}
 	return m
 }

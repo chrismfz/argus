@@ -13,13 +13,14 @@ import (
 // Resolver queries GoBGP's in-memory global RIB to resolve paths.
 // It is safe for concurrent use — ListPath is read-only.
 type Resolver struct {
-	server *gobgpserver.BgpServer
-	myASN  uint32
+	server   *gobgpserver.BgpServer
+	upstream *UpstreamMap
 }
 
 // NewResolver creates a Resolver backed by the given GoBGP server instance.
-func NewResolver(s *gobgpserver.BgpServer, myASN uint32) *Resolver {
-	return &Resolver{server: s, myASN: myASN}
+// um may be nil — upstream labels will simply be empty strings.
+func NewResolver(s *gobgpserver.BgpServer, um *UpstreamMap) *Resolver {
+	return &Resolver{server: s, upstream: um}
 }
 
 // ResolvePrefix returns the best path (and alt paths if ADD-PATH is enabled)
@@ -94,7 +95,6 @@ func (r *Resolver) ResolveASN(asn uint32, asnName string) (*ASNResult, error) {
 	return result, nil
 }
 
-
 // parsePath extracts a strongly-typed Path from a raw api.Path.
 func (r *Resolver) parsePath(prefix string, p *api.Path) Path {
 	out := Path{
@@ -149,17 +149,20 @@ func (r *Resolver) parsePath(prefix string, p *api.Path) Path {
 		}
 	}
 
-	out.PeerASN = firstExternalASN(out.ASPath, r.myASN)
+	// PeerASN: first external ASN in path (useful for UI display)
+	var myASN uint32
+	if r.upstream != nil {
+		myASN = r.upstream.MyASN
+	}
+	out.PeerASN = firstExternalASN(out.ASPath, myASN)
+
+	// Upstream label from communities / transit ASN / next-hop
+	if r.upstream != nil {
+		out.Upstream = r.upstream.Resolve(out.Communities, out.ASPath, out.NextHop)
+	}
 
 	return out
 }
-
-
-
-
-
-
-
 
 func firstExternalASN(path []uint32, myASN uint32) uint32 {
 	for _, asn := range path {

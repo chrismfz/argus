@@ -38,17 +38,14 @@ func handlePathfinderPrefix(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 2. RouterOS /routing/route — all paths with full BGP attrs + ping RTT
-	if PathfinderROSClient != nil {
-		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
-		defer cancel()
-
-		rosRoutes, err := PathfinderROSClient.ListDetailedRoutesByPrefix(ctx, prefix)
-		if err == nil && len(rosRoutes) > 0 {
-			summaries := rosRoutesToSummary(rosRoutes)
-
-			result.AllPaths = summaries
-		}
-	}
+  if PathfinderROSClient != nil {
+      ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+      defer cancel()
+      rosRoutes, err := PathfinderROSClient.ListDetailedRoutesByPrefix(ctx, prefix)
+      if err == nil && len(rosRoutes) > 0 {
+          result.AllPaths = rosRoutesToSummary(rosRoutes)
+      }
+  }
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(result)
@@ -108,28 +105,6 @@ func rosRoutesToSummary(routes []routeros.Route) []pathfinder.RouteSummary {
 	return out
 }
 
-// pingUniqueGateways pings each unique gateway IP concurrently.
-// Returns a map of gateway IP → PingResult.
-// Uses 3 pings per host with a shared timeout from the parent context.
-func pingUniqueGateways(ctx context.Context, summaries []pathfinder.RouteSummary) map[string]routeros.PingResult {
-	if PathfinderROSClient == nil {
-		return nil
-	}
-	seen := make(map[string]struct{})
-	results := make(map[string]routeros.PingResult)
-	for _, s := range summaries {
-		if s.Gateway == "" {
-			continue
-		}
-		if _, ok := seen[s.Gateway]; ok {
-			continue
-		}
-		seen[s.Gateway] = struct{}{}
-		// Sequential — connection is not concurrent-safe
-		results[s.Gateway] = PathfinderROSClient.PingHost(ctx, s.Gateway, 3)
-	}
-	return results
-}
 
 // GET /pathfinder/ping?gateway=78.108.36.244
 func handlePathfinderPing(w http.ResponseWriter, r *http.Request) {
@@ -142,7 +117,7 @@ func handlePathfinderPing(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, http.StatusServiceUnavailable, "RouterOS not connected")
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	result := PathfinderROSClient.PingHost(ctx, gw, 3)
 	jsonOK(w, result)

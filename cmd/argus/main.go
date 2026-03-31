@@ -555,18 +555,16 @@ telemetry.RawTap.Publish("mikrotik", func() map[uint16]string {
           Address:        config.AppConfig.RouterOS.Address,
           Username:       config.AppConfig.RouterOS.Username,
           Password:       config.AppConfig.RouterOS.Password,
-          UseTLS:         config.AppConfig.RouterOS.UseTLS,
           InsecureTLS:    config.AppConfig.RouterOS.InsecureTLS,
           TimeoutSeconds: config.AppConfig.RouterOS.TimeoutSeconds,
       }
       rosClient, err = routeros.Dial(rosCfg)
       if err != nil {
-          log.Printf("[RouterOS] connection failed (non-fatal): %v", err)
+          log.Printf("[RouterOS] REST connection failed (non-fatal): %v", err)
           rosClient = nil
       } else {
-          log.Printf("[RouterOS] connected")
+          log.Printf("[RouterOS] REST client ready (%s)", config.AppConfig.RouterOS.Address)
           api.PathfinderROSClient = rosClient
-
       }
   }
 

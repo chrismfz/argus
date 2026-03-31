@@ -3,90 +3,97 @@ package routeros
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 )
 
-// ListDetailedRoutesByPrefix queries /routing/route (RouterOS 7 full RIB) for a
-// specific prefix. Returns ALL paths — active, candidate, best-candidate — with
-// full BGP attributes: AS-path, local-pref, MED, communities, session name.
-//
-// Unlike /ip/route which only shows the winning route, /routing/route exposes
-// every received path and why each was or wasn't selected (contribution field).
+// ListDetailedRoutesByPrefix queries /rest/routing/route filtered by dst-address.
+// Returns all paths (active, candidate, best-candidate) with full BGP attributes.
+// Fast — filter runs on the router side, same speed as the console (~1-2s).
 func (c *Client) ListDetailedRoutesByPrefix(ctx context.Context, prefix string) ([]Route, error) {
-	reply, err := c.run(ctx, "/routing/route/print",
-		"=detail=",
-		fmt.Sprintf("?.dst-address=%s", prefix),
-	)
-	if err != nil {
+	var raw []map[string]string
+	q := url.Values{"dst-address": {prefix}}
+	if err := c.get(ctx, "routing/route", q, &raw); err != nil {
 		return nil, fmt.Errorf("ListDetailedRoutesByPrefix %q: %w", prefix, err)
 	}
-
-	routes := make([]Route, 0, len(reply.Re))
-	for _, s := range reply.Re {
-		routes = append(routes, parseDetailedRoute(s.Map))
+	routes := make([]Route, 0, len(raw))
+	for _, m := range raw {
+		routes = append(routes, parseDetailedRoute(m))
 	}
 	return routes, nil
 }
 
-// ListRoutes returns routes from /ip/route (forwarding table — winner only).
-func (c *Client) ListRoutes(ctx context.Context, filterArgs ...string) ([]Route, error) {
-	args := []string{
-		"/ip/route/print",
-		"=detail=",
-		"=.proplist=.id,dst-address,gateway,gateway-status,routing-table,distance,scope,target-scope,active,dynamic,bgp,blackhole,ecmp",
-	}
-	args = append(args, filterArgs...)
-
-	reply, err := c.run(ctx, args[0], args[1:]...)
-	if err != nil {
-		return nil, err
-	}
-
-	routes := make([]Route, 0, len(reply.Re))
-	for _, s := range reply.Re {
-		routes = append(routes, parseRoute(s.Map))
-	}
-	return routes, nil
-}
-
-// ListBGPRoutes returns all BGP-learned routes from /ip/route.
+// ListBGPRoutes returns all BGP-learned routes from /rest/ip/route.
 func (c *Client) ListBGPRoutes(ctx context.Context) ([]Route, error) {
-	return c.ListRoutes(ctx, "?bgp=yes")
+	var raw []map[string]string
+	q := url.Values{"bgp": {"true"}}
+	if err := c.get(ctx, "ip/route", q, &raw); err != nil {
+		return nil, fmt.Errorf("ListBGPRoutes: %w", err)
+	}
+	routes := make([]Route, 0, len(raw))
+	for _, m := range raw {
+		routes = append(routes, parseRoute(m))
+	}
+	return routes, nil
 }
 
-// ListRoutesByASN returns all BGP routes whose origin AS matches asn.
-func (c *Client) ListRoutesByASN(ctx context.Context, asn uint32) ([]Route, error) {
-	all, err := c.ListBGPRoutes(ctx)
-	if err != nil {
-		return nil, err
+// ListIPAddresses returns all IP addresses from /rest/ip/address.
+// Used for upstream auto-discovery: next-hop IP → subnet → interface → upstream name.
+func (c *Client) ListIPAddresses(ctx context.Context) ([]IPAddress, error) {
+	var raw []map[string]string
+	if err := c.get(ctx, "ip/address", nil, &raw); err != nil {
+		return nil, fmt.Errorf("ListIPAddresses: %w", err)
 	}
-	var filtered []Route
-	for _, r := range all {
-		if r.BGPAttr != nil && r.BGPAttr.OriginAS == asn {
-			filtered = append(filtered, r)
-		}
+	addrs := make([]IPAddress, 0, len(raw))
+	for _, m := range raw {
+		addrs = append(addrs, IPAddress{
+			ID:        m[".id"],
+			Address:   m["address"],
+			Network:   m["network"],
+			Interface: m["interface"],
+			Disabled:  parseBool(m["disabled"]),
+		})
 	}
-	return filtered, nil
+	return addrs, nil
+}
+
+// ListNextHops returns the nexthop resolution table from /rest/routing/nexthop.
+func (c *Client) ListNextHops(ctx context.Context) ([]NextHop, error) {
+	var raw []map[string]string
+	if err := c.get(ctx, "routing/nexthop", nil, &raw); err != nil {
+		return nil, fmt.Errorf("ListNextHops: %w", err)
+	}
+	hops := make([]NextHop, 0, len(raw))
+	for _, m := range raw {
+		hops = append(hops, NextHop{
+			ID:        m[".id"],
+			Gateway:   m["gateway"],
+			Interface: m["interface"],
+			Resolved:  parseBool(m["resolved"]),
+			Immediate: m["immediate-gw"],
+		})
+	}
+	return hops, nil
 }
 
 // ── Parsing ───────────────────────────────────────────────────────────────────
 
-// parseDetailedRoute parses a sentence from /routing/route print detail.
-// RouterOS 7 uses dot-notation for BGP sub-fields: bgp.session, bgp.as-path etc.
+// parseDetailedRoute parses a map from /rest/routing/route.
+// The REST API returns the same field names as the binary API detail output.
 func parseDetailedRoute(m map[string]string) Route {
 	r := Route{
 		ID:           m[".id"],
 		DstAddress:   m["dst-address"],
 		RoutingTable: m["routing-table"],
 		Distance:     parseIntField(m["distance"]),
-		IsBGP:        true,
+		IsBGP:        parseBool(m["bgp"]),
 	}
 
 	contrib := strings.TrimSpace(m["contribution"])
 	r.Active = contrib == "active"
 
-	// immediate-gw: "78.108.36.244%sfp1-Synapsecom" — next-hop and interface in one field
+	// immediate-gw: "78.108.36.244%sfp1-Synapsecom"
 	if igw := strings.TrimSpace(m["immediate-gw"]); igw != "" {
 		parts := strings.SplitN(igw, "%", 2)
 		r.Gateway = parts[0]
@@ -108,7 +115,7 @@ func parseDetailedRoute(m map[string]string) Route {
 		NextHop:      r.Gateway,
 	}
 
-	// AS-path: comma-separated "8280,6762,1241"
+	// AS-path: "8280,6762,1241"
 	if asp := strings.TrimSpace(m["bgp.as-path"]); asp != "" {
 		for _, tok := range strings.FieldsFunc(asp, func(ch rune) bool {
 			return ch == ',' || ch == ' '
@@ -125,7 +132,7 @@ func parseDetailedRoute(m map[string]string) Route {
 		}
 	}
 
-	// Standard communities: "6762:1,6762:30,6762:40"
+	// Communities: "6762:1,6762:30,6762:40"
 	if comms := strings.TrimSpace(m["bgp.communities"]); comms != "" {
 		for _, c := range strings.Split(comms, ",") {
 			if t := strings.TrimSpace(c); t != "" {
@@ -152,33 +159,15 @@ func parseRoute(m map[string]string) Route {
 		DstAddress:  m["dst-address"],
 		RoutingTable: m["routing-table"],
 		Distance:    parseIntField(m["distance"]),
-		Scope:       parseIntField(m["scope"]),
-		TargetScope: parseIntField(m["target-scope"]),
 		Active:      parseBool(m["active"]),
 		Dynamic:     parseBool(m["dynamic"]),
 		IsBGP:       parseBool(m["bgp"]),
 		Blackhole:   parseBool(m["blackhole"]),
 		ECMP:        parseBool(m["ecmp"]),
 	}
-
 	if gw := m["gateway"]; gw != "" {
 		r.Gateway = gw
-	} else if gwStatus := m["gateway-status"]; gwStatus != "" {
-		if parts := strings.Fields(gwStatus); len(parts) > 0 {
-			r.Gateway = parts[0]
-		}
 	}
-
-	if gwStatus := m["gateway-status"]; gwStatus != "" {
-		parts := strings.Fields(gwStatus)
-		for i, p := range parts {
-			if p == "reachable" && i+1 < len(parts) {
-				r.Interface = parts[i+1]
-				break
-			}
-		}
-	}
-
 	return r
 }
 

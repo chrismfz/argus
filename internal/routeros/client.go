@@ -1,26 +1,24 @@
 package routeros
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
-	"log"
-	"sync"
+	"net/http"
+	"net/url"
 	"time"
-
-	ros "github.com/go-routeros/routeros/v3"
 )
 
-// Config is the RouterOS API connection configuration.
-// It maps directly to the RouterOSConfig yaml struct in config.go.
+// Config is the RouterOS REST API configuration.
 type Config struct {
-	Enabled        bool          `yaml:"enabled"`
-	Address        string        `yaml:"address"`         // host:port, e.g. 84.54.49.1:8728
-	Username       string        `yaml:"username"`
-	Password       string        `yaml:"password"`
-	UseTLS         bool          `yaml:"use_tls"`         // use port 8729 + TLS
-	InsecureTLS    bool          `yaml:"insecure_tls"`    // skip cert verification (self-signed)
-	TimeoutSeconds int           `yaml:"timeout_seconds"` // default 10
+	Enabled        bool   `yaml:"enabled"`
+	Address        string `yaml:"address"`         // "http://84.54.49.1" or "https://84.54.49.1"
+	Username       string `yaml:"username"`
+	Password       string `yaml:"password"`
+	InsecureTLS    bool   `yaml:"insecure_tls"`    // accept self-signed certs
+	TimeoutSeconds int    `yaml:"timeout_seconds"` // default 10
 }
 
 func (c Config) timeout() time.Duration {
@@ -30,113 +28,97 @@ func (c Config) timeout() time.Duration {
 	return time.Duration(c.TimeoutSeconds) * time.Second
 }
 
-// Client wraps the go-routeros connection with automatic reconnect.
-// All public methods are safe for concurrent use.
+// Client is a RouterOS REST API client.
+// All methods are safe for concurrent use — each call creates its own HTTP request.
 type Client struct {
-	cfg    Config
-	mu     sync.Mutex // guards conn connect/reconnect
-	callMu sync.Mutex // serialises all API calls (go-routeros is not concurrent-safe)
-	conn   *ros.Client
+	cfg  Config
+	http *http.Client
 }
 
-// NewClient creates a Client. Call Connect() before using query methods,
-// or call Dial() which connects immediately.
+// NewClient creates a REST Client from config.
 func NewClient(cfg Config) *Client {
-	return &Client{cfg: cfg}
+	tr := &http.Transport{}
+	if cfg.InsecureTLS {
+		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec — user opt-in
+	}
+	return &Client{
+		cfg:  cfg,
+		http: &http.Client{Timeout: cfg.timeout(), Transport: tr},
+	}
 }
 
-// Dial creates a Client and establishes the connection immediately.
+// Dial creates a Client and verifies connectivity.
 func Dial(cfg Config) (*Client, error) {
 	c := NewClient(cfg)
-	if err := c.Connect(); err != nil {
-		return nil, err
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.timeout())
+	defer cancel()
+	if _, err := c.SystemIdentity(ctx); err != nil {
+		return nil, fmt.Errorf("routeros REST %s: %w", cfg.Address, err)
 	}
 	return c, nil
 }
 
-// Connect (re)establishes the RouterOS API connection.
-func (c *Client) Connect() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.conn != nil {
-		c.conn.Close()
-		c.conn = nil
+// get calls GET /rest/<path>?<query> and JSON-decodes the response into dest.
+func (c *Client) get(ctx context.Context, path string, query url.Values, dest interface{}) error {
+	u := c.cfg.Address + "/rest/" + path
+	if len(query) > 0 {
+		u += "?" + query.Encode()
 	}
-
-	var (
-		conn *ros.Client
-		err  error
-	)
-
-	if c.cfg.UseTLS {
-		tlsCfg := &tls.Config{
-			InsecureSkipVerify: c.cfg.InsecureTLS, //nolint:gosec — user opt-in
-		}
-		conn, err = ros.DialTLS(c.cfg.Address, c.cfg.Username, c.cfg.Password, tlsCfg)
-	} else {
-		conn, err = ros.Dial(c.cfg.Address, c.cfg.Username, c.cfg.Password)
-	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
-		return fmt.Errorf("routeros dial %s: %w", c.cfg.Address, err)
+		return err
 	}
-	conn.Queue = 100 // default is 1; raises throughput for bulk queries
-	c.conn = conn
-	log.Printf("[RouterOS] connected to %s", c.cfg.Address)
+	req.SetBasicAuth(c.cfg.Username, c.cfg.Password)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("GET /rest/%s: %w", path, err)
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusOK:
+	case http.StatusUnauthorized:
+		return fmt.Errorf("routeros REST: unauthorized — check credentials")
+	default:
+		return fmt.Errorf("routeros REST GET /rest/%s: HTTP %d", path, resp.StatusCode)
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(dest); err != nil {
+		return fmt.Errorf("routeros REST decode /rest/%s: %w", path, err)
+	}
 	return nil
 }
 
-// Close terminates the connection.
-func (c *Client) Close() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.conn != nil {
-		c.conn.Close()
-		c.conn = nil
-	}
-}
-
-// run executes a RouterOS API command and returns the raw reply sentences.
-// On a closed-connection error it reconnects once and retries.
-func (c *Client) run(ctx context.Context, command string, args ...string) (*ros.Reply, error) {
-	c.callMu.Lock()
-	defer c.callMu.Unlock()
-
-	words := append([]string{command}, args...)
-
-	c.mu.Lock()
-	conn := c.conn
-	c.mu.Unlock()
-
-	if conn == nil {
-		if err := c.Connect(); err != nil {
-			return nil, err
+// post calls POST /rest/<path> with a JSON body and decodes the response.
+func (c *Client) post(ctx context.Context, path string, body interface{}, dest interface{}) error {
+	var buf bytes.Buffer
+	if body != nil {
+		if err := json.NewEncoder(&buf).Encode(body); err != nil {
+			return err
 		}
-		c.mu.Lock()
-		conn = c.conn
-		c.mu.Unlock()
 	}
-
-	reply, err := conn.RunArgs(words)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		c.cfg.Address+"/rest/"+path, &buf)
 	if err != nil {
-		// Connection may have dropped — try once to reconnect
-		log.Printf("[RouterOS] command error (%s): %v — reconnecting", command, err)
-		if rerr := c.Connect(); rerr != nil {
-			return nil, fmt.Errorf("reconnect failed: %w", rerr)
-		}
-		c.mu.Lock()
-		conn = c.conn
-		c.mu.Unlock()
-		reply, err = conn.RunArgs(words)
-		if err != nil {
-			return nil, fmt.Errorf("routeros %s: %w", command, err)
-		}
+		return err
 	}
-	return reply, nil
-}
+	req.SetBasicAuth(c.cfg.Username, c.cfg.Password)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
 
-// Ping checks connectivity by fetching the router identity.
-func (c *Client) Ping(ctx context.Context) error {
-	_, err := c.run(ctx, "/system/identity/print")
-	return err
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("POST /rest/%s: %w", path, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("routeros REST POST /rest/%s: HTTP %d", path, resp.StatusCode)
+	}
+	if dest != nil {
+		return json.NewDecoder(resp.Body).Decode(dest)
+	}
+	return nil
 }

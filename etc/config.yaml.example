@@ -21,13 +21,13 @@ bgp:
     store_aspath: true   # set to false for the test; default true in prod
 
 routeros:
-  enabled: true
-  address: "ip:8728"
-  username: "argus"
-  password: "secret"
-  use_tls: false
-  insecure_tls: false
-  timeout_seconds: 5
+  enabled:          true
+  address:          "http://84.54.49.1"   # use https:// if you have SSL configured
+  username:         "argus-api"
+  password:         "..."
+  insecure_tls:     true                 # set true if using self-signed HTTPS
+  timeout_seconds:  10
+ 
 
 upstream_interfaces:
   - 2    # sfp1-Synapsecom

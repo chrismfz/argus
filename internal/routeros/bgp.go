@@ -8,39 +8,63 @@ import (
 	"time"
 )
 
-// ListBGPSessions returns all BGP sessions from /routing/bgp/session.
-// This is what replaces your bgp-feeder RouterOS script — Argus polls
-// this directly instead of the router pushing via HTTP.
+// ListBGPSessions returns all BGP sessions from /rest/routing/bgp/session.
 func (c *Client) ListBGPSessions(ctx context.Context) ([]BGPSession, error) {
-	reply, err := c.run(ctx, "/routing/bgp/session/print",
-		"=.proplist=.id,name,remote.address,remote.as,local.address,local.as,"+
-			"established,uptime,prefix-count,output.prefix-count,disabled,dynamic,connection",
-	)
-	if err != nil {
+	var raw []map[string]string
+	if err := c.get(ctx, "routing/bgp/session", nil, &raw); err != nil {
 		return nil, fmt.Errorf("ListBGPSessions: %w", err)
 	}
-
-	sessions := make([]BGPSession, 0, len(reply.Re))
-	for _, s := range reply.Re {
-		sess := parseBGPSession(s.Map)
-		sessions = append(sessions, sess)
+	sessions := make([]BGPSession, 0, len(raw))
+	for _, m := range raw {
+		sessions = append(sessions, parseBGPSession(m))
 	}
 	return sessions, nil
 }
 
-// GetBGPSession returns a single session by name.
-func (c *Client) GetBGPSession(ctx context.Context, name string) (*BGPSession, error) {
-	sessions, err := c.ListBGPSessions(ctx)
-	if err != nil {
-		return nil, err
+// ListBGPPeers returns configured BGP connections from /rest/routing/bgp/connection.
+func (c *Client) ListBGPPeers(ctx context.Context) ([]BGPPeer, error) {
+	var raw []map[string]string
+	if err := c.get(ctx, "routing/bgp/connection", nil, &raw); err != nil {
+		return nil, fmt.Errorf("ListBGPPeers: %w", err)
 	}
-	for _, s := range sessions {
-		if s.Name == name {
-			cp := s
-			return &cp, nil
+	peers := make([]BGPPeer, 0, len(raw))
+	for _, m := range raw {
+		p := BGPPeer{
+			ID:            m[".id"],
+			Name:          m["name"],
+			RemoteAddress: m["remote.address"],
+			LocalAddress:  m["local.address"],
+			Disabled:      parseBool(m["disabled"]),
+			Comment:       m["comment"],
 		}
+		if v, err := strconv.ParseUint(m["remote.as"], 10, 32); err == nil {
+			p.RemoteAS = uint32(v)
+		}
+		if v, err := strconv.ParseUint(m["local.as"], 10, 32); err == nil {
+			p.LocalAS = uint32(v)
+		}
+		peers = append(peers, p)
 	}
-	return nil, fmt.Errorf("BGP session %q not found", name)
+	return peers, nil
+}
+
+// ListFilterRules returns routing filter rules from /rest/routing/filter/rule.
+func (c *Client) ListFilterRules(ctx context.Context) ([]FilterRule, error) {
+	var raw []map[string]string
+	if err := c.get(ctx, "routing/filter/rule", nil, &raw); err != nil {
+		return nil, fmt.Errorf("ListFilterRules: %w", err)
+	}
+	rules := make([]FilterRule, 0, len(raw))
+	for _, m := range raw {
+		rules = append(rules, FilterRule{
+			ID:       m[".id"],
+			Chain:    m["chain"],
+			Rule:     m["rule"],
+			Disabled: parseBool(m["disabled"]),
+			Comment:  m["comment"],
+		})
+	}
+	return rules, nil
 }
 
 // ── Parsing ───────────────────────────────────────────────────────────────────
@@ -57,41 +81,33 @@ func parseBGPSession(m map[string]string) BGPSession {
 		Dynamic:        parseBool(m["dynamic"]),
 		UptimeRaw:      m["uptime"],
 	}
-
-	if ra64, err := strconv.ParseUint(m["remote.as"], 10, 32); err == nil {
-		s.RemoteAS = uint32(ra64)
+	if v, err := strconv.ParseUint(m["remote.as"], 10, 32); err == nil {
+		s.RemoteAS = uint32(v)
 	}
-	if la64, err := strconv.ParseUint(m["local.as"], 10, 32); err == nil {
-		s.LocalAS = uint32(la64)
+	if v, err := strconv.ParseUint(m["local.as"], 10, 32); err == nil {
+		s.LocalAS = uint32(v)
 	}
 	s.PrefixesReceived, _ = strconv.Atoi(m["prefix-count"])
 	s.PrefixesAdv, _ = strconv.Atoi(m["output.prefix-count"])
 
-	// Derive State from established flag + uptime presence
 	switch {
 	case s.Established:
 		s.State = StateEstablished
 	case m["uptime"] == "" && !s.Established:
-		s.State = StateActive // trying to connect
+		s.State = StateActive
 	default:
 		s.State = StateIdle
 	}
-
-	// Parse RouterOS uptime string "3d2h14m5s" → time.Duration
 	if s.UptimeRaw != "" {
 		s.Uptime = parseROSUptime(s.UptimeRaw)
 	}
-
 	return s
 }
 
-// parseROSUptime parses RouterOS uptime strings like "2d3h14m5s", "1w2d", "45m30s".
 func parseROSUptime(s string) time.Duration {
 	if s == "" {
 		return 0
 	}
-	var total time.Duration
-	// RouterOS formats: Nw Nd Nh Nm Ns
 	units := map[string]time.Duration{
 		"w": 7 * 24 * time.Hour,
 		"d": 24 * time.Hour,
@@ -99,13 +115,13 @@ func parseROSUptime(s string) time.Duration {
 		"m": time.Minute,
 		"s": time.Second,
 	}
+	var total time.Duration
 	num := ""
 	for _, ch := range s {
 		if ch >= '0' && ch <= '9' {
 			num += string(ch)
 		} else {
-			unit := string(ch)
-			if mul, ok := units[unit]; ok && num != "" {
+			if mul, ok := units[string(ch)]; ok && num != "" {
 				n, _ := strconv.Atoi(num)
 				total += time.Duration(n) * mul
 			}
@@ -113,13 +129,6 @@ func parseROSUptime(s string) time.Duration {
 		}
 	}
 	return total
-}
-
-// SessionSummary is a compact representation useful for dashboard cards / alerts.
-type SessionSummary struct {
-	Total       int `json:"total"`
-	Established int `json:"established"`
-	Down        int `json:"down"`
 }
 
 // Summarise returns aggregate counts from a session list.
@@ -135,83 +144,14 @@ func Summarise(sessions []BGPSession) SessionSummary {
 	return s
 }
 
-// UptimeString formats a duration as a compact human string.
-func UptimeString(d time.Duration) string {
-	if d == 0 {
-		return "—"
-	}
-	days := int(d.Hours()) / 24
-	hours := int(d.Hours()) % 24
-	mins := int(d.Minutes()) % 60
-	if days > 0 {
-		return fmt.Sprintf("%dd%dh%dm", days, hours, mins)
-	}
-	if hours > 0 {
-		return fmt.Sprintf("%dh%dm", hours, mins)
-	}
-	return fmt.Sprintf("%dm%ds", mins, int(d.Seconds())%60)
-}
-
-// ── BGP Peers config (separate from sessions) ─────────────────────────────────
-
-// BGPPeer is a configured BGP peer from /routing/bgp/connection.
-// Sessions are ephemeral; peers are config. Together they give the full picture.
-type BGPPeer struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	RemoteAddress string `json:"remote_address"`
-	RemoteAS     uint32 `json:"remote_as"`
-	LocalAddress string `json:"local_address"`
-	LocalAS      uint32 `json:"local_as"`
-	Disabled     bool   `json:"disabled"`
-	Comment      string `json:"comment"`
-}
-
-// ListBGPPeers returns configured BGP connections from /routing/bgp/connection.
-func (c *Client) ListBGPPeers(ctx context.Context) ([]BGPPeer, error) {
-	reply, err := c.run(ctx, "/routing/bgp/connection/print",
-		"=.proplist=.id,name,remote.address,remote.as,local.address,local.role,disabled,comment",
-	)
-	if err != nil {
-		return nil, fmt.Errorf("ListBGPPeers: %w", err)
-	}
-
-	peers := make([]BGPPeer, 0, len(reply.Re))
-	for _, s := range reply.Re {
-		p := BGPPeer{
-			ID:            s.Map[".id"],
-			Name:          s.Map["name"],
-			RemoteAddress: s.Map["remote.address"],
-			LocalAddress:  s.Map["local.address"],
-			Disabled:      parseBool(s.Map["disabled"]),
-			Comment:       s.Map["comment"],
+// MatchingRules returns filter rules mentioning a given ASN.
+func MatchingRules(rules []FilterRule, asn uint32) []FilterRule {
+	asnStr := fmt.Sprintf("%d", asn)
+	var matched []FilterRule
+	for _, r := range rules {
+		if strings.Contains(r.Rule, asnStr) || strings.Contains(r.Comment, asnStr) {
+			matched = append(matched, r)
 		}
-		if ra, err := strconv.ParseUint(s.Map["remote.as"], 10, 32); err == nil {
-			p.RemoteAS = uint32(ra)
-		}
-		if la, err := strconv.ParseUint(s.Map["local.as"], 10, 32); err == nil {
-			p.LocalAS = uint32(la)
-		}
-		peers = append(peers, p)
 	}
-	return peers, nil
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-// StateColor returns a CSS variable name for a session state (for dashboard use).
-func StateColor(s BGPSessionState) string {
-	switch s {
-	case StateEstablished:
-		return "var(--green)"
-	case StateActive, StateConnect, StateOpenSent, StateOpenConfirm:
-		return "var(--yellow)"
-	default:
-		return "var(--red)"
-	}
-}
-
-// String implements Stringer for BGPSessionState.
-func (s BGPSessionState) String() string {
-	return strings.ToUpper(string(s))
+	return matched
 }

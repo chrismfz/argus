@@ -37,15 +37,14 @@ type FrontendConfig struct {
         // Exporters string // Removed, as debug flag will handle stdout
 }
 
-type RouterOSConfig struct {
-    Enabled        bool   `yaml:"enabled"`
-    Address        string `yaml:"address"`         // 1.2.3.4:8728 or 1.2.3.4:8729
-    Username       string `yaml:"username"`
-    Password       string `yaml:"password"`
-    UseTLS         bool   `yaml:"use_tls"`
-    InsecureTLS    bool   `yaml:"insecure_tls"`
-    TimeoutSeconds int    `yaml:"timeout_seconds"`
-}
+  type RouterOSConfig struct {
+      Enabled        bool   `yaml:"enabled"`
+      Address        string `yaml:"address"`        // "http://84.54.49.1" or "https://..."
+      Username       string `yaml:"username"`
+      Password       string `yaml:"password"`
+      InsecureTLS    bool   `yaml:"insecure_tls"`   // accept self-signed certs
+      TimeoutSeconds int    `yaml:"timeout_seconds"` // default 10
+  }
 
 type PathfinderConfig struct {
     CommunityMap  map[string]string `yaml:"community_map"`

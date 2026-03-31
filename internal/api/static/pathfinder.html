@@ -31,8 +31,6 @@ nav a { color: var(--muted); text-decoration: none; padding: 10px 14px; font-siz
 nav a:hover { color: var(--text) }
 nav a.active { color: var(--accent); border-color: var(--accent) }
 .content { max-width: 1100px; margin: 0 auto; padding: 24px 20px }
-
-/* search bar */
 .search-row { display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap }
 .search-row input { flex: 1; min-width: 220px; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 8px 12px; font-size: 14px; outline: none }
 .search-row input:focus { border-color: var(--accent) }
@@ -41,8 +39,6 @@ nav a.active { color: var(--accent); border-color: var(--accent) }
 .btn:hover { opacity: .85 }
 .btn.secondary { background: var(--bg3); color: var(--text); border: 1px solid var(--border) }
 .btn.sm { padding: 4px 10px; font-size: 12px }
-
-/* result cards */
 .section-title { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 12px }
 .prefix-card { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 12px; overflow: hidden }
 .prefix-header { padding: 10px 14px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); background: var(--bg3) }
@@ -56,26 +52,19 @@ nav a.active { color: var(--accent); border-color: var(--accent) }
 .path-val { font-size: 13px; color: var(--text) }
 .path-val.mono { font-family: monospace }
 .path-val.upstream { color: var(--teal); font-weight: 600 }
-.path-val.unknown-upstream { color: var(--muted) }
-
-/* AS path pill row */
 .asp-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center }
 .asp-asn { background: var(--bg3); border: 1px solid var(--border); border-radius: 4px; padding: 2px 8px; font-family: monospace; font-size: 12px; color: var(--text) }
 .asp-asn.origin { border-color: var(--accent); color: var(--accent) }
 .asp-arr { color: var(--muted); font-size: 12px }
-
-/* community tag */
 .comm-tag { background: var(--bg3); border: 1px solid var(--border); border-radius: 4px; padding: 1px 7px; font-size: 11px; font-family: monospace; color: var(--purple) }
-
-/* empty / error */
+.ros-row { display: flex; gap: 16px; align-items: center; padding: 5px 0; font-size: 12px; border-bottom: 1px solid var(--border) }
+.ros-section { border-top: 1px solid var(--border); padding: 10px 14px; background: rgba(148,226,213,.04) }
+.ros-section-title { font-size: 11px; color: var(--teal); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px }
+.dist-badge { margin-left: auto; background: var(--bg3); border: 1px solid var(--border); border-radius: 4px; padding: 1px 8px; font-family: monospace }
 .notice { padding: 16px 18px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--muted); font-size: 13px }
 .notice.err { border-color: var(--red); color: var(--red) }
-
-/* spinner */
 .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-right: 6px }
 @keyframes spin { to { transform: rotate(360deg) } }
-
-/* tip box */
 .tip { background: rgba(137,180,250,.07); border: 1px solid rgba(137,180,250,.2); border-radius: 8px; padding: 12px 16px; font-size: 12px; color: var(--muted); line-height: 1.6; margin-bottom: 20px }
 .tip strong { color: var(--accent) }
 </style>
@@ -103,7 +92,7 @@ nav a.active { color: var(--accent); border-color: var(--accent) }
     (e.g. <code>62.103.0.0/16</code>) for a single-prefix deep-dive. Results are live — no caching.
   </div>
 
-  <!-- Search bar -->
+  <!-- ── Search bar ── -->
   <div class="search-row">
     <select x-model="mode">
       <option value="asn">ASN</option>
@@ -121,12 +110,16 @@ nav a.active { color: var(--accent); border-color: var(--accent) }
     <button class="btn secondary" x-show="result || error" @click="clear()">clear</button>
   </div>
 
-  <!-- Error -->
+  <!-- ── Error ── -->
   <div class="notice err" x-show="error" x-text="error"></div>
 
-  <!-- ASN result -->
+  <!-- ══════════════════════════════════════════════════════════
+       ASN MODE
+       ══════════════════════════════════════════════════════════ -->
   <template x-if="result && mode === 'asn'">
     <div>
+
+      <!-- header row -->
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
         <div class="section-title" style="margin-bottom:0">
           AS<span x-text="result.asn"></span>
@@ -135,22 +128,26 @@ nav a.active { color: var(--accent); border-color: var(--accent) }
         <span class="badge best" x-text="result.prefixes.length + ' prefixes in RIB'"></span>
       </div>
 
+      <!-- empty state -->
       <template x-if="result.prefixes.length === 0">
-        <div class="notice">No prefixes found for this ASN in the current RIB. The BGP session may still be loading, or this ASN originates no routes.</div>
+        <div class="notice">No prefixes found for this ASN in the current RIB.</div>
       </template>
 
+      <!-- ── one card per prefix ── -->
       <template x-for="pp in result.prefixes" :key="pp.prefix">
         <div class="prefix-card">
+
+          <!-- card header -->
           <div class="prefix-header">
             <span class="prefix-label" x-text="pp.prefix"></span>
             <span class="badge best" x-show="pp.best_path">best path</span>
-            <span class="badge alt" x-show="pp.alt_paths && pp.alt_paths.length" x-text="pp.alt_paths.length + ' alt'"></span>
+            <span class="badge alt" x-show="pp.alt_paths?.length" x-text="pp.alt_paths.length + ' alt'"></span>
             <span style="margin-left:auto">
               <button class="btn secondary sm" @click="switchToPrefix(pp.prefix)">inspect prefix →</button>
             </span>
           </div>
 
-          <!-- best path -->
+          <!-- best path details -->
           <template x-if="pp.best_path">
             <div>
               <template x-if="pp.best_path.upstream">
@@ -195,7 +192,7 @@ nav a.active { color: var(--accent); border-color: var(--accent) }
             </div>
           </template>
 
-          <!-- alt paths -->
+          <!-- GoBGP alt paths (ADD-PATH) -->
           <template x-if="pp.alt_paths && pp.alt_paths.length">
             <template x-for="(ap, ai) in pp.alt_paths" :key="ai">
               <div style="border-top:1px dashed var(--border);opacity:.7">
@@ -210,35 +207,65 @@ nav a.active { color: var(--accent); border-color: var(--accent) }
                         </span>
                       </template>
                     </div>
-                    <div style="margin-top:4px;font-size:12px;color:var(--muted)" x-text="'next-hop: ' + (ap.next_hop || '—') + (ap.upstream ? '  ·  via ' + ap.upstream : '')"></div>
+                    <div style="margin-top:4px;font-size:12px;color:var(--muted)"
+                         x-text="'next-hop: ' + (ap.next_hop || '—') + (ap.upstream ? '  ·  via ' + ap.upstream : '')"></div>
                   </div>
                 </div>
               </div>
             </template>
           </template>
 
-        </div>
-      </template>
-    </div>
-  </template>
+          <!-- RouterOS all paths (distance 20 vs 30 etc.) -->
+          <template x-if="pp.all_paths && pp.all_paths.length">
+            <div class="ros-section">
+              <div class="ros-section-title">router paths — all (from RouterOS)</div>
+              <template x-for="(rp, ri) in pp.all_paths" :key="ri">
+                <div class="ros-row" :style="rp.active ? '' : 'opacity:.5'">
+                  <span :style="rp.active ? 'color:var(--green);font-weight:600' : 'color:var(--muted)'"
+                        x-text="rp.active ? '▶ active' : '○ inactive'"></span>
+                  <span style="font-family:monospace;color:var(--text)" x-text="rp.gateway"></span>
+                  <span style="color:var(--teal)" x-show="rp.upstream" x-text="rp.upstream"></span>
+                  <span style="color:var(--muted)" x-show="rp.interface && !rp.upstream" x-text="rp.interface"></span>
+                  <span class="dist-badge" x-text="'distance ' + rp.distance"></span>
+                </div>
+              </template>
+            </div>
+          </template>
 
-  <!-- Prefix result -->
+        </div><!-- end .prefix-card -->
+      </template><!-- end x-for prefixes -->
+
+    </div>
+  </template><!-- end ASN mode -->
+
+
+  <!-- ══════════════════════════════════════════════════════════
+       PREFIX MODE
+       ══════════════════════════════════════════════════════════ -->
   <template x-if="result && mode === 'prefix'">
     <div>
-      <div class="section-title" style="margin-bottom:16px">prefix <span style="color:var(--accent);font-family:monospace" x-text="result.prefix"></span></div>
 
+      <div class="section-title" style="margin-bottom:16px">
+        prefix <span style="color:var(--accent);font-family:monospace" x-text="result.prefix"></span>
+      </div>
+
+      <!-- not found -->
       <template x-if="!result.best_path">
         <div class="notice">Prefix not found in the current RIB. It may not be advertised, or the BGP session is still loading.</div>
       </template>
 
+      <!-- found -->
       <template x-if="result.best_path">
         <div class="prefix-card">
+
+          <!-- card header -->
           <div class="prefix-header">
             <span class="prefix-label" x-text="result.prefix"></span>
             <span class="badge best">best path</span>
-            <span class="badge alt" x-show="result.alt_paths && result.alt_paths.length" x-text="result.alt_paths.length + ' alt'"></span>
+            <span class="badge alt" x-show="result.alt_paths?.length" x-text="result.alt_paths.length + ' alt'"></span>
           </div>
 
+          <!-- best path details -->
           <template x-if="result.best_path.upstream">
             <div class="path-row">
               <div class="path-key">upstream</div>
@@ -288,7 +315,7 @@ nav a.active { color: var(--accent); border-color: var(--accent) }
             </div>
           </template>
 
-          <!-- alt paths -->
+          <!-- GoBGP alt paths (ADD-PATH) -->
           <template x-if="result.alt_paths && result.alt_paths.length">
             <template x-for="(ap, ai) in result.alt_paths" :key="ai">
               <div style="border-top:1px dashed var(--border);opacity:.7">
@@ -312,12 +339,30 @@ nav a.active { color: var(--accent); border-color: var(--accent) }
             </template>
           </template>
 
-        </div>
-      </template>
-    </div>
-  </template>
+          <!-- RouterOS all paths (distance 20 vs 30 etc.) -->
+          <template x-if="result.all_paths && result.all_paths.length">
+            <div class="ros-section">
+              <div class="ros-section-title">router paths — all (from RouterOS)</div>
+              <template x-for="(rp, ri) in result.all_paths" :key="ri">
+                <div class="ros-row" :style="rp.active ? '' : 'opacity:.5'">
+                  <span :style="rp.active ? 'color:var(--green);font-weight:600' : 'color:var(--muted)'"
+                        x-text="rp.active ? '▶ active' : '○ inactive'"></span>
+                  <span style="font-family:monospace;color:var(--text)" x-text="rp.gateway"></span>
+                  <span style="color:var(--teal)" x-show="rp.upstream" x-text="rp.upstream"></span>
+                  <span style="color:var(--muted)" x-show="rp.interface && !rp.upstream" x-text="rp.interface"></span>
+                  <span class="dist-badge" x-text="'distance ' + rp.distance"></span>
+                </div>
+              </template>
+            </div>
+          </template>
 
-</div>
+        </div><!-- end .prefix-card -->
+      </template><!-- end x-if best_path -->
+
+    </div>
+  </template><!-- end prefix mode -->
+
+</div><!-- end .content -->
 
 <script>
 function pf() { return {
@@ -328,7 +373,6 @@ function pf() { return {
   error:   null,
 
   init() {
-    // Pre-fill from URL query params: /pathfinder?asn=8280  or  ?prefix=62.103.0.0/16
     const p = new URLSearchParams(location.search)
     if (p.has('asn'))    { this.mode = 'asn';    this.query = p.get('asn');    this.search() }
     if (p.has('prefix')) { this.mode = 'prefix'; this.query = p.get('prefix'); this.search() }
@@ -339,12 +383,9 @@ function pf() { return {
     if (!q) return
     this.loading = true; this.result = null; this.error = null
     try {
-      let url
-      if (this.mode === 'asn') {
-        url = `/pathfinder/asn?asn=${encodeURIComponent(q)}`
-      } else {
-        url = `/pathfinder/prefix?prefix=${encodeURIComponent(q)}`
-      }
+      const url = this.mode === 'asn'
+        ? `/pathfinder/asn?asn=${encodeURIComponent(q)}`
+        : `/pathfinder/prefix?prefix=${encodeURIComponent(q)}`
       const r = await fetch(url)
       const d = await r.json()
       if (!r.ok) { this.error = d.error || ('HTTP ' + r.status); return }

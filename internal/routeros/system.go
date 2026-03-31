@@ -2,7 +2,7 @@ package routeros
 
 import (
 	"context"
-	"fmt"
+//	"fmt"
 	"strconv"
 	"strings"
 )

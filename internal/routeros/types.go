@@ -44,6 +44,20 @@ type BGPRouteAttr struct {
 	Contribution string `json:"contribution"`  // "active", "candidate", "best-candidate"
 }
 
+// ── BGP Peers ─────────────────────────────────────────────────────────────────
+
+// BGPPeer is a configured BGP connection from /rest/routing/bgp/connection.
+type BGPPeer struct {
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	RemoteAddress string `json:"remote_address"`
+	RemoteAS      uint32 `json:"remote_as"`
+	LocalAddress  string `json:"local_address"`
+	LocalAS       uint32 `json:"local_as"`
+	Disabled      bool   `json:"disabled"`
+	Comment       string `json:"comment"`
+}
+
 // ── BGP Sessions ──────────────────────────────────────────────────────────────
 
 type BGPSessionState string

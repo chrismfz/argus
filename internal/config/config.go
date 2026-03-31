@@ -37,6 +37,15 @@ type FrontendConfig struct {
         // Exporters string // Removed, as debug flag will handle stdout
 }
 
+type RouterOSConfig struct {
+    Enabled        bool   `yaml:"enabled"`
+    Address        string `yaml:"address"`         // 1.2.3.4:8728 or 1.2.3.4:8729
+    Username       string `yaml:"username"`
+    Password       string `yaml:"password"`
+    UseTLS         bool   `yaml:"use_tls"`
+    InsecureTLS    bool   `yaml:"insecure_tls"`
+    TimeoutSeconds int    `yaml:"timeout_seconds"`
+}
 
 // ✅ Το κύριο Config struct
 type Config struct {
@@ -45,7 +54,7 @@ type Config struct {
     Enrich string `yaml:"enrich"`
 
     CFM CFMConfig `yaml:"cfm"`
-
+RouterOS RouterOSConfig `yaml:"routeros"`
 
 MaxMind MaxMindConfig `yaml:"maxmind"`
 GeoIP struct {

@@ -141,7 +141,7 @@ nav a.active { color: var(--accent); border-color: var(--accent) }
           <div class="prefix-header">
             <span class="prefix-label" x-text="pp.prefix"></span>
             <span class="badge best" x-show="pp.best_path">best path</span>
-            <span class="badge alt" x-show="pp.alt_paths?.length" x-text="pp.alt_paths.length + ' alt'"></span>
+            <span class="badge alt" x-show="pp.alt_paths?.length" x-text="(pp.alt_paths?.length ?? 0) + ' alt'"></span>
             <span style="margin-left:auto">
               <button class="btn secondary sm" @click="switchToPrefix(pp.prefix)">inspect prefix →</button>
             </span>
@@ -262,7 +262,7 @@ nav a.active { color: var(--accent); border-color: var(--accent) }
           <div class="prefix-header">
             <span class="prefix-label" x-text="result.prefix"></span>
             <span class="badge best">best path</span>
-            <span class="badge alt" x-show="result.alt_paths?.length" x-text="result.alt_paths.length + ' alt'"></span>
+            <span class="badge alt" x-show="result.alt_paths?.length" x-text="(result.alt_paths?.length ?? 0) + ' alt'"></span>
           </div>
 
           <!-- best path details -->

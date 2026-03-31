@@ -45,17 +45,7 @@ func handlePathfinderPrefix(w http.ResponseWriter, r *http.Request) {
 		rosRoutes, err := PathfinderROSClient.ListDetailedRoutesByPrefix(ctx, prefix)
 		if err == nil && len(rosRoutes) > 0 {
 			summaries := rosRoutesToSummary(rosRoutes)
-			// Ping unique next-hops concurrently
-			pingResults := pingUniqueGateways(ctx, summaries)
-			for i := range summaries {
-				if pr, ok := pingResults[summaries[i].Gateway]; ok {
-					summaries[i].RTTms = pr.AvgRTTms
-					summaries[i].RTTLoss = pr.LossPct
-					if pr.Error != "" {
-						summaries[i].RTTError = pr.Error
-					}
-				}
-			}
+
 			result.AllPaths = summaries
 		}
 	}
@@ -139,4 +129,21 @@ func pingUniqueGateways(ctx context.Context, summaries []pathfinder.RouteSummary
 		results[s.Gateway] = PathfinderROSClient.PingHost(ctx, s.Gateway, 3)
 	}
 	return results
+}
+
+// GET /pathfinder/ping?gateway=78.108.36.244
+func handlePathfinderPing(w http.ResponseWriter, r *http.Request) {
+	gw := r.URL.Query().Get("gateway")
+	if gw == "" {
+		jsonErr(w, http.StatusBadRequest, "missing ?gateway=")
+		return
+	}
+	if PathfinderROSClient == nil {
+		jsonErr(w, http.StatusServiceUnavailable, "RouterOS not connected")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+	result := PathfinderROSClient.PingHost(ctx, gw, 3)
+	jsonOK(w, result)
 }

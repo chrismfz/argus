@@ -491,10 +491,31 @@ function pf() { return {
       const d = await r.json()
       if (!r.ok) { this.error = d.error || ('HTTP ' + r.status); return }
       this.result = d
+      // Kick off async RTT loading for prefix mode — routes render immediately
+      if (this.mode === 'prefix' && d.all_paths?.length) {
+        this.$nextTick(() => this.loadRTT(d.all_paths))
+      }
     } catch(e) {
       this.error = e.message
     } finally {
       this.loading = false
+    }
+  },
+
+  async loadRTT(paths) {
+    const gateways = [...new Set(paths.map(p => p.gateway).filter(Boolean))]
+    for (const gw of gateways) {
+      fetch(`/pathfinder/ping?gateway=${encodeURIComponent(gw)}`)
+        .then(r => r.json())
+        .then(pr => {
+          // Update matching paths in-place — Alpine reactivity picks this up
+          this.result.all_paths = this.result.all_paths.map(p =>
+            p.gateway === gw
+              ? { ...p, rtt_ms: pr.avg_rtt_ms, rtt_loss_pct: pr.loss_pct, rtt_error: pr.error }
+              : p
+          )
+        })
+        .catch(() => {})
     }
   },
 

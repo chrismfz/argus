@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
-	"sync"
+//	"sync"
 	"time"
 
 	"argus/internal/pathfinder"
@@ -39,7 +39,7 @@ func handlePathfinderPrefix(w http.ResponseWriter, r *http.Request) {
 
 	// 2. RouterOS /routing/route — all paths with full BGP attrs + ping RTT
 	if PathfinderROSClient != nil {
-		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 		defer cancel()
 
 		rosRoutes, err := PathfinderROSClient.ListDetailedRoutesByPrefix(ctx, prefix)
@@ -125,37 +125,18 @@ func pingUniqueGateways(ctx context.Context, summaries []pathfinder.RouteSummary
 	if PathfinderROSClient == nil {
 		return nil
 	}
-
-	// Collect unique gateways
 	seen := make(map[string]struct{})
-	var gateways []string
+	results := make(map[string]routeros.PingResult)
 	for _, s := range summaries {
 		if s.Gateway == "" {
 			continue
 		}
-		if _, ok := seen[s.Gateway]; !ok {
-			seen[s.Gateway] = struct{}{}
-			gateways = append(gateways, s.Gateway)
+		if _, ok := seen[s.Gateway]; ok {
+			continue
 		}
+		seen[s.Gateway] = struct{}{}
+		// Sequential — connection is not concurrent-safe
+		results[s.Gateway] = PathfinderROSClient.PingHost(ctx, s.Gateway, 3)
 	}
-	if len(gateways) == 0 {
-		return nil
-	}
-
-	results := make(map[string]routeros.PingResult, len(gateways))
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-
-	for _, gw := range gateways {
-		wg.Add(1)
-		go func(host string) {
-			defer wg.Done()
-			pr := PathfinderROSClient.PingHost(ctx, host, 3)
-			mu.Lock()
-			results[host] = pr
-			mu.Unlock()
-		}(gw)
-	}
-	wg.Wait()
 	return results
 }

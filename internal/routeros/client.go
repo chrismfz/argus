@@ -33,9 +33,10 @@ func (c Config) timeout() time.Duration {
 // Client wraps the go-routeros connection with automatic reconnect.
 // All public methods are safe for concurrent use.
 type Client struct {
-	cfg  Config
-	mu   sync.Mutex
-	conn *ros.Client
+	cfg    Config
+	mu     sync.Mutex // guards conn connect/reconnect
+	callMu sync.Mutex // serialises all API calls (go-routeros is not concurrent-safe)
+	conn   *ros.Client
 }
 
 // NewClient creates a Client. Call Connect() before using query methods,
@@ -98,6 +99,9 @@ func (c *Client) Close() {
 // run executes a RouterOS API command and returns the raw reply sentences.
 // On a closed-connection error it reconnects once and retries.
 func (c *Client) run(ctx context.Context, command string, args ...string) (*ros.Reply, error) {
+	c.callMu.Lock()
+	defer c.callMu.Unlock()
+
 	words := append([]string{command}, args...)
 
 	c.mu.Lock()

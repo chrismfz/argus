@@ -99,6 +99,14 @@ nav a.active { color: var(--accent); border-color: var(--accent) }
 /* hops badge */
 .hops-badge { padding: 2px 8px; border-radius: 4px; font-size: 11px; font-family: monospace; background: var(--bg3); border: 1px solid var(--border); color: var(--text) }
 
+/* Traceroute */
+.trace-table { width:100%; border-collapse:collapse; margin-top:8px; font-size:11px }
+.trace-table td { padding:3px 8px; border-bottom:1px solid var(--border); font-family:monospace }
+.trace-table td:first-child { color:var(--muted); width:32px; text-align:right }
+.trace-table td:nth-child(2) { color:var(--text) }
+.trace-table td:last-child { text-align:right; color:var(--teal) }
+.trace-table tr:last-child td { border-bottom:none; color:var(--accent) }
+
 /* notices */
 .notice { padding: 16px 18px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--muted); font-size: 13px }
 .notice.err { border-color: var(--red); color: var(--red) }
@@ -451,6 +459,34 @@ nav a.active { color: var(--accent); border-color: var(--accent) }
                     </div>
                   </template>
 
+<!-- Traceroute — on-demand button -->
+                  <div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    <button class="btn secondary sm"
+                            x-show="!rp.tracing && !rp.trace_hops"
+                            @click="traceRoute(rp)"
+                            style="font-size:11px;padding:2px 10px">
+                      traceroute →
+                    </button>
+                    <span x-show="rp.tracing" style="font-size:11px;color:var(--muted)">
+                      <span class="spinner"></span>tracing…
+                    </span>
+                    <span x-show="rp.trace_error" style="font-size:11px;color:var(--red)" x-text="rp.trace_error"></span>
+                  </div>
+
+                  <!-- Traceroute results -->
+                  <template x-if="rp.trace_hops && rp.trace_hops.length">
+                    <table class="trace-table">
+                      <template x-for="(h, hi) in rp.trace_hops" :key="hi">
+                        <tr>
+                          <td x-text="h.hop"></td>
+                          <td x-text="h.address || '*'"></td>
+                          <td x-text="h.avg_ms > 0 ? h.avg_ms.toFixed(1)+' ms' : 'timeout'"></td>
+                        </tr>
+                      </template>
+                    </table>
+                  </template>
+
+
                 </div><!-- end .ros-path -->
               </template><!-- end x-for all_paths -->
 
@@ -525,7 +561,39 @@ function pf() { return {
     this.search()
   },
 
-  clear() { this.result = null; this.error = null; this.query = '' }
+clear() { this.result = null; this.error = null; this.query = '' },
+
+  prefixToProbeIP(prefix) {
+    if (!prefix) return null
+    const base = prefix.split('/')[0].split('.')
+    base[3] = String(parseInt(base[3]) + 1)
+    return base.join('.')
+  },
+
+  async traceRoute(rp) {
+    const dest = this.prefixToProbeIP(this.result?.prefix ?? this.query)
+    if (!dest) return
+    rp.tracing = true
+    rp.trace_hops = null
+    rp.trace_error = null
+    try {
+      const url = `/pathfinder/traceroute?address=${encodeURIComponent(dest)}&src=${encodeURIComponent(rp.gateway)}`
+      const r = await fetch(url)
+      const d = await r.json()
+      if (!r.ok) { rp.trace_error = d.error || ('HTTP ' + r.status); return }
+      rp.trace_hops = d.hops ?? []
+      this.result.all_paths = this.result.all_paths.map(p =>
+        p.gateway === rp.gateway && p.session_name === rp.session_name
+          ? { ...p, trace_hops: d.hops ?? [], tracing: false, trace_error: null }
+          : p
+      )
+    } catch(e) {
+      rp.trace_error = e.message
+    } finally {
+      rp.tracing = false
+    }
+  }
+
 }}
 </script>
 </body>

@@ -193,13 +193,15 @@ type TracerouteHop struct {
     Status  string  `json:"status,omitempty"` // MPLS labels etc.
 }
 
+
 func (c *Client) Traceroute(ctx context.Context, address, srcAddress string) ([]TracerouteHop, error) {
     body := map[string]interface{}{
         "address":  address,
-        "count":    "1",
+        "count":    "3",     // 3 probes per hop
         "max-hops": "15",
         "protocol": "icmp",
         "use-dns":  "no",
+        // no duration — let count control it
     }
     if srcAddress != "" {
         body["src-address"] = srcAddress
@@ -207,21 +209,47 @@ func (c *Client) Traceroute(ctx context.Context, address, srcAddress string) ([]
 
     var raw []map[string]string
     if err := c.postSlow(ctx, "tool/traceroute", body, &raw); err != nil {
-        return nil, err
+        return nil, fmt.Errorf("Traceroute: %w", err)
     }
 
-    hops := make([]TracerouteHop, 0, len(raw))
-    for i, m := range raw {
-        h := TracerouteHop{
-            Hop:     i + 1,
-            Address: m["address"],
-            Loss:    parseIntField(m["loss"]),
-            Status:  m["status"],
+    // Deduplicate by section — keep best entry per hop (one with address + RTT)
+    bySection := make(map[int]*TracerouteHop)
+    for _, m := range raw {
+        section := parseIntField(m[".section"])
+        addr := strings.TrimSpace(m["address"])
+        avgStr := strings.TrimSpace(m["avg"])
+
+        // Skip empty entries
+        if addr == "" && avgStr == "" {
+            continue
         }
-        h.AvgMs, _ = strconv.ParseFloat(m["avg"], 64)
-        h.BestMs, _ = strconv.ParseFloat(m["best"], 64)
-        h.WorstMs, _ = strconv.ParseFloat(m["worst"], 64)
-        hops = append(hops, h)
+
+        hop, exists := bySection[section]
+        if !exists {
+            hop = &TracerouteHop{Hop: section + 1}
+            bySection[section] = hop
+        }
+
+        // Prefer entries that have both address and RTT
+        if addr != "" && hop.Address == "" {
+            hop.Address = addr
+        }
+        if avgStr != "" && hop.AvgMs == 0 {
+            hop.AvgMs, _ = strconv.ParseFloat(avgStr, 64)
+            hop.BestMs, _ = strconv.ParseFloat(strings.TrimSpace(m["best"]), 64)
+            hop.WorstMs, _ = strconv.ParseFloat(strings.TrimSpace(m["worst"]), 64)
+            hop.Loss = parseIntField(m["loss"])
+            hop.Status = strings.TrimSpace(m["status"])
+        }
+    }
+
+    // Convert map to sorted slice
+    hops := make([]TracerouteHop, 0, len(bySection))
+    for i := 0; i < 15; i++ {
+        if h, ok := bySection[i]; ok {
+            hops = append(hops, *h)
+        }
     }
     return hops, nil
 }
+

@@ -57,6 +57,19 @@ type RIBReader interface {
 	Snapshot() map[string]PrefixEntry
 }
 
+// UpstreamLabeler resolves a human-readable upstream name from BGP path attributes.
+// Satisfied by *pathfinder.UpstreamMap without any changes to that package.
+//
+// Declared here so rib.Watcher can accept an upstream resolver without importing
+// internal/pathfinder, which would create a circular dependency
+// (pathfinder → rib → pathfinder).
+//
+// Pass nil if upstream labeling is not needed — all consumers must degrade
+// gracefully (Upstream field stays empty string).
+type UpstreamLabeler interface {
+	Resolve(communities []string, asPath []uint32, nextHop string) string
+}
+
 // GeoLookup is satisfied by *enrich.GeoIP (GetASNName method already exists).
 //
 // Declared here so bgpmon and routewatch can accept a geo enricher without

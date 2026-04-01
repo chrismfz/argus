@@ -511,7 +511,7 @@ function pf() { return {
           // Update matching paths in-place — Alpine reactivity picks this up
           this.result.all_paths = this.result.all_paths.map(p =>
             p.gateway === gw
-              ? { ...p, rtt_ms: pr.avg_rtt_ms, rtt_loss_pct: pr.loss_pct, rtt_error: pr.error }
+		? { ...p, rtt_ms: pr.avg_rtt_ms, rtt_loss: pr.loss_pct, rtt_error: pr.error }
               : p
           )
         })

@@ -198,9 +198,10 @@ func (c *Client) Traceroute(ctx context.Context, address, srcAddress string) ([]
     body := map[string]interface{}{
         "address":  address,
         "count":    "3",     // 3 probes per hop
-        "max-hops": "15",
+        "max-hops": "10",
         "protocol": "icmp",
         "use-dns":  "no",
+        "timeout":  "500ms",  // don't wait more than 500ms per hop
         // no duration — let count control it
     }
     if srcAddress != "" {

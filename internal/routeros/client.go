@@ -128,7 +128,7 @@ func (c *Client) post(ctx context.Context, path string, body interface{}, dest i
 // like traceroute that can take 20-30s to complete.
 func (c *Client) postSlow(ctx context.Context, path string, body interface{}, dest interface{}) error {
     slowClient := &http.Client{
-        Timeout:   35 * time.Second,
+        Timeout:   25 * time.Second,
         Transport: c.http.Transport,
     }
 

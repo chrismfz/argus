@@ -212,43 +212,33 @@ func (c *Client) Traceroute(ctx context.Context, address, srcAddress string) ([]
         return nil, fmt.Errorf("Traceroute: %w", err)
     }
 
-    // Deduplicate by section — keep best entry per hop (one with address + RTT)
-    bySection := make(map[int]*TracerouteHop)
+// Each unique IP appears once — take first occurrence of each address in order.
+    // RouterOS REST returns multiple rows per hop (one per probe), all with the
+    // same .section value, so section-based grouping doesn't give us hop numbers.
+    seen := make(map[string]bool)
+    hops := make([]TracerouteHop, 0)
+    hopNum := 1
     for _, m := range raw {
-        section := parseIntField(m[".section"])
         addr := strings.TrimSpace(m["address"])
         avgStr := strings.TrimSpace(m["avg"])
-
-        // Skip empty entries
-        if addr == "" && avgStr == "" {
+        if addr == "" || avgStr == "" {
             continue
         }
-
-        hop, exists := bySection[section]
-        if !exists {
-            hop = &TracerouteHop{Hop: section + 1}
-            bySection[section] = hop
+        if seen[addr] {
+            continue
         }
-
-        // Prefer entries that have both address and RTT
-        if addr != "" && hop.Address == "" {
-            hop.Address = addr
+        seen[addr] = true
+        h := TracerouteHop{
+            Hop:     hopNum,
+            Address: addr,
+            Loss:    parseIntField(m["loss"]),
+            Status:  strings.TrimSpace(m["status"]),
         }
-        if avgStr != "" && hop.AvgMs == 0 {
-            hop.AvgMs, _ = strconv.ParseFloat(avgStr, 64)
-            hop.BestMs, _ = strconv.ParseFloat(strings.TrimSpace(m["best"]), 64)
-            hop.WorstMs, _ = strconv.ParseFloat(strings.TrimSpace(m["worst"]), 64)
-            hop.Loss = parseIntField(m["loss"])
-            hop.Status = strings.TrimSpace(m["status"])
-        }
-    }
-
-    // Convert map to sorted slice
-    hops := make([]TracerouteHop, 0, len(bySection))
-    for i := 0; i < 15; i++ {
-        if h, ok := bySection[i]; ok {
-            hops = append(hops, *h)
-        }
+        h.AvgMs, _ = strconv.ParseFloat(avgStr, 64)
+        h.BestMs, _ = strconv.ParseFloat(strings.TrimSpace(m["best"]), 64)
+        h.WorstMs, _ = strconv.ParseFloat(strings.TrimSpace(m["worst"]), 64)
+        hops = append(hops, h)
+        hopNum++
     }
     return hops, nil
 }

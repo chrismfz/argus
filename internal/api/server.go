@@ -207,6 +207,7 @@ func Start() {
   mainMux.HandleFunc("/pathfinder/prefix", WithMainIPOnly(handlePathfinderPrefix))
 
 mainMux.HandleFunc("/pathfinder/ping", WithMainIPOnly(handlePathfinderPing))
+mainMux.HandleFunc("/pathfinder/traceroute", WithMainIPOnly(handlePathfinderTraceroute))
 
   // ── RouterOS / BGP session monitoring ────────────────────────────────
   mainMux.HandleFunc("/routeros/bgp/sessions", WithMainIPOnly(handleROSBGPSessions))

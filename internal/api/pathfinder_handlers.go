@@ -122,3 +122,29 @@ func handlePathfinderPing(w http.ResponseWriter, r *http.Request) {
 	result := PathfinderROSClient.PingHost(ctx, gw, 3)
 	jsonOK(w, result)
 }
+
+// GET /pathfinder/traceroute?address=212.251.91.1&src=78.108.36.244
+func handlePathfinderTraceroute(w http.ResponseWriter, r *http.Request) {
+    address := r.URL.Query().Get("address")
+    src     := r.URL.Query().Get("src")
+    if address == "" {
+        jsonErr(w, http.StatusBadRequest, "missing ?address=")
+        return
+    }
+    if PathfinderROSClient == nil {
+        jsonErr(w, http.StatusServiceUnavailable, "RouterOS not connected")
+        return
+    }
+    ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+    defer cancel()
+    hops, err := PathfinderROSClient.Traceroute(ctx, address, src)
+    if err != nil {
+        jsonErr(w, http.StatusInternalServerError, err.Error())
+        return
+    }
+    jsonOK(w, map[string]interface{}{
+        "address": address,
+        "src":     src,
+        "hops":    hops,
+    })
+}

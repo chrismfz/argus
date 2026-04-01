@@ -179,3 +179,49 @@ func parseIntField(s string) int {
 	v, _ := strconv.Atoi(strings.TrimSpace(s))
 	return v
 }
+
+
+
+// TracerouteHop is one hop from /rest/tool/traceroute.
+type TracerouteHop struct {
+    Hop     int     `json:"hop"`
+    Address string  `json:"address"`
+    AvgMs   float64 `json:"avg_ms"`
+    BestMs  float64 `json:"best_ms"`
+    WorstMs float64 `json:"worst_ms"`
+    Loss    int     `json:"loss"`
+    Status  string  `json:"status,omitempty"` // MPLS labels etc.
+}
+
+func (c *Client) Traceroute(ctx context.Context, address, srcAddress string) ([]TracerouteHop, error) {
+    body := map[string]interface{}{
+        "address":  address,
+        "count":    "1",
+        "max-hops": "15",
+        "protocol": "icmp",
+        "use-dns":  "no",
+    }
+    if srcAddress != "" {
+        body["src-address"] = srcAddress
+    }
+
+    var raw []map[string]string
+    if err := c.post(ctx, "tool/traceroute", body, &raw); err != nil {
+        return nil, err
+    }
+
+    hops := make([]TracerouteHop, 0, len(raw))
+    for i, m := range raw {
+        h := TracerouteHop{
+            Hop:     i + 1,
+            Address: m["address"],
+            Loss:    parseIntField(m["loss"]),
+            Status:  m["status"],
+        }
+        h.AvgMs, _ = strconv.ParseFloat(m["avg"], 64)
+        h.BestMs, _ = strconv.ParseFloat(m["best"], 64)
+        h.WorstMs, _ = strconv.ParseFloat(m["worst"], 64)
+        hops = append(hops, h)
+    }
+    return hops, nil
+}

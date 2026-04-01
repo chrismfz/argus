@@ -124,7 +124,7 @@ func handlePathfinderPing(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	result := PathfinderROSClient.PingHost(ctx, gw, 3)
+result := PathfinderROSClient.PingHost(ctx, gw, 3, "")
 	jsonOK(w, result)
 }
 

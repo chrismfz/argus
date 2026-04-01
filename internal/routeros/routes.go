@@ -206,7 +206,7 @@ func (c *Client) Traceroute(ctx context.Context, address, srcAddress string) ([]
     }
 
     var raw []map[string]string
-    if err := c.post(ctx, "tool/traceroute", body, &raw); err != nil {
+    if err := c.postSlow(ctx, "tool/traceroute", body, &raw); err != nil {
         return nil, err
     }
 

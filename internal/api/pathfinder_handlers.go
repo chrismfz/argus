@@ -141,7 +141,7 @@ func handlePathfinderTraceroute(w http.ResponseWriter, r *http.Request) {
         jsonErr(w, http.StatusServiceUnavailable, "RouterOS not connected")
         return
     }
-    ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+    ctx, cancel := context.WithTimeout(r.Context(), 32*time.Second)
     defer cancel()
     hops, err := PathfinderROSClient.Traceroute(ctx, address, src)
     if err != nil {

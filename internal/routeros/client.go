@@ -122,3 +122,42 @@ func (c *Client) post(ctx context.Context, path string, body interface{}, dest i
 	}
 	return nil
 }
+
+
+// postSlow is like post but uses a longer HTTP timeout for slow commands
+// like traceroute that can take 20-30s to complete.
+func (c *Client) postSlow(ctx context.Context, path string, body interface{}, dest interface{}) error {
+    slowClient := &http.Client{
+        Timeout:   35 * time.Second,
+        Transport: c.http.Transport,
+    }
+
+    var buf bytes.Buffer
+    if body != nil {
+        if err := json.NewEncoder(&buf).Encode(body); err != nil {
+            return err
+        }
+    }
+    req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+        c.cfg.Address+"/rest/"+path, &buf)
+    if err != nil {
+        return err
+    }
+    req.SetBasicAuth(c.cfg.Username, c.cfg.Password)
+    req.Header.Set("Content-Type", "application/json")
+    req.Header.Set("Accept", "application/json")
+
+    resp, err := slowClient.Do(req)
+    if err != nil {
+        return fmt.Errorf("POST /rest/%s: %w", path, err)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+        return fmt.Errorf("routeros REST POST /rest/%s: HTTP %d", path, resp.StatusCode)
+    }
+    if dest != nil {
+        return json.NewDecoder(resp.Body).Decode(dest)
+    }
+    return nil
+}

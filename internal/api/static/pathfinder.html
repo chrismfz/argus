@@ -577,11 +577,19 @@ clear() { this.result = null; this.error = null; this.query = '' },
     rp.trace_hops = null
     rp.trace_error = null
     try {
-      const url = `/pathfinder/traceroute?address=${encodeURIComponent(dest)}&src=${encodeURIComponent(rp.gateway)}`
+      const url = `/pathfinder/traceroute?address=${encodeURIComponent(dest)}&src=${encodeURIComponent(rp.local_ip || '')}`
       const r = await fetch(url)
       const d = await r.json()
-      if (!r.ok) { rp.trace_error = d.error || ('HTTP ' + r.status); return }
-      rp.trace_hops = d.hops ?? []
+if (!r.ok) { rp.trace_error = d.error || ('HTTP ' + r.status); return }
+if (d.error || !d.hops?.length) {
+  this.result.all_paths = this.result.all_paths.map(p =>
+    p.gateway === rp.gateway && p.session_name === rp.session_name
+      ? { ...p, tracing: false, trace_error: d.error || 'path unreachable via this upstream' }
+      : p
+  )
+  return
+}
+rp.trace_hops = d.hops ?? []
       this.result.all_paths = this.result.all_paths.map(p =>
         p.gateway === rp.gateway && p.session_name === rp.session_name
           ? { ...p, trace_hops: d.hops ?? [], tracing: false, trace_error: null }

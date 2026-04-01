@@ -40,6 +40,7 @@ type RouteSummary struct {
 	Distance     int    `json:"distance"`     // 20 = Synapsecom, 30 = GR-IX
 	Active       bool   `json:"active"`       // true = this path is forwarding
 	Upstream     string `json:"upstream,omitempty"` // label derived from interface name
+	LocalIP      string `json:"local_ip,omitempty"`  // our own IP on this peering link
 
 	// Why this path was/wasn't chosen
 	Contribution string `json:"contribution"` // "active","candidate","best-candidate"

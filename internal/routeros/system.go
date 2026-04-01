@@ -5,6 +5,7 @@ import (
 //	"fmt"
 	"strconv"
 	"strings"
+	"net"
 )
 
 // SystemIdentity returns the router's hostname from /rest/system/identity.
@@ -45,7 +46,7 @@ func (c *Client) GetRouterInfo(ctx context.Context) (*RouterInfo, error) {
 
 // PingHost pings a host via RouterOS REST /rest/tool/ping.
 // Runs on the router — measures from router's perspective.
-func (c *Client) PingHost(ctx context.Context, host string, count int) PingResult {
+func (c *Client) PingHost(ctx context.Context, host string, count int, srcAddress string) PingResult {
 	if count <= 0 {
 		count = 3
 	}
@@ -56,6 +57,10 @@ func (c *Client) PingHost(ctx context.Context, host string, count int) PingResul
 		"count":    count,
 		"interval": "100ms",
 	}
+    if srcAddress != "" {
+        body["src-address"] = srcAddress
+    }
+
 	var raw []map[string]string
 	if err := c.post(ctx, "tool/ping", body, &raw); err != nil {
 		result.Error = err.Error()
@@ -166,3 +171,25 @@ func StateColor(s BGPSessionState) string {
 	}
 }
 
+
+// LocalIPForGateway finds the router's own IP in the same subnet as gateway.
+// e.g. gateway=78.108.36.244 → returns "78.108.36.245" (our Synapsecom IP)
+func LocalIPForGateway(gateway string, addrs []IPAddress) string {
+    gwIP := net.ParseIP(gateway)
+    if gwIP == nil {
+        return ""
+    }
+    for _, a := range addrs {
+        if a.Disabled {
+            continue
+        }
+        _, ipNet, err := net.ParseCIDR(a.Address)
+        if err != nil {
+            continue
+        }
+        if ipNet.Contains(gwIP) {
+            return strings.Split(a.Address, "/")[0]
+        }
+    }
+    return ""
+}

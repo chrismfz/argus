@@ -113,19 +113,20 @@ func rosRoutesToSummary(routes []routeros.Route, addrs []routeros.IPAddress) []p
 
 // GET /pathfinder/ping?gateway=78.108.36.244
 func handlePathfinderPing(w http.ResponseWriter, r *http.Request) {
-	gw := r.URL.Query().Get("gateway")
-	if gw == "" {
-		jsonErr(w, http.StatusBadRequest, "missing ?gateway=")
-		return
-	}
-	if PathfinderROSClient == nil {
-		jsonErr(w, http.StatusServiceUnavailable, "RouterOS not connected")
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	defer cancel()
-result := PathfinderROSClient.PingHost(ctx, gw, 3, "")
-	jsonOK(w, result)
+    gw  := r.URL.Query().Get("gateway")
+    src := r.URL.Query().Get("src") // optional
+    if gw == "" {
+        jsonErr(w, http.StatusBadRequest, "missing ?gateway=")
+        return
+    }
+    if PathfinderROSClient == nil {
+        jsonErr(w, http.StatusServiceUnavailable, "RouterOS not connected")
+        return
+    }
+    ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+    defer cancel()
+    result := PathfinderROSClient.PingHost(ctx, gw, 3, src)
+    jsonOK(w, result)
 }
 
 // GET /pathfinder/traceroute?address=212.251.91.1&src=78.108.36.244

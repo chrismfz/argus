@@ -83,21 +83,33 @@ func (c *Client) PingHost(ctx context.Context, host string, count int, srcAddres
 }
 
 func parseRTT(s string) float64 {
-	s = strings.TrimSpace(s)
-	switch {
-	case strings.HasSuffix(s, "ms"):
-		v, _ := strconv.ParseFloat(strings.TrimSuffix(s, "ms"), 64)
-		return v
-	case strings.HasSuffix(s, "us"):
-		v, _ := strconv.ParseFloat(strings.TrimSuffix(s, "us"), 64)
-		return v / 1000.0
-	case strings.HasSuffix(s, "s"):
-		v, _ := strconv.ParseFloat(strings.TrimSuffix(s, "s"), 64)
-		return v * 1000.0
-	default:
-		v, _ := strconv.ParseFloat(s, 64)
-		return v
-	}
+    s = strings.TrimSpace(s)
+    if s == "" {
+        return 0
+    }
+    // Handle combined format: "2ms233us"
+    total := 0.0
+    remaining := s
+    for remaining != "" {
+        if idx := strings.Index(remaining, "ms"); idx != -1 && (strings.Index(remaining, "us") == -1 || idx < strings.Index(remaining, "us")) {
+            v, _ := strconv.ParseFloat(remaining[:idx], 64)
+            total += v
+            remaining = remaining[idx+2:]
+        } else if idx := strings.Index(remaining, "us"); idx != -1 {
+            v, _ := strconv.ParseFloat(remaining[:idx], 64)
+            total += v / 1000.0
+            remaining = remaining[idx+2:]
+        } else if strings.HasSuffix(remaining, "s") {
+            v, _ := strconv.ParseFloat(strings.TrimSuffix(remaining, "s"), 64)
+            total += v * 1000.0
+            remaining = ""
+        } else {
+            v, _ := strconv.ParseFloat(remaining, 64)
+            total += v
+            remaining = ""
+        }
+    }
+    return total
 }
 
 // UpstreamLabelFromIface strips port prefix: "sfp1-Synapsecom" → "Synapsecom"

@@ -161,3 +161,38 @@ func handleBGPOriginated(w http.ResponseWriter, r *http.Request) {
 		"prefixes": prefixes,
 	})
 }
+
+
+// GET /bgp/advertisements?peer=<session-name>
+//
+// Returns the prefixes MikroTik is currently advertising to the named peer,
+// sourced from /rest/routing/bgp/advertisements on RouterOS.
+// peer is required — omitting it would return the full table (potentially very large).
+func handleBGPAdvertisements(w http.ResponseWriter, r *http.Request) {
+	if PathfinderROSClient == nil {
+		jsonErr(w, http.StatusServiceUnavailable, "RouterOS not connected")
+		return
+	}
+	peer := r.URL.Query().Get("peer")
+	if peer == "" {
+		jsonErr(w, http.StatusBadRequest, "missing ?peer=")
+		return
+	}
+ 
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+ 
+	ads, err := PathfinderROSClient.ListBGPAdvertisements(ctx, peer)
+	if err != nil {
+		jsonErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if ads == nil {
+		ads = []routeros.BGPAdvertisement{}
+	}
+	jsonOK(w, map[string]interface{}{
+		"peer":           peer,
+		"count":          len(ads),
+		"advertisements": ads,
+	})
+}

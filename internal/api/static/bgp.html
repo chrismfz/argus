@@ -123,7 +123,7 @@ nav a.active{color:var(--accent);border-color:var(--accent)}
 <div class="tab-bar">
   <button class="tab-btn" :class="{active:tab==='monitor'}" @click="tab='monitor'">Monitor</button>
   <button class="tab-btn" :class="{active:tab==='peers'}"   @click="tab='peers';loadPeers()">Peers &amp; Filters</button>
-  <button class="tab-btn" :class="{active:tab==='ads'}"     @click="tab='ads';loadAds()">Advertisements</button>
+  <button class="tab-btn" :class="{active:tab==='ads'}"     @click="tab='ads'">Advertisements</button>
   <button class="tab-btn" :class="{active:tab==='lookup'}"  @click="tab='lookup'">Prefix Lookup</button>
 </div>
 
@@ -182,72 +182,80 @@ nav a.active{color:var(--accent);border-color:var(--accent)}
       </thead>
       <tbody>
         <!--
-          Alpine.js v3 x-for requires a SINGLE root element per template.
-          The old nested x-for/x-if structure had two siblings (separator TR +
-          session TR), so Alpine only rendered the first child (the separator),
-          leaving session data columns blank.
-
-          Fix: flatRows() returns a flat list of typed items
-          {_type:'group'}, {_type:'session',...}, {_type:'expand',...}
-          Each maps to exactly one <tr> — the single root constraint is satisfied.
+          TRUE SINGLE ROOT FIX:
+          Each x-for iteration produces exactly ONE <tr>.
+          Cell 1 uses :colspan (7 for group/expand, 1 for session) and x-show
+          to render three different contents. Cells 2-7 use x-show to hide
+          themselves for non-session rows. display:none cells do not participate
+          in table column layout, so the colspan works correctly.
         -->
         <template x-for="row in flatRows()" :key="row._key">
-          <!-- GROUP SEPARATOR ROW -->
-          <tr x-show="row._type==='group'"
-              style="background:rgba(42,49,71,.6);pointer-events:none;cursor:default">
-            <td colspan="7" style="padding:5px 14px">
-              <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)"
+          <tr
+            @click="row._type==='session' && toggleSession(row.name)"
+            :class="{'exp': row._type==='session' && expandedSession===row.name}"
+            :style="row._type==='group'
+              ? 'background:rgba(42,49,71,.6);pointer-events:none;cursor:default'
+              : row._type==='expand'
+              ? 'background:var(--bg);pointer-events:none'
+              : ''">
+
+            <!-- Cell 1: group label · status dot · inline events (shared) -->
+            <td :colspan="row._type==='session' ? 1 : 7"
+                :style="row._type==='group'
+                  ? 'padding:5px 14px'
+                  : row._type==='expand'
+                  ? 'padding:0'
+                  : 'padding-left:16px;width:20px'">
+
+              <span x-show="row._type==='group'"
+                    style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)"
                     x-text="row._label"></span>
-            </td>
-          </tr>
-          <!-- SESSION ROW -->
-          <tr x-show="row._type==='session'"
-              @click="toggleSession(row.name)"
-              :class="{exp: expandedSession===row.name}">
-            <td style="padding-left:16px">
-              <span class="dot" :class="row.established?'green':row.state==='unknown'?'gray':'red'"></span>
-            </td>
-            <td>
-              <span class="mono" style="font-size:12px" x-text="row.name"></span>
-            </td>
-            <td>
-              <span class="tag" x-text="row.afi==='ip'?'IPv4':'IPv6'"></span>
-            </td>
-            <td>
-              <span class="state-badge"
-                :class="row.established?'up':row.state==='unknown'?'unk':'down'"
-                x-text="row.established?'ESTAB':(row.state||'?').toUpperCase()"></span>
-              <span class="mono" style="font-size:12px;color:var(--muted);margin-left:10px"
-                x-text="row.remote_as?'AS'+row.remote_as+(row.remote_as_name?' \u00b7 '+row.remote_as_name:''):'—'"></span>
-            </td>
-            <td style="text-align:right;font-family:monospace;font-size:12px;color:var(--muted)"
-                x-text="row.uptime_raw||'—'"></td>
-            <td style="text-align:right;font-family:monospace;font-size:12px"
-                x-text="row.prefixes_rx?row.prefixes_rx.toLocaleString():'—'"></td>
-            <td style="text-align:right;font-family:monospace;font-size:12px;color:var(--muted)"
-                x-text="row.prefixes_tx?row.prefixes_tx.toLocaleString():'—'"></td>
-          </tr>
-          <!-- INLINE EVENTS ROW (rendered only when session is expanded) -->
-          <tr x-show="row._type==='expand'">
-            <td colspan="7" style="padding:0">
-              <div class="ev-inline">
+
+              <span x-show="row._type==='session'"
+                    class="dot"
+                    :class="row.established?'green':row.state==='unknown'?'gray':'red'"></span>
+
+              <div x-show="row._type==='expand'" class="ev-inline">
                 <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">
                   Session events
                   <span class="spinner" x-show="loadingEvt[row._session]" style="margin-left:6px"></span>
                 </div>
-                <template x-if="!sessionEvt[row._session] || sessionEvt[row._session].length===0">
-                  <div style="font-size:12px;color:var(--muted)">No events recorded</div>
-                </template>
+                <div x-show="!sessionEvt[row._session] || sessionEvt[row._session].length===0"
+                     style="font-size:12px;color:var(--muted)">No events recorded</div>
                 <template x-for="ev in (sessionEvt[row._session]||[])" :key="ev.id">
                   <div class="ev-grid" style="padding-left:0;padding-right:0">
-                    <span class="ev-ts" x-text="fmtTs(ev.ts)"></span>
-                    <span class="ev-kind" :style="'color:'+evColor(ev.event)" x-text="ev.event.toUpperCase()"></span>
+                    <span class="ev-ts"    x-text="fmtTs(ev.ts)"></span>
+                    <span class="ev-kind"  :style="'color:'+evColor(ev.event)" x-text="ev.event.toUpperCase()"></span>
                     <span class="ev-detail" x-text="evDetail(ev)"></span>
                     <span class="ev-detail" style="font-style:italic" x-text="ev.detail||''"></span>
                   </div>
                 </template>
               </div>
             </td>
+
+            <!-- Cells 2-7: session data only -->
+            <td x-show="row._type==='session'">
+              <span class="mono" style="font-size:12px" x-text="row.name"></span>
+            </td>
+            <td x-show="row._type==='session'">
+              <span class="tag" x-text="row.afi==='ip'?'IPv4':'IPv6'"></span>
+            </td>
+            <td x-show="row._type==='session'">
+              <span class="state-badge"
+                    :class="row.established?'up':row.state==='unknown'?'unk':'down'"
+                    x-text="row.established?'ESTAB':(row.state||'?').toUpperCase()"></span>
+              <span class="mono" style="font-size:12px;color:var(--muted);margin-left:10px"
+                    x-text="row.remote_as?'AS'+row.remote_as+(row.remote_as_name?' \u00b7 '+row.remote_as_name:''):'—'"></span>
+            </td>
+            <td x-show="row._type==='session'"
+                style="text-align:right;font-family:monospace;font-size:12px;color:var(--muted)"
+                x-text="row.uptime_raw||'—'"></td>
+            <td x-show="row._type==='session'"
+                style="text-align:right;font-family:monospace;font-size:12px"
+                x-text="row.prefixes_rx?row.prefixes_rx.toLocaleString():'—'"></td>
+            <td x-show="row._type==='session'"
+                style="text-align:right;font-family:monospace;font-size:12px;color:var(--muted)"
+                x-text="row.prefixes_tx?row.prefixes_tx.toLocaleString():'—'"></td>
           </tr>
         </template>
       </tbody>
@@ -346,43 +354,12 @@ nav a.active{color:var(--accent);border-color:var(--accent)}
 
 <!-- ══ ADVERTISEMENTS ════════════════════════════════════════════════════════ -->
 <div x-show="tab==='ads'" class="content">
-  <template x-if="adsLoading">
-    <div class="notice"><span class="spinner"></span> loading…</div>
-  </template>
 
-  <!-- GoBGP originated -->
+  <!-- Per-session TX with per-peer drill-down -->
   <div class="card">
     <div class="card-header">
-      <span class="card-title">GoBGP originated</span>
-      <span class="tag" :style="originated.length>0?'color:var(--red)':''" x-text="originated.length+' prefixes'"></span>
-      <span class="card-sub" style="margin-left:auto">Active routes Argus (AS65001) announces to MikroTik</span>
-    </div>
-    <template x-if="originated.length===0 && !adsLoading">
-      <div style="padding:14px;font-size:12px;color:var(--muted)">No prefixes currently originated — no active blackholes</div>
-    </template>
-    <div class="pfx-row pfx-row-hdr" style="padding-top:7px;padding-bottom:7px">
-      <span>Prefix</span><span>Next-hop</span><span>Communities</span><span>Announced</span>
-    </div>
-    <template x-for="p in originated" :key="p.prefix">
-      <div class="pfx-row">
-        <span class="pfx-cidr" x-text="p.prefix"></span>
-        <span class="mono" style="font-size:12px;color:var(--muted)" x-text="p.next_hop||'—'"></span>
-        <div>
-          <template x-for="c in (p.communities||[])" :key="c">
-            <span class="comm-tag" x-text="c"></span>
-          </template>
-          <span x-show="!p.communities||p.communities.length===0" style="color:var(--muted);font-size:12px">—</span>
-        </div>
-        <span style="font-size:11px;color:var(--muted)" x-text="fmtTimestamp(p.timestamp)"></span>
-      </div>
-    </template>
-  </div>
-
-  <!-- Per-session TX -->
-  <div class="card">
-    <div class="card-header">
-      <span class="card-title">Outbound per session</span>
-      <span class="card-sub">Prefix counts reported by RouterOS — click session name to see in Pathfinder</span>
+      <span class="card-title">What MikroTik advertises to each peer</span>
+      <span class="card-sub" style="margin-left:auto">TX count from session data · click "prefixes" to load exact routes from router</span>
     </div>
     <table class="sess-table">
       <thead>
@@ -390,27 +367,74 @@ nav a.active{color:var(--accent);border-color:var(--accent)}
           <th>Session</th>
           <th>Connection</th>
           <th>AFI</th>
-          <th style="text-align:right">Tx prefixes</th>
+          <th style="text-align:right">Tx count</th>
           <th>Remote</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
-        <template x-for="s in sessions.filter(s=>s.established)" :key="s.name">
+        <template x-for="s in sessions" :key="s.name">
           <tr style="cursor:default">
             <td class="mono" style="font-size:12px" x-text="s.name"></td>
             <td style="font-size:12px;color:var(--muted)" x-text="s.comment||s.connection_name||'—'"></td>
             <td><span class="tag" x-text="s.afi==='ip'?'IPv4':'IPv6'"></span></td>
-            <td style="text-align:right;font-family:monospace;font-size:13px;font-weight:600"
-                x-text="s.prefixes_tx?s.prefixes_tx.toLocaleString():'0'"></td>
-            <td class="mono" style="font-size:11px;color:var(--muted)" x-text="'AS'+s.remote_as+' '+s.remote_address"></td>
+            <td style="text-align:right;font-family:monospace;font-size:13px;font-weight:600;color:var(--text)"
+                x-text="s.prefixes_tx!=null?s.prefixes_tx.toLocaleString():'—'"></td>
+            <td class="mono" style="font-size:11px;color:var(--muted)"
+                x-text="s.remote_as?'AS'+s.remote_as+' '+s.remote_address:'—'"></td>
+            <td style="text-align:right;padding-right:12px">
+              <button x-show="s.prefixes_tx > 0 || adsSession===s.name"
+                      @click="loadAdsForPeer(s.name)"
+                      style="font-size:11px;padding:2px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--muted);cursor:pointer"
+                      :style="adsSession===s.name ? 'border-color:var(--accent);color:var(--accent)' : ''"
+                      x-text="adsSession===s.name ? 'close' : 'prefixes'"></button>
+            </td>
+          </tr>
+          <!-- Inline advertisement detail -->
+          <tr x-show="adsSession===s.name" style="cursor:default">
+            <td colspan="6" style="padding:0">
+              <div style="padding:10px 14px;background:var(--bg)">
+                <div x-show="adsLoadingPeer" style="font-size:12px;color:var(--muted)">
+                  <span class="spinner"></span> loading from RouterOS…
+                </div>
+                <div x-show="!adsLoadingPeer && adsData.length===0"
+                     style="font-size:12px;color:var(--muted)">No advertisements returned</div>
+                <div x-show="!adsLoadingPeer && adsData.length>0">
+                  <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--teal);margin-bottom:8px"
+                       x-text="adsData.length+' prefixes advertised to '+adsSession"></div>
+                  <table style="width:100%;border-collapse:collapse;font-size:11px">
+                    <thead>
+                      <tr style="border-bottom:1px solid var(--border)">
+                        <th style="text-align:left;padding:4px 8px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;font-size:10px">Prefix</th>
+                        <th style="text-align:left;padding:4px 8px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;font-size:10px">Next-hop</th>
+                        <th style="text-align:left;padding:4px 8px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;font-size:10px">AS-path</th>
+                        <th style="text-align:left;padding:4px 8px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;font-size:10px">Communities</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <template x-for="(ad, ai) in adsData" :key="ai">
+                        <tr style="border-bottom:1px solid rgba(42,49,71,.5)">
+                          <td style="padding:4px 8px;font-family:monospace;color:var(--accent)" x-text="ad.dst"></td>
+                          <td style="padding:4px 8px;font-family:monospace;color:var(--muted)" x-text="ad.nexthop||'—'"></td>
+                          <td style="padding:4px 8px;font-family:monospace;color:var(--text)" x-text="ad.as_path||'—'"></td>
+                          <td style="padding:4px 8px;font-family:monospace;color:var(--purple);font-size:10px"
+                              x-text="ad.communities||'—'"></td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </td>
           </tr>
         </template>
-        <template x-if="sessions.filter(s=>s.established).length===0">
-          <tr><td colspan="5" style="padding:14px;font-size:12px;color:var(--muted)">No established sessions</td></tr>
+        <template x-if="sessions.length===0">
+          <tr><td colspan="6" style="padding:14px;font-size:12px;color:var(--muted)">No session data — monitor may not have polled yet</td></tr>
         </template>
       </tbody>
     </table>
   </div>
+
 </div><!-- /ads -->
 
 <!-- ══ PREFIX LOOKUP ══════════════════════════════════════════════════════════ -->
@@ -564,6 +588,7 @@ function bgp() { return {
   countdown: 30,
   connections: [], rules: [], peersLoading: false,
   originated: [], adsLoading: false,
+  adsSession: null, adsData: [], adsLoadingPeer: false,
   pfQuery: '', pfResult: null, pfLoading: false, pfError: null,
 
   init() {
@@ -654,12 +679,24 @@ function bgp() { return {
   /* ── Advertisements ───────────────────────────────────────────────── */
   async loadAds() {
     if (this.originated.length) return
-    this.adsLoading = true
     try {
       const d = await fetch('/bgp/originated').then(r=>r.json())
       this.originated = d.prefixes || []
+    } catch(e) { /* non-fatal — prefix lookup outbound section just stays empty */ }
+  },
+  async loadAdsForPeer(sessionName) {
+    if (this.adsSession === sessionName) {
+      this.adsSession = null; this.adsData = []; return
+    }
+    this.adsSession = sessionName
+    this.adsData = []
+    this.adsLoadingPeer = true
+    try {
+      const r = await fetch('/bgp/advertisements?peer='+encodeURIComponent(sessionName))
+      const d = await r.json()
+      this.adsData = d.advertisements || []
     } catch(e) { console.error('[bgp] ads load', e) }
-    finally { this.adsLoading = false }
+    finally { this.adsLoadingPeer = false }
   },
 
   /* ── Prefix lookup ────────────────────────────────────────────────── */
@@ -668,7 +705,7 @@ function bgp() { return {
     if (!q) return
     const prefix = q.includes('/') ? q : q+'/32'
     this.pfLoading = true; this.pfResult = null; this.pfError = null
-    if (!this.originated.length) await this.loadAds()
+    await this.loadAds() // needed for outbound blackhole check
     try {
       const r = await fetch('/pathfinder/prefix?prefix='+encodeURIComponent(prefix))
       const d = await r.json()

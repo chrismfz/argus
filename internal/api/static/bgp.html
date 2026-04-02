@@ -1,9 +1,687 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-<head><meta charset="utf-8"><title>BGP — Argus</title></head>
-<body style="background:#1e1e2e;color:#cdd6f4;font-family:monospace;padding:2rem">
-  <h2>BGP cockpit</h2>
-  <p style="color:#6c7086">Placeholder — full UI coming next step.</p>
-  <p><a href="/dashboard" style="color:#89b4fa">← Dashboard</a></p>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>argus · BGP</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/alpinejs/3.13.3/cdn.min.js" defer></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f1117;--bg2:#161b27;--bg3:#1e2535;
+  --border:#2a3147;--text:#cdd6f4;--muted:#6c7086;
+  --accent:#89b4fa;--green:#a6e3a1;--red:#f38ba8;
+  --yellow:#f9e2af;--purple:#cba6f7;--teal:#94e2d5;--orange:#fab387;
+}
+html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;font-size:14px}
+header{display:flex;align-items:center;gap:12px;padding:11px 20px;background:var(--bg2);border-bottom:1px solid var(--border)}
+header h1{font-size:16px;font-weight:600;color:var(--accent)}
+.tag{font-size:11px;padding:2px 8px;border-radius:4px;background:var(--bg3);color:var(--muted);border:1px solid var(--border)}
+nav{display:flex;gap:2px;padding:0 20px;background:var(--bg2);border-bottom:1px solid var(--border);align-items:center}
+nav a{padding:10px 16px;color:var(--muted);font-size:13px;text-decoration:none;border-bottom:2px solid transparent;display:inline-block;transition:.1s}
+nav a:hover{color:var(--text)}
+nav a.active{color:var(--accent);border-color:var(--accent)}
+.tab-bar{display:flex;gap:0;padding:0 20px;background:var(--bg2);border-bottom:1px solid var(--border)}
+.tab-btn{padding:9px 20px;background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);font-size:13px;cursor:pointer;transition:.1s}
+.tab-btn:hover{color:var(--text)}
+.tab-btn.active{color:var(--accent);border-color:var(--accent)}
+.content{max-width:1300px;margin:0 auto;padding:20px}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;margin-bottom:16px;overflow:hidden}
+.card-header{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.card-title{font-size:13px;font-weight:600}
+.card-sub{font-size:11px;color:var(--muted)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.dot.green{background:var(--green);box-shadow:0 0 5px rgba(166,227,161,.5)}
+.dot.red{background:var(--red)}
+.dot.gray{background:var(--border)}
+.top-bar{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px}
+.sum-card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px}
+.sum-num{font-size:26px;font-weight:700;line-height:1;margin-bottom:3px}
+.sum-lbl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.sess-table{width:100%;border-collapse:collapse}
+.sess-table th{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:7px 14px;border-bottom:1px solid var(--border);text-align:left;font-weight:600;white-space:nowrap;background:var(--bg3)}
+.sess-table td{padding:9px 14px;border-bottom:1px solid var(--border);font-size:13px;vertical-align:middle}
+.sess-table tbody tr{cursor:pointer;transition:background .12s}
+.sess-table tbody tr:hover{background:rgba(137,180,250,.04)}
+.sess-table tbody tr.exp{background:rgba(137,180,250,.06)}
+.state-badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;font-family:monospace}
+.state-badge.up{color:var(--green)}
+.state-badge.down{color:var(--red)}
+.state-badge.unk{color:var(--muted)}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
+.badge.up{background:rgba(166,227,161,.12);color:var(--green);border:1px solid rgba(166,227,161,.25)}
+.badge.dn{background:rgba(243,139,168,.12);color:var(--red);border:1px solid rgba(243,139,168,.25)}
+.badge.bh{background:rgba(243,139,168,.1);color:var(--red);border:1px solid rgba(243,139,168,.2)}
+.badge.cand{background:rgba(203,166,247,.1);color:var(--purple);border:1px solid rgba(203,166,247,.25)}
+.ev-grid{display:grid;grid-template-columns:130px 110px 1fr 1fr;gap:6px 12px;padding:7px 14px;border-bottom:1px solid var(--border);font-size:12px;align-items:center}
+.ev-grid:last-child{border-bottom:none}
+.ev-hdr{background:var(--bg3);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.ev-ts{color:var(--muted);font-family:monospace;font-size:11px}
+.ev-kind{font-weight:700;font-family:monospace;font-size:11px}
+.ev-sess{color:var(--accent);font-family:monospace;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ev-detail{color:var(--muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ev-inline{background:var(--bg);border-top:1px solid var(--border);padding:10px 14px}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:900px){.two-col{grid-template-columns:1fr}}
+.conn-row{display:grid;grid-template-columns:1fr 90px 130px 130px;gap:8px 12px;padding:8px 12px;border-bottom:1px solid var(--border);font-size:12px;align-items:center}
+.conn-row:last-child{border-bottom:none}
+.filter-pill{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-family:monospace;background:var(--bg3);border:1px solid var(--border)}
+.filter-pill.set{color:var(--purple);border-color:rgba(203,166,247,.3)}
+.filter-pill.none{color:var(--border);background:none}
+.chain-block{margin-bottom:10px}
+.chain-lbl{font-size:11px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.06em;padding:4px 10px;background:rgba(148,226,213,.07);border-left:2px solid var(--teal);border-radius:0 4px 4px 0;margin-bottom:2px}
+.chain-lbl.wired{border-color:var(--accent);color:var(--accent);background:rgba(137,180,250,.07)}
+.filter-rule{padding:5px 10px;font-family:monospace;font-size:11px;border-bottom:1px solid var(--border)}
+.filter-rule:last-child{border-bottom:none}
+.filter-rule.dis{opacity:.4}
+.filter-cmt{color:var(--muted);font-size:10px;margin-top:1px}
+.pfx-row{display:grid;grid-template-columns:160px 120px 1fr 150px;gap:8px 12px;padding:8px 12px;border-bottom:1px solid var(--border);font-size:12px;align-items:start}
+.pfx-row:last-child{border-bottom:none}
+.pfx-row-hdr{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);background:var(--bg3)}
+.pfx-cidr{font-family:monospace;font-weight:600;color:var(--accent);font-size:13px}
+.comm-tag{display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;font-family:monospace;background:var(--bg3);border:1px solid var(--border);color:var(--purple);margin:1px}
+.lookup-bar{display:flex;gap:8px;margin-bottom:20px}
+.lookup-bar input{flex:1;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:9px 14px;font-size:14px;outline:none;font-family:monospace}
+.lookup-bar input:focus{border-color:var(--accent)}
+.lookup-bar button{background:var(--accent);color:var(--bg);border:none;border-radius:6px;padding:9px 22px;font-size:13px;font-weight:600;cursor:pointer}
+.lookup-bar button:hover{opacity:.85}
+.path-block{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:8px}
+.path-top{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.path-upstream{color:var(--teal);font-weight:700;font-size:13px}
+.asp-chip{display:inline-flex;align-items:center;font-family:monospace;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:2px 7px}
+.asp-chip.origin{border-color:var(--accent);color:var(--accent)}
+.kv{display:grid;grid-template-columns:100px 1fr;gap:4px 10px;font-size:12px}
+.kv .k{color:var(--muted)}
+.kv .v{font-family:monospace;color:var(--text)}
+.sec-h{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin:16px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+.spinner{display:inline-block;width:12px;height:12px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+.notice{padding:12px 16px;border-radius:6px;border:1px solid var(--border);color:var(--muted);font-size:13px;margin-bottom:12px}
+.notice.err{border-color:var(--red);color:var(--red)}
+.mono{font-family:monospace}
+[x-cloak]{display:none!important}
+</style>
+</head>
+<body x-data="bgp()" x-init="init()" x-cloak>
+
+<header>
+  <h1>argus</h1>
+  <span class="tag">BGP cockpit</span>
+  <span class="tag" :style="reachable ? 'color:var(--green)' : 'color:var(--red)'"
+    x-text="reachable ? '● RouterOS reachable' : '○ RouterOS unreachable'"></span>
+  <span class="tag" x-show="lastPoll" x-text="'polled ' + pollAgo() + 's ago'"></span>
+</header>
+
+<nav>
+  <a href="/dashboard">Overview</a>
+  <a href="/detection">Detection</a>
+  <a href="/alerts">Alerts</a>
+  <a href="/pathfinder">Pathfinder</a>
+  <a href="/bgp" class="active">BGP</a>
+</nav>
+
+<div class="tab-bar">
+  <button class="tab-btn" :class="{active:tab==='monitor'}" @click="tab='monitor'">Monitor</button>
+  <button class="tab-btn" :class="{active:tab==='peers'}"   @click="tab='peers';loadPeers()">Peers &amp; Filters</button>
+  <button class="tab-btn" :class="{active:tab==='ads'}"     @click="tab='ads';loadAds()">Advertisements</button>
+  <button class="tab-btn" :class="{active:tab==='lookup'}"  @click="tab='lookup'">Prefix Lookup</button>
+</div>
+
+<!-- ══ MONITOR ══════════════════════════════════════════════════════════════ -->
+<div x-show="tab==='monitor'" class="content">
+
+  <div class="top-bar">
+    <div class="sum-card">
+      <div class="sum-num" :style="(summary.down||0)>0 ? 'color:var(--red)' : 'color:var(--green)'"
+           x-text="summary.established ?? '—'"></div>
+      <div class="sum-lbl">Established</div>
+    </div>
+    <div class="sum-card">
+      <div class="sum-num" :style="(summary.down||0)>0 ? 'color:var(--red)' : 'color:var(--muted)'"
+           x-text="summary.down ?? '0'"></div>
+      <div class="sum-lbl">Down</div>
+    </div>
+    <div class="sum-card">
+      <div class="sum-num" style="color:var(--muted)" x-text="summary.total ?? '—'"></div>
+      <div class="sum-lbl">Total sessions</div>
+    </div>
+    <div class="sum-card">
+      <div class="sum-num" style="font-size:16px;margin-top:4px"
+           :style="reachable ? 'color:var(--green)' : 'color:var(--red)'"
+           x-text="reachable ? '● online' : '○ offline'"></div>
+      <div class="sum-lbl">RouterOS REST</div>
+    </div>
+    <div class="sum-card">
+      <div class="sum-num" style="font-size:18px;color:var(--muted)" x-text="countdown + 's'"></div>
+      <div class="sum-lbl">Next refresh <span class="spinner" x-show="monLoading" style="margin-left:4px"></span></div>
+    </div>
+  </div>
+
+  <!-- Sessions -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">BGP Sessions</span>
+      <span class="card-sub" x-text="sessions.length + ' sessions'"></span>
+    </div>
+
+    <template x-if="!reachable && sessions.length===0">
+      <div class="notice err" style="margin:12px">RouterOS REST unreachable — no session data available</div>
+    </template>
+
+    <table class="sess-table">
+      <thead>
+        <tr>
+          <th style="width:20px"></th>
+          <th>Session</th>
+          <th>AFI</th>
+          <th>Peer</th>
+          <th style="text-align:right">Uptime</th>
+          <th style="text-align:right">Rx</th>
+          <th style="text-align:right">Tx</th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-for="[group, rows] in groupedSessions()" :key="group">
+          <template x-for="(s, idx) in rows" :key="s.name">
+            <!-- group separator -->
+            <template x-if="idx===0">
+              <tr style="background:rgba(42,49,71,.6);pointer-events:none">
+                <td colspan="7" style="padding:5px 14px">
+                  <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)"
+                        x-text="group"></span>
+                </td>
+              </tr>
+            </template>
+            <!-- session row -->
+            <tr @click="toggleSession(s.name)" :class="{exp: expandedSession===s.name}">
+              <td style="padding-left:16px">
+                <span class="dot" :class="s.established?'green':s.state==='unknown'?'gray':'red'"></span>
+              </td>
+              <td>
+                <span class="mono" style="font-size:12px" x-text="s.name"></span>
+              </td>
+              <td>
+                <span class="tag" x-text="s.afi==='ip'?'IPv4':'IPv6'"></span>
+              </td>
+              <td>
+                <span class="state-badge"
+                  :class="s.established?'up':s.state==='unknown'?'unk':'down'"
+                  x-text="s.established?'ESTAB':s.state.toUpperCase()"></span>
+                <span class="mono" style="font-size:12px;color:var(--muted);margin-left:10px"
+                  x-text="'AS'+s.remote_as+(s.remote_as_name?' \u00b7 '+s.remote_as_name:'')"></span>
+              </td>
+              <td style="text-align:right;font-family:monospace;font-size:12px;color:var(--muted)"
+                  x-text="s.uptime_raw||'—'"></td>
+              <td style="text-align:right;font-family:monospace;font-size:12px"
+                  x-text="s.prefixes_rx?s.prefixes_rx.toLocaleString():'—'"></td>
+              <td style="text-align:right;font-family:monospace;font-size:12px;color:var(--muted)"
+                  x-text="s.prefixes_tx?s.prefixes_tx.toLocaleString():'—'"></td>
+            </tr>
+            <!-- inline event detail -->
+            <template x-if="expandedSession===s.name">
+              <tr><td colspan="7" style="padding:0">
+                <div class="ev-inline">
+                  <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">
+                    Session events
+                    <span class="spinner" x-show="loadingEvt[s.name]" style="margin-left:6px"></span>
+                  </div>
+                  <template x-if="!sessionEvt[s.name] || sessionEvt[s.name].length===0">
+                    <div style="font-size:12px;color:var(--muted)">No events recorded</div>
+                  </template>
+                  <template x-for="ev in (sessionEvt[s.name]||[])" :key="ev.id">
+                    <div class="ev-grid" style="padding-left:0;padding-right:0">
+                      <span class="ev-ts" x-text="fmtTs(ev.ts)"></span>
+                      <span class="ev-kind" :style="'color:'+evColor(ev.event)" x-text="ev.event.toUpperCase()"></span>
+                      <span class="ev-detail" x-text="evDetail(ev)"></span>
+                      <span class="ev-detail" style="font-style:italic" x-text="ev.detail||''"></span>
+                    </div>
+                  </template>
+                </div>
+              </td></tr>
+            </template>
+          </template>
+        </template>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Global event log -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Recent events</span>
+      <span class="card-sub">all sessions · newest first</span>
+    </div>
+    <template x-if="events.length===0">
+      <div style="padding:14px;font-size:12px;color:var(--muted)">No events yet</div>
+    </template>
+    <div class="ev-grid ev-hdr" style="padding-top:7px;padding-bottom:7px">
+      <span>Time</span><span>Event</span><span>Session</span><span>Detail</span>
+    </div>
+    <template x-for="ev in events" :key="ev.id">
+      <div class="ev-grid">
+        <span class="ev-ts" x-text="fmtTs(ev.ts)"></span>
+        <span class="ev-kind" :style="'color:'+evColor(ev.event)" x-text="ev.event.toUpperCase()"></span>
+        <span class="ev-sess" x-text="ev.session"></span>
+        <span class="ev-detail" x-text="evDetail(ev)"></span>
+      </div>
+    </template>
+  </div>
+
+</div><!-- /monitor -->
+
+<!-- ══ PEERS & FILTERS ═══════════════════════════════════════════════════════ -->
+<div x-show="tab==='peers'" class="content">
+  <template x-if="peersLoading">
+    <div class="notice"><span class="spinner"></span> loading from RouterOS…</div>
+  </template>
+  <div class="two-col">
+
+    <!-- Connections -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">BGP Connections</span>
+        <span class="card-sub" x-text="connections.length+' configured'"></span>
+      </div>
+      <div class="conn-row" style="background:var(--bg3);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding-top:6px;padding-bottom:6px">
+        <span>Name / Remote</span><span>AS</span><span>Input filter</span><span>Output filter</span>
+      </div>
+      <template x-if="connections.length===0 && !peersLoading">
+        <div style="padding:14px;font-size:12px;color:var(--muted)">RouterOS not connected</div>
+      </template>
+      <template x-for="c in connections" :key="c.id">
+        <div class="conn-row" :style="c.disabled?'opacity:.45':''">
+          <div>
+            <div style="font-weight:600;font-size:13px" x-text="c.comment||c.name"></div>
+            <div class="mono" style="font-size:11px;color:var(--muted)" x-text="c.name+' · '+c.remote_address"></div>
+          </div>
+          <div class="mono" style="font-size:12px;color:var(--muted)" x-text="'AS'+c.remote_as"></div>
+          <div>
+            <span class="filter-pill" :class="c.input_filter?'set':'none'"
+                  x-text="c.input_filter||'none'"></span>
+          </div>
+          <div>
+            <span class="filter-pill" :class="c.output_filter?'set':'none'"
+                  x-text="c.output_filter||'none'"></span>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <!-- Filter rules by chain -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Filter Rules</span>
+        <span class="card-sub" x-text="rules.length+' rules · '+chainNames().length+' chains'"></span>
+      </div>
+      <div style="padding:12px">
+        <template x-if="rules.length===0 && !peersLoading">
+          <div style="font-size:12px;color:var(--muted)">No rules returned</div>
+        </template>
+        <template x-for="chain in chainNames()" :key="chain">
+          <div class="chain-block">
+            <div class="chain-lbl" :class="{wired:isWired(chain)}"
+                 x-text="chain+(isWired(chain)?' ← in use':'')"></div>
+            <template x-for="r in rulesFor(chain)" :key="r.id">
+              <div class="filter-rule" :class="{dis:r.disabled}">
+                <div x-text="r.rule"></div>
+                <div class="filter-cmt" x-show="r.comment" x-text="'# '+r.comment"></div>
+              </div>
+            </template>
+          </div>
+        </template>
+      </div>
+    </div>
+
+  </div>
+</div><!-- /peers -->
+
+<!-- ══ ADVERTISEMENTS ════════════════════════════════════════════════════════ -->
+<div x-show="tab==='ads'" class="content">
+  <template x-if="adsLoading">
+    <div class="notice"><span class="spinner"></span> loading…</div>
+  </template>
+
+  <!-- GoBGP originated -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">GoBGP originated</span>
+      <span class="tag" :style="originated.length>0?'color:var(--red)':''" x-text="originated.length+' prefixes'"></span>
+      <span class="card-sub" style="margin-left:auto">Active routes Argus (AS65001) announces to MikroTik</span>
+    </div>
+    <template x-if="originated.length===0 && !adsLoading">
+      <div style="padding:14px;font-size:12px;color:var(--muted)">No prefixes currently originated — no active blackholes</div>
+    </template>
+    <div class="pfx-row pfx-row-hdr" style="padding-top:7px;padding-bottom:7px">
+      <span>Prefix</span><span>Next-hop</span><span>Communities</span><span>Announced</span>
+    </div>
+    <template x-for="p in originated" :key="p.prefix">
+      <div class="pfx-row">
+        <span class="pfx-cidr" x-text="p.prefix"></span>
+        <span class="mono" style="font-size:12px;color:var(--muted)" x-text="p.next_hop||'—'"></span>
+        <div>
+          <template x-for="c in (p.communities||[])" :key="c">
+            <span class="comm-tag" x-text="c"></span>
+          </template>
+          <span x-show="!p.communities||p.communities.length===0" style="color:var(--muted);font-size:12px">—</span>
+        </div>
+        <span style="font-size:11px;color:var(--muted)" x-text="fmtTimestamp(p.timestamp)"></span>
+      </div>
+    </template>
+  </div>
+
+  <!-- Per-session TX -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Outbound per session</span>
+      <span class="card-sub">Prefix counts reported by RouterOS — click session name to see in Pathfinder</span>
+    </div>
+    <table class="sess-table">
+      <thead>
+        <tr>
+          <th>Session</th>
+          <th>Connection</th>
+          <th>AFI</th>
+          <th style="text-align:right">Tx prefixes</th>
+          <th>Remote</th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-for="s in sessions.filter(s=>s.established)" :key="s.name">
+          <tr style="cursor:default">
+            <td class="mono" style="font-size:12px" x-text="s.name"></td>
+            <td style="font-size:12px;color:var(--muted)" x-text="s.comment||s.connection_name||'—'"></td>
+            <td><span class="tag" x-text="s.afi==='ip'?'IPv4':'IPv6'"></span></td>
+            <td style="text-align:right;font-family:monospace;font-size:13px;font-weight:600"
+                x-text="s.prefixes_tx?s.prefixes_tx.toLocaleString():'0'"></td>
+            <td class="mono" style="font-size:11px;color:var(--muted)" x-text="'AS'+s.remote_as+' '+s.remote_address"></td>
+          </tr>
+        </template>
+        <template x-if="sessions.filter(s=>s.established).length===0">
+          <tr><td colspan="5" style="padding:14px;font-size:12px;color:var(--muted)">No established sessions</td></tr>
+        </template>
+      </tbody>
+    </table>
+  </div>
+</div><!-- /ads -->
+
+<!-- ══ PREFIX LOOKUP ══════════════════════════════════════════════════════════ -->
+<div x-show="tab==='lookup'" class="content">
+
+  <div class="lookup-bar">
+    <input x-model="pfQuery" placeholder="e.g.  195.48.96.0/24  ·  84.54.49.1  ·  188.4.128.0/17"
+           @keydown.enter="pfSearch()">
+    <button @click="pfSearch()">Look up</button>
+  </div>
+
+  <template x-if="pfLoading">
+    <div class="notice"><span class="spinner"></span> querying GoBGP + RouterOS…</div>
+  </template>
+  <template x-if="pfError">
+    <div class="notice err" x-text="pfError"></div>
+  </template>
+
+  <template x-if="pfResult && !pfLoading">
+    <div>
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px;flex-wrap:wrap">
+        <span style="font-family:monospace;font-size:20px;font-weight:700;color:var(--accent)"
+              x-text="pfResult.prefix"></span>
+        <a :href="'/pathfinder?prefix='+encodeURIComponent(pfResult.prefix)"
+           target="_blank"
+           style="font-size:12px;color:var(--accent);text-decoration:none;opacity:.7">
+          → Full Pathfinder view ↗
+        </a>
+      </div>
+
+      <!-- Inbound — best path -->
+      <div class="sec-h">Inbound — how we receive this prefix</div>
+
+      <template x-if="pfResult.best_path">
+        <div class="path-block">
+          <div class="path-top">
+            <span class="badge up">best path · GoBGP</span>
+            <span class="path-upstream" x-show="pfResult.best_path.upstream"
+                  x-text="pfResult.best_path.upstream"></span>
+            <span class="mono" style="font-size:12px;color:var(--muted)"
+                  x-text="'next-hop: '+pfResult.best_path.next_hop"></span>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:3px;align-items:center;margin-bottom:8px">
+            <template x-for="(asn,i) in pfResult.best_path.as_path" :key="i">
+              <span class="asp-chip" :class="{origin:i===pfResult.best_path.as_path.length-1}"
+                    x-text="asn"></span>
+              <span x-show="i<pfResult.best_path.as_path.length-1"
+                    style="color:var(--muted);font-size:10px;margin:0 1px">→</span>
+            </template>
+          </div>
+          <div class="kv">
+            <span class="k">local-pref</span>
+            <span class="v" x-text="pfResult.best_path.local_pref||'—'"></span>
+            <template x-if="pfResult.best_path.communities && pfResult.best_path.communities.length">
+              <span class="k">communities</span>
+              <span class="v">
+                <template x-for="c in pfResult.best_path.communities" :key="c">
+                  <span class="comm-tag" x-text="c"></span>
+                </template>
+              </span>
+            </template>
+          </div>
+        </div>
+      </template>
+
+      <template x-if="!pfResult.best_path">
+        <div class="notice">Prefix not in GoBGP RIB — not currently received from any peer</div>
+      </template>
+
+      <!-- RouterOS all-paths -->
+      <template x-if="pfResult.all_paths && pfResult.all_paths.length">
+        <div>
+          <div class="sec-h">All paths (RouterOS RIB)</div>
+          <template x-for="(rp,i) in pfResult.all_paths" :key="i">
+            <div class="path-block" :style="!rp.active?'opacity:.6':''">
+              <div class="path-top">
+                <span class="badge" :class="rp.active?'up':'cand'"
+                      x-text="rp.active?'ACTIVE':rp.contribution||'candidate'"></span>
+                <span class="path-upstream" x-show="rp.upstream" x-text="rp.upstream"></span>
+                <span class="mono" style="font-size:12px;color:var(--muted)"
+                      x-text="rp.gateway+' via '+rp.interface"></span>
+              </div>
+              <div class="kv">
+                <template x-if="rp.as_path && rp.as_path.length">
+                  <span class="k">as-path</span>
+                  <span class="v" style="display:flex;flex-wrap:wrap;gap:3px;align-items:center">
+                    <template x-for="(asn,ai) in rp.as_path" :key="ai">
+                      <span class="asp-chip" x-text="asn"></span>
+                      <span x-show="ai<rp.as_path.length-1" style="color:var(--muted);font-size:10px"> → </span>
+                    </template>
+                  </span>
+                </template>
+                <span class="k">local-pref</span><span class="v" x-text="rp.local_pref"></span>
+                <span class="k">distance</span><span class="v" x-text="rp.distance"></span>
+                <template x-if="rp.session_name">
+                  <span class="k">session</span><span class="v" x-text="rp.session_name"></span>
+                </template>
+                <template x-if="rp.communities && rp.communities.length">
+                  <span class="k">communities</span>
+                  <span class="v">
+                    <template x-for="c in rp.communities" :key="c">
+                      <span class="comm-tag" x-text="c"></span>
+                    </template>
+                  </span>
+                </template>
+              </div>
+            </div>
+          </template>
+        </div>
+      </template>
+
+      <!-- Outbound — originated by Argus -->
+      <div class="sec-h">Outbound — originated by Argus</div>
+
+      <template x-if="pfOriginates(pfResult.prefix)">
+        <div class="path-block" style="border-color:rgba(243,139,168,.35)">
+          <div class="path-top">
+            <span class="badge bh">GoBGP originated · AS65001</span>
+            <span style="font-size:12px;color:var(--muted)">Argus is announcing this prefix — active blackhole</span>
+          </div>
+          <template x-for="p in originated.filter(p=>p.prefix===pfResult.prefix)" :key="p.prefix">
+            <div class="kv" style="margin-top:6px">
+              <span class="k">next-hop</span><span class="v" x-text="p.next_hop"></span>
+              <span class="k">communities</span>
+              <span class="v">
+                <template x-for="c in (p.communities||[])" :key="c">
+                  <span class="comm-tag" x-text="c"></span>
+                </template>
+              </span>
+              <span class="k">announced</span><span class="v" x-text="fmtTimestamp(p.timestamp)"></span>
+            </div>
+          </template>
+        </div>
+      </template>
+
+      <template x-if="!pfOriginates(pfResult.prefix)">
+        <div class="notice">Argus does not originate this prefix via GoBGP</div>
+      </template>
+
+    </div>
+  </template>
+
+</div><!-- /lookup -->
+
+<script>
+function bgp() { return {
+  tab: 'monitor',
+  sessions: [], summary: {}, reachable: true, lastPoll: 0,
+  events: [], monLoading: false,
+  expandedSession: null, sessionEvt: {}, loadingEvt: {},
+  countdown: 30,
+  connections: [], rules: [], peersLoading: false,
+  originated: [], adsLoading: false,
+  pfQuery: '', pfResult: null, pfLoading: false, pfError: null,
+
+  init() {
+    this.loadMonitor()
+    setInterval(() => this.loadMonitor(), 30000)
+    setInterval(() => { this.countdown = this.countdown > 0 ? this.countdown - 1 : 30 }, 1000)
+  },
+
+  /* ── Monitor ─────────────────────────────────────────────────────── */
+  async loadMonitor() {
+    this.monLoading = true
+    try {
+      const [sr, er] = await Promise.all([
+        fetch('/bgp/sessions').then(r=>r.json()),
+        fetch('/bgp/events?limit=50').then(r=>r.json()),
+      ])
+      this.sessions  = sr.sessions  || []
+      this.summary   = sr.summary   || {}
+      this.reachable = sr.reachable ?? true
+      this.lastPoll  = sr.last_poll || 0
+      this.events    = er.events    || []
+    } catch(e) { console.error('[bgp] monitor load', e) }
+    finally { this.monLoading = false; this.countdown = 30 }
+  },
+
+  groupedSessions() {
+    const g = {}
+    for (const s of this.sessions) {
+      const k = s.comment || s.connection_name || s.name
+      ;(g[k] = g[k]||[]).push(s)
+    }
+    return Object.entries(g)
+      .sort(([a],[b]) => a.localeCompare(b))
+      .map(([k,v]) => [k, v.sort((a,b) => (b.established?1:0)-(a.established?1:0))])
+  },
+
+  async toggleSession(name) {
+    if (this.expandedSession === name) { this.expandedSession = null; return }
+    this.expandedSession = name
+    if (this.sessionEvt[name]) return
+    this.loadingEvt = {...this.loadingEvt, [name]: true}
+    try {
+      const r = await fetch('/bgp/events?session='+encodeURIComponent(name)+'&limit=20')
+      const d = await r.json()
+      this.sessionEvt = {...this.sessionEvt, [name]: d.events||[]}
+    } catch(e) { this.sessionEvt = {...this.sessionEvt, [name]: []} }
+    finally { this.loadingEvt = {...this.loadingEvt, [name]: false} }
+  },
+
+  pollAgo() {
+    if (!this.lastPoll) return '?'
+    return Math.max(0, Math.round(Date.now()/1000 - this.lastPoll))
+  },
+
+  /* ── Peers ────────────────────────────────────────────────────────── */
+  async loadPeers() {
+    if (this.connections.length) return
+    this.peersLoading = true
+    try {
+      const d = await fetch('/bgp/filters').then(r=>r.json())
+      this.connections = d.connections || []
+      this.rules       = d.rules       || []
+    } catch(e) { console.error('[bgp] peers load', e) }
+    finally { this.peersLoading = false }
+  },
+
+  chainNames() {
+    const s = new Set(this.rules.map(r=>r.chain).filter(Boolean))
+    return [...s].sort()
+  },
+  rulesFor(chain) { return this.rules.filter(r=>r.chain===chain) },
+  isWired(chain) {
+    return this.connections.some(c=>c.input_filter===chain||c.output_filter===chain)
+  },
+
+  /* ── Advertisements ───────────────────────────────────────────────── */
+  async loadAds() {
+    if (this.originated.length) return
+    this.adsLoading = true
+    try {
+      const d = await fetch('/bgp/originated').then(r=>r.json())
+      this.originated = d.prefixes || []
+    } catch(e) { console.error('[bgp] ads load', e) }
+    finally { this.adsLoading = false }
+  },
+
+  /* ── Prefix lookup ────────────────────────────────────────────────── */
+  async pfSearch() {
+    const q = this.pfQuery.trim()
+    if (!q) return
+    const prefix = q.includes('/') ? q : q+'/32'
+    this.pfLoading = true; this.pfResult = null; this.pfError = null
+    if (!this.originated.length) await this.loadAds()
+    try {
+      const r = await fetch('/pathfinder/prefix?prefix='+encodeURIComponent(prefix))
+      const d = await r.json()
+      if (!r.ok) { this.pfError = d.error||('HTTP '+r.status); return }
+      this.pfResult = d
+    } catch(e) { this.pfError = e.message }
+    finally { this.pfLoading = false }
+  },
+
+  pfOriginates(prefix) { return this.originated.some(p=>p.prefix===prefix) },
+
+  /* ── Formatting ───────────────────────────────────────────────────── */
+  fmtTs(unix) {
+    if (!unix) return '—'
+    const d = new Date(unix*1000), now = new Date()
+    const t = d.toTimeString().slice(0,8)
+    if (d.toDateString()===now.toDateString()) return t
+    return d.toLocaleDateString('en-GB',{month:'short',day:'numeric'})+' '+t
+  },
+  fmtTimestamp(ts) {
+    if (!ts) return '—'
+    const d = typeof ts==='number' ? new Date(ts*1000) : new Date(ts)
+    return d.toLocaleString('en-GB',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})
+  },
+  evColor(kind) {
+    return {established:'var(--green)',recovered:'var(--green)',rest_recovered:'var(--green)',
+            down:'var(--red)',unreachable:'var(--red)',flap:'var(--yellow)'}[kind]||'var(--muted)'
+  },
+  evDetail(ev) {
+    if (ev.uptime_before) return 'was up '+ev.uptime_before
+    if (ev.from_state&&ev.to_state&&ev.from_state!==ev.to_state) return ev.from_state+' → '+ev.to_state
+    return ev.detail||''
+  },
+}}
+</script>
 </body>
 </html>

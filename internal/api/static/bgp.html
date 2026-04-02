@@ -181,65 +181,74 @@ nav a.active{color:var(--accent);border-color:var(--accent)}
         </tr>
       </thead>
       <tbody>
-        <template x-for="[group, rows] in groupedSessions()" :key="group">
-          <template x-for="(s, idx) in rows" :key="s.name">
-            <!-- group separator -->
-            <template x-if="idx===0">
-              <tr style="background:rgba(42,49,71,.6);pointer-events:none">
-                <td colspan="7" style="padding:5px 14px">
-                  <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)"
-                        x-text="group"></span>
-                </td>
-              </tr>
-            </template>
-            <!-- session row -->
-            <tr @click="toggleSession(s.name)" :class="{exp: expandedSession===s.name}">
-              <td style="padding-left:16px">
-                <span class="dot" :class="s.established?'green':s.state==='unknown'?'gray':'red'"></span>
-              </td>
-              <td>
-                <span class="mono" style="font-size:12px" x-text="s.name"></span>
-              </td>
-              <td>
-                <span class="tag" x-text="s.afi==='ip'?'IPv4':'IPv6'"></span>
-              </td>
-              <td>
-                <span class="state-badge"
-                  :class="s.established?'up':s.state==='unknown'?'unk':'down'"
-                  x-text="s.established?'ESTAB':s.state.toUpperCase()"></span>
-                <span class="mono" style="font-size:12px;color:var(--muted);margin-left:10px"
-                  x-text="'AS'+s.remote_as+(s.remote_as_name?' \u00b7 '+s.remote_as_name:'')"></span>
-              </td>
-              <td style="text-align:right;font-family:monospace;font-size:12px;color:var(--muted)"
-                  x-text="s.uptime_raw||'—'"></td>
-              <td style="text-align:right;font-family:monospace;font-size:12px"
-                  x-text="s.prefixes_rx?s.prefixes_rx.toLocaleString():'—'"></td>
-              <td style="text-align:right;font-family:monospace;font-size:12px;color:var(--muted)"
-                  x-text="s.prefixes_tx?s.prefixes_tx.toLocaleString():'—'"></td>
-            </tr>
-            <!-- inline event detail -->
-            <template x-if="expandedSession===s.name">
-              <tr><td colspan="7" style="padding:0">
-                <div class="ev-inline">
-                  <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">
-                    Session events
-                    <span class="spinner" x-show="loadingEvt[s.name]" style="margin-left:6px"></span>
-                  </div>
-                  <template x-if="!sessionEvt[s.name] || sessionEvt[s.name].length===0">
-                    <div style="font-size:12px;color:var(--muted)">No events recorded</div>
-                  </template>
-                  <template x-for="ev in (sessionEvt[s.name]||[])" :key="ev.id">
-                    <div class="ev-grid" style="padding-left:0;padding-right:0">
-                      <span class="ev-ts" x-text="fmtTs(ev.ts)"></span>
-                      <span class="ev-kind" :style="'color:'+evColor(ev.event)" x-text="ev.event.toUpperCase()"></span>
-                      <span class="ev-detail" x-text="evDetail(ev)"></span>
-                      <span class="ev-detail" style="font-style:italic" x-text="ev.detail||''"></span>
-                    </div>
-                  </template>
+        <!--
+          Alpine.js v3 x-for requires a SINGLE root element per template.
+          The old nested x-for/x-if structure had two siblings (separator TR +
+          session TR), so Alpine only rendered the first child (the separator),
+          leaving session data columns blank.
+
+          Fix: flatRows() returns a flat list of typed items
+          {_type:'group'}, {_type:'session',...}, {_type:'expand',...}
+          Each maps to exactly one <tr> — the single root constraint is satisfied.
+        -->
+        <template x-for="row in flatRows()" :key="row._key">
+          <!-- GROUP SEPARATOR ROW -->
+          <tr x-show="row._type==='group'"
+              style="background:rgba(42,49,71,.6);pointer-events:none;cursor:default">
+            <td colspan="7" style="padding:5px 14px">
+              <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)"
+                    x-text="row._label"></span>
+            </td>
+          </tr>
+          <!-- SESSION ROW -->
+          <tr x-show="row._type==='session'"
+              @click="toggleSession(row.name)"
+              :class="{exp: expandedSession===row.name}">
+            <td style="padding-left:16px">
+              <span class="dot" :class="row.established?'green':row.state==='unknown'?'gray':'red'"></span>
+            </td>
+            <td>
+              <span class="mono" style="font-size:12px" x-text="row.name"></span>
+            </td>
+            <td>
+              <span class="tag" x-text="row.afi==='ip'?'IPv4':'IPv6'"></span>
+            </td>
+            <td>
+              <span class="state-badge"
+                :class="row.established?'up':row.state==='unknown'?'unk':'down'"
+                x-text="row.established?'ESTAB':(row.state||'?').toUpperCase()"></span>
+              <span class="mono" style="font-size:12px;color:var(--muted);margin-left:10px"
+                x-text="row.remote_as?'AS'+row.remote_as+(row.remote_as_name?' \u00b7 '+row.remote_as_name:''):'—'"></span>
+            </td>
+            <td style="text-align:right;font-family:monospace;font-size:12px;color:var(--muted)"
+                x-text="row.uptime_raw||'—'"></td>
+            <td style="text-align:right;font-family:monospace;font-size:12px"
+                x-text="row.prefixes_rx?row.prefixes_rx.toLocaleString():'—'"></td>
+            <td style="text-align:right;font-family:monospace;font-size:12px;color:var(--muted)"
+                x-text="row.prefixes_tx?row.prefixes_tx.toLocaleString():'—'"></td>
+          </tr>
+          <!-- INLINE EVENTS ROW (rendered only when session is expanded) -->
+          <tr x-show="row._type==='expand'">
+            <td colspan="7" style="padding:0">
+              <div class="ev-inline">
+                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">
+                  Session events
+                  <span class="spinner" x-show="loadingEvt[row._session]" style="margin-left:6px"></span>
                 </div>
-              </td></tr>
-            </template>
-          </template>
+                <template x-if="!sessionEvt[row._session] || sessionEvt[row._session].length===0">
+                  <div style="font-size:12px;color:var(--muted)">No events recorded</div>
+                </template>
+                <template x-for="ev in (sessionEvt[row._session]||[])" :key="ev.id">
+                  <div class="ev-grid" style="padding-left:0;padding-right:0">
+                    <span class="ev-ts" x-text="fmtTs(ev.ts)"></span>
+                    <span class="ev-kind" :style="'color:'+evColor(ev.event)" x-text="ev.event.toUpperCase()"></span>
+                    <span class="ev-detail" x-text="evDetail(ev)"></span>
+                    <span class="ev-detail" style="font-style:italic" x-text="ev.detail||''"></span>
+                  </div>
+                </template>
+              </div>
+            </td>
+          </tr>
         </template>
       </tbody>
     </table>
@@ -580,15 +589,27 @@ function bgp() { return {
     finally { this.monLoading = false; this.countdown = 30 }
   },
 
-  groupedSessions() {
+  // flatRows builds a flat list of typed row objects for the session table.
+  // Each item maps to exactly ONE <tr> (Alpine.js x-for single-root requirement).
+  // Types: 'group' (separator), 'session' (data row), 'expand' (inline events).
+  flatRows() {
     const g = {}
     for (const s of this.sessions) {
       const k = s.comment || s.connection_name || s.name
       ;(g[k] = g[k]||[]).push(s)
     }
-    return Object.entries(g)
-      .sort(([a],[b]) => a.localeCompare(b))
-      .map(([k,v]) => [k, v.sort((a,b) => (b.established?1:0)-(a.established?1:0))])
+    const flat = []
+    for (const [group, rows] of Object.entries(g).sort(([a],[b])=>a.localeCompare(b))) {
+      const sorted = rows.sort((a,b)=>(b.established?1:0)-(a.established?1:0))
+      flat.push({_type:'group', _key:'g:'+group, _label:group})
+      for (const s of sorted) {
+        flat.push({_type:'session', _key:'s:'+s.name, ...s})
+        if (this.expandedSession === s.name) {
+          flat.push({_type:'expand', _key:'e:'+s.name, _session:s.name})
+        }
+      }
+    }
+    return flat
   },
 
   async toggleSession(name) {

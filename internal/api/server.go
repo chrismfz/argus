@@ -218,11 +218,6 @@ func Start() {
 mainMux.HandleFunc("/pathfinder/ping", WithMainIPOnly(handlePathfinderPing))
 mainMux.HandleFunc("/pathfinder/traceroute", WithMainIPOnly(handlePathfinderTraceroute))
 
-  // ── RouterOS / BGP session monitoring ────────────────────────────────
-
-
-mainMux.HandleFunc("/pathfinder/ping", WithMainIPOnly(handlePathfinderPing))
-mainMux.HandleFunc("/pathfinder/traceroute", WithMainIPOnly(handlePathfinderTraceroute))
 
   // ── BGP cockpit ──────────────────────────────────────────────────────
   mainMux.HandleFunc("/bgp", WithMainIPOnly(func(w http.ResponseWriter, r *http.Request) {

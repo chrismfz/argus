@@ -8,6 +8,7 @@ import (
 	"net/http/pprof"
 	"argus/internal/enrich"
 	"argus/internal/bgp"
+	"argus/internal/bgpstate"
 	"github.com/yl2chen/cidranger"
 	"log"
 	"fmt"
@@ -36,6 +37,14 @@ var Ranger      cidranger.Ranger
 var DB          *sql.DB
 var TelemetryDB *sql.DB
 var CFM         *cfmapi.Client
+
+// BGPMon is the session monitor (bgpstate.Monitor), set by main.go.
+// Nil when RouterOS is not connected; handlers degrade gracefully.
+var BGPMon bgpstate.Monitor
+
+// RIB is the multi-path RIB watcher (bgpstate.RIBReader), set by main.go.
+// Phase 1 stub: always returns empty entries. Populated by ROUTEWATCH.
+var RIB bgpstate.RIBReader
 
 // ── Middleware ────────────────────────────────────────────────────────────────
 
@@ -208,6 +217,22 @@ func Start() {
 
 mainMux.HandleFunc("/pathfinder/ping", WithMainIPOnly(handlePathfinderPing))
 mainMux.HandleFunc("/pathfinder/traceroute", WithMainIPOnly(handlePathfinderTraceroute))
+
+  // ── RouterOS / BGP session monitoring ────────────────────────────────
+
+
+mainMux.HandleFunc("/pathfinder/ping", WithMainIPOnly(handlePathfinderPing))
+mainMux.HandleFunc("/pathfinder/traceroute", WithMainIPOnly(handlePathfinderTraceroute))
+
+  // ── BGP cockpit ──────────────────────────────────────────────────────
+  mainMux.HandleFunc("/bgp", WithMainIPOnly(func(w http.ResponseWriter, r *http.Request) {
+      w.Header().Set("Content-Type", "text/html; charset=utf-8")
+      w.Write(bgpHTML)
+  }))
+  mainMux.HandleFunc("/bgp/sessions",   WithMainIPOnly(handleBGPSessions))
+  mainMux.HandleFunc("/bgp/events",     WithMainIPOnly(handleBGPEvents))
+  mainMux.HandleFunc("/bgp/filters",    WithMainIPOnly(handleBGPFilters))
+  mainMux.HandleFunc("/bgp/originated", WithMainIPOnly(handleBGPOriginated))
 
   // ── RouterOS / BGP session monitoring ────────────────────────────────
   mainMux.HandleFunc("/routeros/bgp/sessions", WithMainIPOnly(handleROSBGPSessions))

@@ -37,6 +37,8 @@ import (
 
 	"argus/internal/pathfinder"
 	"argus/internal/routeros"
+	"argus/internal/bgpmon"
+	"argus/internal/rib"
 )
 
 var debug bool
@@ -620,7 +622,31 @@ if listener != nil {
 // ── Pathfinder end ──────────────────────────────────────────────────────
 
 
-
+	// ── RIB Watcher ──────────────────────────────────────────────────────────
+	// Phase 1 stub — Run() parks on ctx.Done(), entries map stays empty.
+	// When ROUTEWATCH begins: hoist `um` out of the Pathfinder block above
+	// (move `var um *pathfinder.UpstreamMap` to outer scope) and pass it here
+	// instead of nil so the adj-in subscription can label paths by upstream.
+	if listener != nil {
+		ribWatcher := rib.New(listener.Server, nil, enrichers.Geo)
+		go ribWatcher.Run(ctx)
+		api.RIB = ribWatcher
+		log.Printf("[rib] watcher started (Phase 1 stub)")
+	}
+ 
+	// ── BGP Monitor ──────────────────────────────────────────────────────────
+	if rosClient != nil {
+		if err := bgpmon.InitSchema(db); err != nil {
+			log.Printf("[bgpmon] schema init failed: %v", err)
+		} else {
+			mon := bgpmon.New(db, rosClient, alerter.Global, enrichers.Geo)
+			go mon.Run(ctx)
+			api.BGPMon = mon
+			log.Printf("[bgpmon] session monitor started")
+		}
+	} else {
+		log.Printf("[bgpmon] disabled — RouterOS not connected")
+	}
 
 	// ── API ───────────────────────────────────────────────────────────────────
 	go func() {

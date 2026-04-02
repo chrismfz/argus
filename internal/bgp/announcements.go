@@ -198,3 +198,14 @@ func ListAnnouncements() map[string]AnnouncedPrefix {
 	}
 	return copy
 }
+
+
+func GetAnnouncedPrefixes() []AnnouncedPrefix {
+	announceMu.RLock()
+	defer announceMu.RUnlock()
+	out := make([]AnnouncedPrefix, 0, len(announcedPrefixes))
+	for _, p := range announcedPrefixes {
+		out = append(out, p)
+	}
+	return out
+}

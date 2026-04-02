@@ -16,3 +16,7 @@ var alertsHTML []byte
 
 //go:embed static/pathfinder.html
 var pathfinderHTML []byte
+
+//go:embed static/bgp.html
+var bgpHTML []byte
+

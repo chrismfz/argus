@@ -56,6 +56,10 @@ type BGPPeer struct {
 	LocalAS       uint32 `json:"local_as"`
 	Disabled      bool   `json:"disabled"`
 	Comment       string `json:"comment"`
+	// Routing filter chains applied to this connection (from RouterOS).
+	// Empty string means no filter is set on that direction.
+	InputFilter  string `json:"input_filter,omitempty"`
+	OutputFilter string `json:"output_filter,omitempty"`
 }
 
 // ── BGP Sessions ──────────────────────────────────────────────────────────────

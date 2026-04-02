@@ -36,6 +36,8 @@ func (c *Client) ListBGPPeers(ctx context.Context) ([]BGPPeer, error) {
 			LocalAddress:  m["local.address"],
 			Disabled:      parseBool(m["disabled"]),
 			Comment:       m["comment"],
+			InputFilter:   m["input.filter"],
+			OutputFilter:  m["output.filter"],
 		}
 		if v, err := strconv.ParseUint(m["remote.as"], 10, 32); err == nil {
 			p.RemoteAS = uint32(v)

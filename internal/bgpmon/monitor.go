@@ -121,13 +121,8 @@ func (m *Monitor) poll(ctx context.Context) {
 	now := time.Now().Unix()
 	newCurrent := make([]bgpstate.SessionStatus, 0, len(sessions))
 
-	// Fetch outbound prefix counts via /routing/bgp/advertisements.
-	// One call returns all peers — far cheaper than per-peer calls.
-	// Non-fatal: if it fails, PrefixesTx stays 0.
-	txCounts := m.fetchTXCounts(pctx)
-
 	for _, sess := range sessions {
-		status := m.toStatus(sess, now, txCounts)
+		status := m.toStatus(sess, now)
 		uptime := parseUptimeRaw(sess.UptimeRaw)
 
 		// State machine: determine transition, fire events + alerts.
@@ -422,20 +417,16 @@ func (m *Monitor) LastPoll() int64 {
 // ── Conversion ────────────────────────────────────────────────────────────────
 
 // toStatus converts a RouterOS BGPSession to a bgpstate.SessionStatus,
-// enriching with MaxMind ASN name, connection comment, and TX prefix count.
-// txCounts is the peer→count map from fetchTXCounts; may be nil.
-func (m *Monitor) toStatus(sess routeros.BGPSession, now int64, txCounts map[string]int) bgpstate.SessionStatus {
+// enriching with MaxMind ASN name and connection comment where available.
+// Note: PrefixesTx is not populated — RouterOS session API does not expose
+// outbound prefix counts. Use the Advertisements tab for per-peer detail.
+func (m *Monitor) toStatus(sess routeros.BGPSession, now int64) bgpstate.SessionStatus {
 	asnName := ""
 	if m.geo != nil && sess.RemoteAddress != "" {
 		asnName = m.geo.GetASNName(sess.RemoteAddress)
 	}
 
 	comment := m.connComments[sess.ConnectionName]
-
-	tx := 0
-	if txCounts != nil {
-		tx = txCounts[sess.Name]
-	}
 
 	return bgpstate.SessionStatus{
 		Name:           sess.Name,
@@ -449,7 +440,7 @@ func (m *Monitor) toStatus(sess routeros.BGPSession, now int64, txCounts map[str
 		Established:    sess.Established,
 		UptimeRaw:      sess.UptimeRaw,
 		PrefixesRx:     sess.PrefixesReceived,
-		PrefixesTx:     tx,
+		PrefixesTx:     0,
 		LastSeen:       now,
 		ConnectionName: sess.ConnectionName,
 	}
@@ -473,26 +464,6 @@ func (m *Monitor) loadConnectionComments(ctx context.Context) {
 		}
 	}
 	log.Printf("[bgpmon] loaded comments for %d connections", len(m.connComments))
-}
-
-// fetchTXCounts fetches all BGP advertisements in one call and returns a
-// peer-name → advertisement-count map. Used to populate PrefixesTx in the
-// session status, since RouterOS does not include outbound prefix count in
-// the session list API response.
-//
-// Returns nil on error — callers treat nil as "counts unavailable".
-func (m *Monitor) fetchTXCounts(ctx context.Context) map[string]int {
-	ads, err := m.ros.ListBGPAdvertisements(ctx, "")
-	if err != nil {
-		// Non-fatal — TX counts stay 0 this cycle.
-		log.Printf("[bgpmon] fetchTXCounts: %v", err)
-		return nil
-	}
-	counts := make(map[string]int, 32)
-	for _, ad := range ads {
-		counts[ad.Peer]++
-	}
-	return counts
 }
 
 // ── Pure helpers ──────────────────────────────────────────────────────────────

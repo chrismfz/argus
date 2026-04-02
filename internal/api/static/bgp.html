@@ -177,7 +177,6 @@ nav a.active{color:var(--accent);border-color:var(--accent)}
           <th>Peer</th>
           <th style="text-align:right">Uptime</th>
           <th style="text-align:right">Rx prefixes</th>
-          <th style="text-align:right">Tx prefixes</th>
         </tr>
       </thead>
       <tbody>
@@ -200,7 +199,7 @@ nav a.active{color:var(--accent);border-color:var(--accent)}
               : ''">
 
             <!-- Cell 1: group label · status dot · inline events (shared) -->
-            <td :colspan="row._type==='session' ? 1 : 7"
+            <td :colspan="row._type==='session' ? 1 : 6"
                 :style="row._type==='group'
                   ? 'padding:5px 14px'
                   : row._type==='expand'
@@ -253,9 +252,6 @@ nav a.active{color:var(--accent);border-color:var(--accent)}
             <td x-show="row._type==='session'"
                 style="text-align:right;font-family:monospace;font-size:12px"
                 x-text="row.prefixes_rx?row.prefixes_rx.toLocaleString():'—'"></td>
-            <td x-show="row._type==='session'"
-                style="text-align:right;font-family:monospace;font-size:12px;color:var(--teal)"
-                x-text="row.prefixes_tx?row.prefixes_tx.toLocaleString():'—'"></td>
           </tr>
         </template>
       </tbody>
@@ -359,7 +355,9 @@ nav a.active{color:var(--accent);border-color:var(--accent)}
   <div class="card">
     <div class="card-header">
       <span class="card-title">What MikroTik advertises to each peer</span>
-      <span class="card-sub" style="margin-left:auto">TX count from session data · click "prefixes" to load exact routes from router</span>
+      <span class="card-sub" style="margin-left:auto">
+        Click "prefixes" to load exact routes on demand — avoid for route collectors (very large)
+      </span>
     </div>
     <table class="sess-table">
       <thead>
@@ -694,6 +692,20 @@ function bgp() { return {
   async loadAdsForPeer(sessionName) {
     if (this.adsSession === sessionName) {
       this.adsSession = null; this.adsData = []; return
+    }
+    // Warn before fetching for peers that send us large tables —
+    // the RouterOS advertisements API must scan its full table, which spikes CPU.
+    // Route collectors and transit/IX full-table peers fall in this category.
+    const s = this.sessions.find(s=>s.name===sessionName)
+    const rxCount = s?.prefixes_rx || 0
+    if (rxCount > 10000) {
+      const ok = confirm(
+        `${sessionName} sends us ${rxCount.toLocaleString()} prefixes.\n\n` +
+        `Fetching advertisements for this peer makes RouterOS scan its full ` +
+        `advertisement table and may spike router CPU for several seconds.\n\n` +
+        `Continue?`
+      )
+      if (!ok) return
     }
     this.adsSession = sessionName
     this.adsData = []

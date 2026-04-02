@@ -176,8 +176,8 @@ nav a.active{color:var(--accent);border-color:var(--accent)}
           <th>AFI</th>
           <th>Peer</th>
           <th style="text-align:right">Uptime</th>
-          <th style="text-align:right">Rx</th>
-          <th style="text-align:right">Tx</th>
+          <th style="text-align:right">Rx prefixes</th>
+          <th style="text-align:right">Tx prefixes</th>
         </tr>
       </thead>
       <tbody>
@@ -254,7 +254,7 @@ nav a.active{color:var(--accent);border-color:var(--accent)}
                 style="text-align:right;font-family:monospace;font-size:12px"
                 x-text="row.prefixes_rx?row.prefixes_rx.toLocaleString():'—'"></td>
             <td x-show="row._type==='session'"
-                style="text-align:right;font-family:monospace;font-size:12px;color:var(--muted)"
+                style="text-align:right;font-family:monospace;font-size:12px;color:var(--teal)"
                 x-text="row.prefixes_tx?row.prefixes_tx.toLocaleString():'—'"></td>
           </tr>
         </template>
@@ -355,7 +355,7 @@ nav a.active{color:var(--accent);border-color:var(--accent)}
 <!-- ══ ADVERTISEMENTS ════════════════════════════════════════════════════════ -->
 <div x-show="tab==='ads'" class="content">
 
-  <!-- Per-session TX with per-peer drill-down -->
+  <!-- Session list — single <tr> per row, NO siblings, no Alpine x-for issue -->
   <div class="card">
     <div class="card-header">
       <span class="card-title">What MikroTik advertises to each peer</span>
@@ -374,7 +374,8 @@ nav a.active{color:var(--accent);border-color:var(--accent)}
       </thead>
       <tbody>
         <template x-for="s in sessions" :key="s.name">
-          <tr style="cursor:default">
+          <!-- SINGLE <tr> root — no sibling elements -->
+          <tr :class="{'exp': adsSession===s.name}" style="cursor:default">
             <td class="mono" style="font-size:12px" x-text="s.name"></td>
             <td style="font-size:12px;color:var(--muted)" x-text="s.comment||s.connection_name||'—'"></td>
             <td><span class="tag" x-text="s.afi==='ip'?'IPv4':'IPv6'"></span></td>
@@ -383,53 +384,59 @@ nav a.active{color:var(--accent);border-color:var(--accent)}
             <td class="mono" style="font-size:11px;color:var(--muted)"
                 x-text="s.remote_as?'AS'+s.remote_as+' '+s.remote_address:'—'"></td>
             <td style="text-align:right;padding-right:12px">
-              <button x-show="s.prefixes_tx > 0 || adsSession===s.name"
-                      @click="loadAdsForPeer(s.name)"
-                      style="font-size:11px;padding:2px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--muted);cursor:pointer"
-                      :style="adsSession===s.name ? 'border-color:var(--accent);color:var(--accent)' : ''"
-                      x-text="adsSession===s.name ? 'close' : 'prefixes'"></button>
-            </td>
-          </tr>
-          <!-- Inline advertisement detail -->
-          <tr x-show="adsSession===s.name" style="cursor:default">
-            <td colspan="6" style="padding:0">
-              <div style="padding:10px 14px;background:var(--bg)">
-                <div x-show="adsLoadingPeer" style="font-size:12px;color:var(--muted)">
-                  <span class="spinner"></span> loading from RouterOS…
-                </div>
-                <div x-show="!adsLoadingPeer && adsData.length===0"
-                     style="font-size:12px;color:var(--muted)">No advertisements returned</div>
-                <div x-show="!adsLoadingPeer && adsData.length>0">
-                  <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--teal);margin-bottom:8px"
-                       x-text="adsData.length+' prefixes advertised to '+adsSession"></div>
-                  <table style="width:100%;border-collapse:collapse;font-size:11px">
-                    <thead>
-                      <tr style="border-bottom:1px solid var(--border)">
-                        <th style="text-align:left;padding:4px 8px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;font-size:10px">Prefix</th>
-                        <th style="text-align:left;padding:4px 8px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;font-size:10px">Next-hop</th>
-                        <th style="text-align:left;padding:4px 8px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;font-size:10px">AS-path</th>
-                        <th style="text-align:left;padding:4px 8px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;font-size:10px">Communities</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <template x-for="(ad, ai) in adsData" :key="ai">
-                        <tr style="border-bottom:1px solid rgba(42,49,71,.5)">
-                          <td style="padding:4px 8px;font-family:monospace;color:var(--accent)" x-text="ad.dst"></td>
-                          <td style="padding:4px 8px;font-family:monospace;color:var(--muted)" x-text="ad.nexthop||'—'"></td>
-                          <td style="padding:4px 8px;font-family:monospace;color:var(--text)" x-text="ad.as_path||'—'"></td>
-                          <td style="padding:4px 8px;font-family:monospace;color:var(--purple);font-size:10px"
-                              x-text="ad.communities||'—'"></td>
-                        </tr>
-                      </template>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              <button @click="loadAdsForPeer(s.name)"
+                      style="font-size:11px;padding:2px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;cursor:pointer;transition:.1s"
+                      :style="adsSession===s.name
+                        ? 'border-color:var(--accent);color:var(--accent)'
+                        : 'color:var(--muted)'"
+                      x-text="adsSession===s.name ? '✕ close' : 'prefixes'"></button>
             </td>
           </tr>
         </template>
         <template x-if="sessions.length===0">
           <tr><td colspan="6" style="padding:14px;font-size:12px;color:var(--muted)">No session data — monitor may not have polled yet</td></tr>
+        </template>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Advertisements detail — separate card, NOT inside the x-for -->
+  <div class="card" x-show="adsSession" style="overflow:hidden">
+    <div class="card-header">
+      <span class="card-title" x-text="adsSession||''"></span>
+      <span class="spinner" x-show="adsLoadingPeer" style="margin-left:6px"></span>
+      <span x-show="!adsLoadingPeer && adsData.length"
+            style="font-size:11px;color:var(--teal);margin-left:8px"
+            x-text="adsData.length+' prefixes'"></span>
+      <button @click="adsSession=null;adsData=[]"
+              style="margin-left:auto;background:none;border:1px solid var(--border);border-radius:4px;color:var(--muted);font-size:11px;padding:2px 10px;cursor:pointer">
+        close
+      </button>
+    </div>
+    <div x-show="adsLoadingPeer" style="padding:14px;font-size:12px;color:var(--muted)">
+      <span class="spinner"></span> querying RouterOS…
+    </div>
+    <div x-show="!adsLoadingPeer && !adsData.length"
+         style="padding:14px;font-size:12px;color:var(--muted)">
+      No advertisements returned for this peer
+    </div>
+    <table class="sess-table" x-show="!adsLoadingPeer && adsData.length">
+      <thead>
+        <tr>
+          <th>Prefix</th>
+          <th>Next-hop</th>
+          <th>AS-path</th>
+          <th>Communities</th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-for="(ad, ai) in adsData" :key="ai">
+          <tr style="cursor:default">
+            <td class="mono" style="color:var(--accent);font-size:12px" x-text="ad.dst"></td>
+            <td class="mono" style="color:var(--muted);font-size:12px" x-text="ad.nexthop||'—'"></td>
+            <td class="mono" style="font-size:12px" x-text="ad.as_path||'—'"></td>
+            <td class="mono" style="font-size:11px;color:var(--purple)" x-text="ad.communities||'—'"></td>
+          </tr>
         </template>
       </tbody>
     </table>

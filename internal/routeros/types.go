@@ -62,6 +62,19 @@ type BGPPeer struct {
 	OutputFilter string `json:"output_filter,omitempty"`
 }
 
+// BGPAdvertisement is one prefix being advertised to a peer,
+// as returned by /rest/routing/bgp/advertisements.
+type BGPAdvertisement struct {
+	Peer        string `json:"peer"`
+	Dst         string `json:"dst"`
+	AFI         string `json:"afi"`
+	NextHop     string `json:"nexthop,omitempty"`
+	Origin      string `json:"origin,omitempty"`
+	ASPath      string `json:"as_path,omitempty"`
+	Communities string `json:"communities,omitempty"`
+	Aggregator  string `json:"aggregator,omitempty"`
+}
+
 // ── BGP Sessions ──────────────────────────────────────────────────────────────
 
 type BGPSessionState string

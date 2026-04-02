@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"net/url"
 )
 
 // ListBGPSessions returns all BGP sessions from /rest/routing/bgp/session.
@@ -37,7 +38,7 @@ func (c *Client) ListBGPPeers(ctx context.Context) ([]BGPPeer, error) {
 			Disabled:      parseBool(m["disabled"]),
 			Comment:       m["comment"],
 			InputFilter:   m["input.filter"],
-			OutputFilter:  m["output.filter"],
+			OutputFilter:  m["output.filter-chain"],
 		}
 		if v, err := strconv.ParseUint(m["remote.as"], 10, 32); err == nil {
 			p.RemoteAS = uint32(v)
@@ -68,6 +69,35 @@ func (c *Client) ListFilterRules(ctx context.Context) ([]FilterRule, error) {
 	}
 	return rules, nil
 }
+
+// ListBGPAdvertisements returns prefixes being advertised to BGP peers,
+// from /rest/routing/bgp/advertisements.
+// If peer is non-empty only that peer's advertisements are returned.
+func (c *Client) ListBGPAdvertisements(ctx context.Context, peer string) ([]BGPAdvertisement, error) {
+	q := url.Values{}
+	if peer != "" {
+		q.Set("peer", peer)
+	}
+	var raw []map[string]string
+	if err := c.get(ctx, "routing/bgp/advertisements", q, &raw); err != nil {
+		return nil, fmt.Errorf("ListBGPAdvertisements: %w", err)
+	}
+	ads := make([]BGPAdvertisement, 0, len(raw))
+	for _, m := range raw {
+		ads = append(ads, BGPAdvertisement{
+			Peer:        m["peer"],
+			Dst:         m["dst"],
+			AFI:         m["afi"],
+			NextHop:     m["nexthop"],
+			Origin:      m["origin"],
+			ASPath:      m["as-path"],
+			Communities: m["communities"],
+			Aggregator:  m["aggregator"],
+		})
+	}
+	return ads, nil
+}
+
 
 // ── Parsing ───────────────────────────────────────────────────────────────────
 

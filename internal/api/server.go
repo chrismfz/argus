@@ -237,6 +237,7 @@ mainMux.HandleFunc("/pathfinder/traceroute", WithMainIPOnly(handlePathfinderTrac
   mainMux.HandleFunc("/bgp/filters",    WithMainIPOnly(handleBGPFilters))
   mainMux.HandleFunc("/bgp/originated", WithMainIPOnly(handleBGPOriginated))
   mainMux.HandleFunc("/bgp/advertisements",WithMainIPOnly(handleBGPAdvertisements))
+  mainMux.HandleFunc("/bgp/received",      WithMainIPOnly(handleBGPReceived))
 
   // ── RouterOS / BGP session monitoring ────────────────────────────────
   mainMux.HandleFunc("/routeros/bgp/sessions", WithMainIPOnly(handleROSBGPSessions))

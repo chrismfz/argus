@@ -244,3 +244,40 @@ func (c *Client) Traceroute(ctx context.Context, address, srcAddress string) ([]
     return hops, nil
 }
 
+
+
+// ReceivedRoute is one prefix received from a BGP peer, as seen in
+// /routing/route filtered by belongs-to=bgp-IP-<remoteIP>.
+type ReceivedRoute struct {
+	Dst      string `json:"dst"`
+	Gateway  string `json:"gateway,omitempty"`
+	Active   bool   `json:"active"`
+	Distance int    `json:"distance,omitempty"`
+}
+ 
+// ListPeerRoutes returns all routes received from a specific BGP peer.
+// belongsTo is the RouterOS internal process identifier for that session,
+// e.g. "bgp-IP-185.1.123.10" for a peer at 185.1.123.10.
+//
+// Uses the .proplist query param to fetch only the minimal fields needed,
+// which keeps the response small even for full-table peers.
+func (c *Client) ListPeerRoutes(ctx context.Context, belongsTo string) ([]ReceivedRoute, error) {
+	q := url.Values{}
+	q.Set(".proplist", "dst-address,gateway,active,distance")
+	q.Set("belongs-to", belongsTo)
+	var raw []map[string]string
+	if err := c.get(ctx, "routing/route", q, &raw); err != nil {
+		return nil, fmt.Errorf("ListPeerRoutes %q: %w", belongsTo, err)
+	}
+	routes := make([]ReceivedRoute, 0, len(raw))
+	for _, m := range raw {
+		dist, _ := strconv.Atoi(m["distance"])
+		routes = append(routes, ReceivedRoute{
+			Dst:      m["dst-address"],
+			Gateway:  m["gateway"],
+			Active:   parseBool(m["active"]),
+			Distance: dist,
+		})
+	}
+	return routes, nil
+}

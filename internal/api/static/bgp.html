@@ -365,34 +365,43 @@ nav a.active{color:var(--accent);border-color:var(--accent)}
           <th>Session</th>
           <th>Connection</th>
           <th>AFI</th>
-          <th style="text-align:right">Tx count</th>
+          <th style="text-align:right">Tx prefixes</th>
+          <th style="text-align:right">Rx prefixes</th>
           <th>Remote</th>
-          <th></th>
+          <th style="text-align:right">Actions</th>
         </tr>
       </thead>
       <tbody>
         <template x-for="s in sessions" :key="s.name">
           <!-- SINGLE <tr> root — no sibling elements -->
-          <tr :class="{'exp': adsSession===s.name}" style="cursor:default">
+          <tr :class="{'exp': adsSession===s.name || rcvSession===s.name}" style="cursor:default">
             <td class="mono" style="font-size:12px" x-text="s.name"></td>
             <td style="font-size:12px;color:var(--muted)" x-text="s.comment||s.connection_name||'—'"></td>
             <td><span class="tag" x-text="s.afi==='ip'?'IPv4':'IPv6'"></span></td>
             <td style="text-align:right;font-family:monospace;font-size:13px;font-weight:600;color:var(--text)"
                 x-text="s.prefixes_tx!=null?s.prefixes_tx.toLocaleString():'—'"></td>
+            <td style="text-align:right;font-family:monospace;font-size:13px;color:var(--teal)"
+                x-text="s.prefixes_rx?s.prefixes_rx.toLocaleString():'—'"></td>
             <td class="mono" style="font-size:11px;color:var(--muted)"
                 x-text="s.remote_as?'AS'+s.remote_as+' '+s.remote_address:'—'"></td>
-            <td style="text-align:right;padding-right:12px">
+            <td style="text-align:right;padding-right:12px;white-space:nowrap;display:flex;gap:4px;justify-content:flex-end;align-items:center;padding-top:6px;padding-bottom:6px">
+              <!-- Sent prefixes (what we advertise to them) -->
               <button @click="loadAdsForPeer(s.name)"
-                      style="font-size:11px;padding:2px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;cursor:pointer;transition:.1s"
-                      :style="adsSession===s.name
-                        ? 'border-color:var(--accent);color:var(--accent)'
-                        : 'color:var(--muted)'"
-                      x-text="adsSession===s.name ? '✕ close' : 'prefixes'"></button>
+                      style="font-size:11px;padding:2px 8px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;cursor:pointer;transition:.1s"
+                      :style="adsSession===s.name ? 'border-color:var(--accent);color:var(--accent)' : 'color:var(--muted)'"
+                      :title="'What we send to '+s.name"
+                      x-text="adsSession===s.name ? '✕ sent' : '↑ sent'"></button>
+              <!-- Received prefixes (what they advertise to us) -->
+              <button @click="loadReceivedFromPeer(s.name)"
+                      style="font-size:11px;padding:2px 8px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;cursor:pointer;transition:.1s"
+                      :style="rcvSession===s.name ? 'border-color:var(--teal);color:var(--teal)' : 'color:var(--muted)'"
+                      :title="'What '+s.name+' sends us'"
+                      x-text="rcvSession===s.name ? '✕ received' : '↓ received'"></button>
             </td>
           </tr>
         </template>
         <template x-if="sessions.length===0">
-          <tr><td colspan="6" style="padding:14px;font-size:12px;color:var(--muted)">No session data — monitor may not have polled yet</td></tr>
+          <tr><td colspan="7" style="padding:14px;font-size:12px;color:var(--muted)">No session data — monitor may not have polled yet</td></tr>
         </template>
       </tbody>
     </table>
@@ -438,6 +447,79 @@ nav a.active{color:var(--accent);border-color:var(--accent)}
         </template>
       </tbody>
     </table>
+  </div>
+
+  <!-- ── Received prefixes card (what they send us) ── -->
+  <div class="card" x-show="rcvSession" style="overflow:hidden">
+    <div class="card-header">
+      <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--teal)">↓ received from</span>
+      <span class="card-title" style="margin-left:6px" x-text="rcvSession||''"></span>
+      <span class="spinner" x-show="rcvLoading" style="margin-left:6px"></span>
+      <span x-show="!rcvLoading && rcvData.length"
+            style="font-size:11px;color:var(--teal);margin-left:8px"
+            x-text="rcvData.length.toLocaleString()+' prefixes'"></span>
+      <span x-show="!rcvLoading && rcvData.length"
+            style="font-size:11px;color:var(--muted);margin-left:8px">
+        · click any prefix to look up in Pathfinder
+      </span>
+      <button @click="rcvSession=null;rcvData=[]"
+              style="margin-left:auto;background:none;border:1px solid var(--border);border-radius:4px;color:var(--muted);font-size:11px;padding:2px 10px;cursor:pointer">
+        close
+      </button>
+    </div>
+    <div x-show="rcvLoading" style="padding:14px;font-size:12px;color:var(--muted)">
+      <span class="spinner"></span> querying RouterOS routing table…
+    </div>
+    <div x-show="!rcvLoading && !rcvData.length"
+         style="padding:14px;font-size:12px;color:var(--muted)">
+      No routes found from this peer in the routing table
+    </div>
+    <!-- Search / filter within received prefixes -->
+    <div x-show="!rcvLoading && rcvData.length" style="padding:8px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">
+      <input x-model="rcvFilter"
+             placeholder="filter prefixes… e.g. 172.68 or 104.18"
+             style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:12px;padding:4px 8px;font-family:monospace;outline:none">
+      <span style="font-size:11px;color:var(--muted)"
+            x-text="rcvFiltered().length.toLocaleString()+' shown'"></span>
+    </div>
+    <div style="max-height:400px;overflow-y:auto">
+      <table class="sess-table" x-show="!rcvLoading && rcvData.length">
+        <thead style="position:sticky;top:0;background:var(--bg2);z-index:1">
+          <tr>
+            <th>Prefix</th>
+            <th>Gateway</th>
+            <th style="text-align:center">Active</th>
+            <th style="text-align:right">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="(rt, ri) in rcvFiltered().slice(0, 500)" :key="ri">
+            <tr style="cursor:default">
+              <td class="mono" style="color:var(--accent);font-size:12px" x-text="rt.dst"></td>
+              <td class="mono" style="color:var(--muted);font-size:12px" x-text="rt.gateway||'—'"></td>
+              <td style="text-align:center">
+                <span x-show="rt.active" style="color:var(--green);font-size:11px">✓</span>
+                <span x-show="!rt.active" style="color:var(--muted);font-size:11px">—</span>
+              </td>
+              <td style="text-align:right;padding-right:10px">
+                <a :href="'/pathfinder?prefix='+encodeURIComponent(rt.dst)"
+                   target="_blank"
+                   style="font-size:11px;color:var(--muted);text-decoration:none;padding:1px 6px;border:1px solid var(--border);border-radius:3px"
+                   @mouseover="$el.style.color='var(--accent)';$el.style.borderColor='var(--accent)'"
+                   @mouseout="$el.style.color='var(--muted)';$el.style.borderColor='var(--border)'">
+                  ↗ Pathfinder
+                </a>
+              </td>
+            </tr>
+          </template>
+          <tr x-show="rcvFiltered().length > 500">
+            <td colspan="4" style="padding:10px 14px;font-size:11px;color:var(--muted);font-style:italic">
+              Showing first 500 of <span x-text="rcvFiltered().length.toLocaleString()"></span> prefixes — use the filter above to narrow down
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 
 </div><!-- /ads -->
@@ -594,6 +676,7 @@ function bgp() { return {
   connections: [], rules: [], peersLoading: false,
   originated: [], adsLoading: false,
   adsSession: null, adsData: [], adsLoadingPeer: false,
+  rcvSession: null, rcvData: [], rcvLoading: false, rcvFilter: '',
   pfQuery: '', pfResult: null, pfLoading: false, pfError: null,
 
   init() {
@@ -716,6 +799,41 @@ function bgp() { return {
       this.adsData = d.advertisements || []
     } catch(e) { console.error('[bgp] ads load', e) }
     finally { this.adsLoadingPeer = false }
+  },
+
+  async loadReceivedFromPeer(sessionName) {
+    // Toggle off if already showing this session
+    if (this.rcvSession === sessionName) {
+      this.rcvSession = null; this.rcvData = []; this.rcvFilter = ''; return
+    }
+    // Warn for full-table peers — /routing/route scan can be large
+    const s = this.sessions.find(s => s.name === sessionName)
+    const rxCount = s?.prefixes_rx || 0
+    if (rxCount > 50000) {
+      const ok = confirm(
+        `${sessionName} sends us ${rxCount.toLocaleString()} prefixes.\n\n` +
+        `Loading the full received prefix list from RouterOS may take 10-30s ` +
+        `for a full-table peer.\n\n` +
+        `Tip: use the filter box to narrow down to specific ranges.\n\nContinue?`
+      )
+      if (!ok) return
+    }
+    this.rcvSession = sessionName
+    this.rcvData = []
+    this.rcvFilter = ''
+    this.rcvLoading = true
+    try {
+      const r = await fetch('/bgp/received?session='+encodeURIComponent(sessionName))
+      const d = await r.json()
+      this.rcvData = d.routes || []
+    } catch(e) { console.error('[bgp] received load', e) }
+    finally { this.rcvLoading = false }
+  },
+
+  rcvFiltered() {
+    if (!this.rcvFilter) return this.rcvData
+    const f = this.rcvFilter.toLowerCase()
+    return this.rcvData.filter(rt => rt.dst && rt.dst.toLowerCase().includes(f))
   },
 
   /* ── Prefix lookup ────────────────────────────────────────────────── */

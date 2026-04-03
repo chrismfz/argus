@@ -196,3 +196,65 @@ func handleBGPAdvertisements(w http.ResponseWriter, r *http.Request) {
 		"advertisements": ads,
 	})
 }
+
+
+
+// GET /bgp/received?session=<session-name>
+//
+// Returns the prefixes received from a specific BGP peer, sourced from
+// RouterOS /routing/route filtered by the session's belongs-to identifier.
+//
+// The belongs-to format is "bgp-IP-<remoteIP>" for IPv4 sessions and
+// "bgp-IPv6-<remoteIP>" for IPv6 sessions (RouterOS internal process name).
+//
+// Timeout is 30s — full-table peers (Synapsecom, HE) have 1M+ routes.
+// The UI warns before calling for peers with prefixes_rx > 5000.
+func handleBGPReceived(w http.ResponseWriter, r *http.Request) {
+	if PathfinderROSClient == nil {
+		jsonErr(w, http.StatusServiceUnavailable, "RouterOS not connected")
+		return
+	}
+	if BGPMon == nil {
+		jsonErr(w, http.StatusServiceUnavailable, "BGP monitor not ready")
+		return
+	}
+	sessionName := r.URL.Query().Get("session")
+	if sessionName == "" {
+		jsonErr(w, http.StatusBadRequest, "missing ?session=")
+		return
+	}
+ 
+	// Look up session to get remote IP and AFI.
+	sess, ok := BGPMon.SessionByName(sessionName)
+	if !ok {
+		jsonErr(w, http.StatusNotFound, "session not found: "+sessionName)
+		return
+	}
+ 
+	// RouterOS internal process name for this session's routes.
+	// IPv6 peers use "bgp-IPv6-<ip>", IPv4 peers use "bgp-IP-<ip>".
+	belongsTo := "bgp-IP-" + sess.RemoteAddress
+	if sess.AFI == "ipv6" {
+		belongsTo = "bgp-IPv6-" + sess.RemoteAddress
+	}
+ 
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+ 
+	routes, err := PathfinderROSClient.ListPeerRoutes(ctx, belongsTo)
+	if err != nil {
+		jsonErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if routes == nil {
+		routes = []routeros.ReceivedRoute{}
+	}
+ 
+	jsonOK(w, map[string]interface{}{
+		"session":    sessionName,
+		"remote":     sess.RemoteAddress,
+		"belongs_to": belongsTo,
+		"count":      len(routes),
+		"routes":     routes,
+	})
+}

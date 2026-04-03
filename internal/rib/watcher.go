@@ -267,7 +267,7 @@ func communityString(c uint32) string {
 }
 
 func largeCommunityString(lc *bgppkt.LargeCommunity) string {
-	return fmt.Sprintf("%d:%d:%d", lc.GlobalAdministrator, lc.LocalData1, lc.LocalData2)
+	return fmt.Sprintf("%d:%d:%d", lc.ASN, lc.LocalData1, lc.LocalData2)
 }
 
 func entryMatchesASN(e *bgpstate.PrefixEntry, asn uint32) bool {

@@ -550,90 +550,87 @@ telemetry.RawTap.Publish("mikrotik", func() map[uint16]string {
 
 
 
-  // ── RouterOS API client ───────────────────────────────────────────────
-  var rosClient *routeros.Client
-  if config.AppConfig.RouterOS.Enabled {
-      rosCfg := routeros.Config{
-          Address:        config.AppConfig.RouterOS.Address,
-          Username:       config.AppConfig.RouterOS.Username,
-          Password:       config.AppConfig.RouterOS.Password,
-          InsecureTLS:    config.AppConfig.RouterOS.InsecureTLS,
-          TimeoutSeconds: config.AppConfig.RouterOS.TimeoutSeconds,
-      }
-      rosClient, err = routeros.Dial(rosCfg)
-      if err != nil {
-          log.Printf("[RouterOS] REST connection failed (non-fatal): %v", err)
-          rosClient = nil
-      } else {
-          log.Printf("[RouterOS] REST client ready (%s)", config.AppConfig.RouterOS.Address)
-          api.PathfinderROSClient = rosClient
-      }
-  }
 
-  // ── Pathfinder ────────────────────────────────────────────────────────
-  {
-      // Try auto-discovering upstream names from RouterOS IP address table.
-      // Falls back to manual config.yaml pathfinder: section if unavailable.
-      var um *pathfinder.UpstreamMap
 
-      if rosClient != nil {
-          ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-          addrs, err := rosClient.ListIPAddresses(ctx)
-          cancel()
-          if err == nil {
-              nextHopMap := routeros.BuildNextHopMap(addrs)
-              log.Printf("[Pathfinder] auto-discovered %d interface subnets for upstream resolution", len(addrs))
-              // Manual config overrides auto-discovery
-              for k, v := range config.AppConfig.Pathfinder.NextHopMap {
-                  nextHopMap[k] = v
-              }
-              um = pathfinder.NewUpstreamMap(
-                  config.AppConfig.Pathfinder.CommunityMap,
-                  config.AppConfig.Pathfinder.TransitASNMap,
-                  nextHopMap,
-                  config.AppConfig.MyASN,
-              )
-          } else {
-              log.Printf("[Pathfinder] RouterOS IP address fetch failed, using config only: %v", err)
-          }
-      }
+// ── RouterOS API client ───────────────────────────────────────────────
+var rosClient *routeros.Client
+var um *pathfinder.UpstreamMap   // <- add this here, outside the Pathfinder block
 
-      if um == nil {
-          um = pathfinder.NewUpstreamMap(
-              config.AppConfig.Pathfinder.CommunityMap,
-              config.AppConfig.Pathfinder.TransitASNMap,
-              config.AppConfig.Pathfinder.NextHopMap,
-              config.AppConfig.MyASN,
-          )
-      }
+if config.AppConfig.RouterOS.Enabled {
+    rosCfg := routeros.Config{
+        Address:        config.AppConfig.RouterOS.Address,
+        Username:       config.AppConfig.RouterOS.Username,
+        Password:       config.AppConfig.RouterOS.Password,
+        InsecureTLS:    config.AppConfig.RouterOS.InsecureTLS,
+        TimeoutSeconds: config.AppConfig.RouterOS.TimeoutSeconds,
+    }
+    rosClient, err = routeros.Dial(rosCfg)
+    if err != nil {
+        log.Printf("[RouterOS] REST connection failed (non-fatal): %v", err)
+        rosClient = nil
+    } else {
+        log.Printf("[RouterOS] REST client ready (%s)", config.AppConfig.RouterOS.Address)
+        api.PathfinderROSClient = rosClient
+    }
+}
 
+// ── Pathfinder ────────────────────────────────────────────────────────
+{
+    // remove: var um *pathfinder.UpstreamMap
+
+    if rosClient != nil {
+        ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+        addrs, err := rosClient.ListIPAddresses(ctx)
+        cancel()
+        if err == nil {
+            nextHopMap := routeros.BuildNextHopMap(addrs)
+            log.Printf("[Pathfinder] auto-discovered %d interface subnets for upstream resolution", len(addrs))
+            for k, v := range config.AppConfig.Pathfinder.NextHopMap {
+                nextHopMap[k] = v
+            }
+            um = pathfinder.NewUpstreamMap(
+                config.AppConfig.Pathfinder.CommunityMap,
+                config.AppConfig.Pathfinder.TransitASNMap,
+                nextHopMap,
+                config.AppConfig.MyASN,
+            )
+        } else {
+            log.Printf("[Pathfinder] RouterOS IP address fetch failed, using config only: %v", err)
+        }
+    }
+
+    if um == nil {
+        um = pathfinder.NewUpstreamMap(
+            config.AppConfig.Pathfinder.CommunityMap,
+            config.AppConfig.Pathfinder.TransitASNMap,
+            config.AppConfig.Pathfinder.NextHopMap,
+            config.AppConfig.MyASN,
+        )
+    }
+
+    if listener != nil {
+        api.PathfinderResolver = pathfinder.NewResolver(listener.Server, um)
+    } else {
+        log.Printf("[Pathfinder] BGP listener not ready, resolver unavailable")
+    }
+
+    api.PathfinderROSClient = rosClient
+    log.Printf("[Pathfinder] resolver ready")
+}
+
+// ── RIB Watcher ──────────────────────────────────────────────────────────
 if listener != nil {
-    api.PathfinderResolver = pathfinder.NewResolver(listener.Server, um)
-} else {
-    log.Printf("[Pathfinder] BGP listener not ready, resolver unavailable")
+    ribWatcher := rib.New(listener.Server, um, enrichers.Geo) // <- pass um, not nil
+    go ribWatcher.Run(ctx)
+    api.RIB = ribWatcher
+    log.Printf("[rib] watcher started — adj-in polling active")
 }
 
 
-      api.PathfinderROSClient = rosClient // may be nil — handlers degrade gracefully
-      log.Printf("[Pathfinder] resolver ready")
-  }
 
 
-// ── Pathfinder end ──────────────────────────────────────────────────────
 
 
-	// ── RIB Watcher ──────────────────────────────────────────────────────────
-	// Phase 1 stub — Run() parks on ctx.Done(), entries map stays empty.
-	// When ROUTEWATCH begins: hoist `um` out of the Pathfinder block above
-	// (move `var um *pathfinder.UpstreamMap` to outer scope) and pass it here
-	// instead of nil so the adj-in subscription can label paths by upstream.
-	if listener != nil {
-		ribWatcher := rib.New(listener.Server, nil, enrichers.Geo)
-		go ribWatcher.Run(ctx)
-		api.RIB = ribWatcher
-		log.Printf("[rib] watcher started (Phase 1 stub)")
-	}
- 
 	// ── BGP Monitor ──────────────────────────────────────────────────────────
 	if rosClient != nil {
 		if err := bgpmon.InitSchema(db); err != nil {

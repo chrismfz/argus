@@ -8,6 +8,9 @@ import (
 
 	"argus/internal/bgpstate"
 	"argus/internal/telemetry"
+        "argus/internal/routeros"
+	"strings"
+	"context"
 )
 
 // ── result cache ──────────────────────────────────────────────────────────────
@@ -111,7 +114,8 @@ func handleRouteWatchStatus(w http.ResponseWriter, r *http.Request) {
 			acc = &asnAccum{prefixes: make(map[string]*rwPrefixEntry)}
 			byASN[originASN] = acc
 		}
-		paths := rwBuildPaths(entry)
+		//paths := rwBuildPaths(entry)
+		paths := rwBuildPathsForPrefix(prefix, entry)
 		acc.prefixes[prefix] = &rwPrefixEntry{
 			Prefix:    prefix,
 			PathCount: len(paths),
@@ -214,4 +218,48 @@ func rwToSummary(p bgpstate.PathInfo, best bool) rwPathSummary {
 		LocalPref: p.LocalPref,
 		IsBest:    best,
 	}
+}
+
+
+func rwBuildPathsForPrefix(prefix string, fallback bgpstate.PrefixEntry) []rwPathSummary {
+    if PathfinderROSClient != nil {
+        ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+        defer cancel()
+
+        routes, err := PathfinderROSClient.ListDetailedRoutesByPrefix(ctx, prefix)
+        if err == nil && len(routes) > 0 {
+            out := make([]rwPathSummary, 0, len(routes))
+
+            for _, r := range routes {
+                if r.BGPAttr == nil {
+                    continue
+                }
+
+                isBest := strings.EqualFold(r.BGPAttr.Contribution, "active")
+
+                out = append(out, rwPathSummary{
+                    NextHop:   r.Gateway,
+                    Upstream:  routeros.UpstreamLabelFromIface(r.Interface),
+                    ASPath:    r.BGPAttr.ASPath,
+                    Hops:      len(r.BGPAttr.ASPath),
+                    LocalPref: uint32(r.BGPAttr.LocalPref),
+                    IsBest:    isBest,
+                })
+            }
+
+            // put active path first
+            sort.SliceStable(out, func(i, j int) bool {
+                if out[i].IsBest == out[j].IsBest {
+                    return out[i].Hops < out[j].Hops
+                }
+                return out[i].IsBest
+            })
+
+            if len(out) > 0 {
+                return out
+            }
+        }
+    }
+
+    return rwBuildPaths(fallback)
 }

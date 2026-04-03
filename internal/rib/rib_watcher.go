@@ -147,13 +147,22 @@ func (w *Watcher) Snapshot() map[string]bgpstate.PrefixEntry {
 func (w *Watcher) refresh(ctx context.Context) error {
 	next := make(map[string]*bgpstate.PrefixEntry)
 
-	err := w.server.ListPath(ctx, &api.ListPathRequest{
-		TableType: api.TableType_ADJ_IN,
-		Family: &api.Family{
-			Afi:  api.Family_AFI_IP,
-			Safi: api.Family_SAFI_UNICAST,
-		},
-	}, func(d *api.Destination) {
+//	err := w.server.ListPath(ctx, &api.ListPathRequest{
+//		TableType: api.TableType_ADJ_IN,
+//		Family: &api.Family{
+//			Afi:  api.Family_AFI_IP,
+//			Safi: api.Family_SAFI_UNICAST,
+//		},
+//	}, func(d *api.Destination) {
+err := w.server.ListPath(ctx, &api.ListPathRequest{
+    TableType: api.TableType_GLOBAL,
+    Family: &api.Family{
+        Afi:  api.Family_AFI_IP,
+        Safi: api.Family_SAFI_UNICAST,
+    },
+}, func(d *api.Destination) {
+
+
 		e := &bgpstate.PrefixEntry{
 			Prefix:     d.Prefix,
 			LastUpdate: time.Now(),

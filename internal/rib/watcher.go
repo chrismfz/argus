@@ -61,42 +61,36 @@ func New(server *gobgpserver.BgpServer, upstream bgpstate.UpstreamLabeler, geo b
 		server:   server,
 		upstream: upstream,
 		geo:      geo,
-		interval: 30 * time.Second,
+		// 5-minute interval — ADJ_IN contains all paths from all peers including
+		// full-table transit (Synapsecom ~1M prefixes × add-path-out=all).
+		// Protobuf-decoding 2-3M path objects every 30s is unnecessary for
+		// passive monitoring. Active ROUTEWATCH probing (Phase 2) can trigger
+		// manual refreshes when needed.
+		interval: 5 * time.Minute,
 		entries:  make(map[string]*bgpstate.PrefixEntry),
 	}
 }
 
 // Run starts the RIB refresh loop and blocks until ctx is cancelled.
-//
-// Phase 1 (stub): logs startup and parks on ctx.Done().
-//
-// Phase 2 (ROUTEWATCH): replace the stub body with the refresh loop below.
 func (w *Watcher) Run(ctx context.Context) {
-	log.Println("[rib] watcher started (Phase 1 stub — adj-in polling pending ROUTEWATCH)")
+	log.Println("[rib] watcher started — adj-in polling active")
 
-	// ── ROUTEWATCH Phase 2 — replace stub body with: ─────────────────────────
-	//
-	//   if err := w.refresh(ctx); err != nil {
-	//       log.Printf("[rib] initial adj-in load failed: %v", err)
-	//   }
-	//   ticker := time.NewTicker(w.interval)
-	//   defer ticker.Stop()
-	//   for {
-	//       select {
-	//       case <-ticker.C:
-	//           if err := w.refresh(ctx); err != nil {
-	//               log.Printf("[rib] adj-in refresh failed: %v", err)
-	//           }
-	//       case <-ctx.Done():
-	//           log.Println("[rib] watcher stopped")
-	//           return
-	//       }
-	//   }
-	//
-	// ─────────────────────────────────────────────────────────────────────────
-
-	<-ctx.Done()
-	log.Println("[rib] watcher stopped")
+	if err := w.refresh(ctx); err != nil {
+		log.Printf("[rib] initial adj-in load failed: %v", err)
+	}
+	ticker := time.NewTicker(w.interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			if err := w.refresh(ctx); err != nil {
+				log.Printf("[rib] adj-in refresh failed: %v", err)
+			}
+		case <-ctx.Done():
+			log.Println("[rib] watcher stopped")
+			return
+		}
+	}
 }
 
 // ── bgpstate.RIBReader implementation ────────────────────────────────────────
@@ -273,7 +267,7 @@ func communityString(c uint32) string {
 }
 
 func largeCommunityString(lc *bgppkt.LargeCommunity) string {
-return fmt.Sprintf("%d:%d:%d", lc.ASN, lc.LocalData1, lc.LocalData2)
+	return fmt.Sprintf("%d:%d:%d", lc.GlobalAdministrator, lc.LocalData1, lc.LocalData2)
 }
 
 func entryMatchesASN(e *bgpstate.PrefixEntry, asn uint32) bool {

@@ -224,6 +224,14 @@ mainMux.HandleFunc("/pathfinder/traceroute", WithMainIPOnly(handlePathfinderTrac
       w.Header().Set("Content-Type", "text/html; charset=utf-8")
       w.Write(bgpHTML)
   }))
+
+  mainMux.HandleFunc("/routewatch", WithMainIPOnly(func(w http.ResponseWriter, r *http.Request) {
+      w.Header().Set("Content-Type", "text/html; charset=utf-8")
+      w.Write(routewatchHTML)
+  }))
+  mainMux.HandleFunc("/routewatch/status", WithMainIPOnly(handleRouteWatchStatus))
+
+
   mainMux.HandleFunc("/bgp/sessions",   WithMainIPOnly(handleBGPSessions))
   mainMux.HandleFunc("/bgp/events",     WithMainIPOnly(handleBGPEvents))
   mainMux.HandleFunc("/bgp/filters",    WithMainIPOnly(handleBGPFilters))

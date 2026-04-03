@@ -20,3 +20,6 @@ var pathfinderHTML []byte
 //go:embed static/bgp.html
 var bgpHTML []byte
 
+//go:embed static/routewatch.html
+var routewatchHTML []byte
+

@@ -147,39 +147,81 @@ func (w *Watcher) Snapshot() map[string]bgpstate.PrefixEntry {
 func (w *Watcher) refresh(ctx context.Context) error {
 	next := make(map[string]*bgpstate.PrefixEntry)
 
-//	err := w.server.ListPath(ctx, &api.ListPathRequest{
-//		TableType: api.TableType_ADJ_IN,
-//		Family: &api.Family{
-//			Afi:  api.Family_AFI_IP,
-//			Safi: api.Family_SAFI_UNICAST,
-//		},
-//	}, func(d *api.Destination) {
-err := w.server.ListPath(ctx, &api.ListPathRequest{
-    TableType: api.TableType_GLOBAL,
-    Family: &api.Family{
-        Afi:  api.Family_AFI_IP,
-        Safi: api.Family_SAFI_UNICAST,
-    },
-}, func(d *api.Destination) {
-
-
-		e := &bgpstate.PrefixEntry{
-			Prefix:     d.Prefix,
-			LastUpdate: time.Now(),
+	var peers []string
+	if err := w.server.ListPeer(ctx, &api.ListPeerRequest{}, func(peer *api.Peer) {
+		if peer == nil || peer.Conf == nil {
+			return
 		}
-		for _, p := range d.Paths {
-			info := w.parsePath(p)
-			if p.Best {
-				cp := info
-				e.ActivePath = &cp
-			} else {
-				e.AltPaths = append(e.AltPaths, info)
+		if peer.State != nil && peer.State.SessionState != api.PeerState_ESTABLISHED {
+			return
+		}
+		if peer.Conf.NeighborAddress != "" {
+			peers = append(peers, peer.Conf.NeighborAddress)
+		}
+	}); err != nil {
+		return fmt.Errorf("ListPeer: %w", err)
+	}
+
+	log.Printf("[rib] refreshing adj-in from %d established peers", len(peers))
+
+	for _, peerAddr := range peers {
+		peerAddr := peerAddr
+
+		err := w.server.ListPath(ctx, &api.ListPathRequest{
+			TableType: api.TableType_ADJ_IN,
+			Name:      peerAddr,
+			Family: &api.Family{
+				Afi:  api.Family_AFI_IP,
+				Safi: api.Family_SAFI_UNICAST,
+			},
+		}, func(d *api.Destination) {
+			e, ok := next[d.Prefix]
+			if !ok {
+				e = &bgpstate.PrefixEntry{
+					Prefix:     d.Prefix,
+					LastUpdate: time.Now(),
+				}
+				next[d.Prefix] = e
 			}
+
+			for _, p := range d.Paths {
+				info := w.parsePath(p)
+
+				// Prefer the globally-best path if GoBGP marks one.
+				if p.Best {
+					if e.ActivePath == nil {
+						cp := info
+						e.ActivePath = &cp
+						continue
+					}
+					if !e.ActivePath.IsBest {
+						prev := *e.ActivePath
+						e.AltPaths = append(e.AltPaths, prev)
+						cp := info
+						e.ActivePath = &cp
+						continue
+					}
+				}
+
+				// First seen path becomes active if nothing active yet.
+				if e.ActivePath == nil {
+					cp := info
+					e.ActivePath = &cp
+				} else {
+					e.AltPaths = append(e.AltPaths, info)
+				}
+			}
+		})
+		if err != nil {
+			log.Printf("[rib] adj-in peer %s failed: %v", peerAddr, err)
+			continue
 		}
-		next[d.Prefix] = e
-	})
-	if err != nil {
-		return fmt.Errorf("ListPath adj-in: %w", err)
+
+	}
+
+
+	if len(next) == 0 {
+		return fmt.Errorf("adj-in refresh returned 0 prefixes from %d peers", len(peers))
 	}
 
 	w.mu.Lock()

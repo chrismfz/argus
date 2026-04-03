@@ -114,8 +114,12 @@ func handleRouteWatchStatus(w http.ResponseWriter, r *http.Request) {
 			acc = &asnAccum{prefixes: make(map[string]*rwPrefixEntry)}
 			byASN[originASN] = acc
 		}
-		//paths := rwBuildPaths(entry)
-		paths := rwBuildPathsForPrefix(prefix, entry)
+
+		paths := rwBuildPaths(entry)
+
+		// this crashed it
+		//paths := rwBuildPathsForPrefix(prefix, entry)
+
 		acc.prefixes[prefix] = &rwPrefixEntry{
 			Prefix:    prefix,
 			PathCount: len(paths),

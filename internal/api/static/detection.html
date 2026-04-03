@@ -21,6 +21,9 @@ nav{display:flex;gap:2px;padding:0 20px;background:var(--bg2);border-bottom:1px 
 nav a{padding:10px 18px;color:var(--muted);font-size:13px;text-decoration:none;border-bottom:2px solid transparent;display:inline-block;transition:.1s}
 nav a:hover{color:var(--text)}
 nav a.active{color:var(--accent);border-color:var(--accent)}
+nav .sep{margin-left:auto;width:1px;height:20px;background:var(--border)}
+nav a.dbg{padding:6px 12px;font-size:12px;color:var(--yellow);text-decoration:none;border:1px solid rgba(249,226,175,.25);border-radius:4px;margin-left:8px;transition:.15s}
+nav a.dbg:hover{background:rgba(249,226,175,.1);border-color:var(--yellow)}
 .content{padding:20px;max-width:1400px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
 .card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px}
 .card-title{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:14px;display:flex;align-items:center;gap:10px}
@@ -74,8 +77,15 @@ button.btn.sm{padding:4px 10px;font-size:12px}
 </header>
 
 <nav>
-  <a href="/dashboard">overview</a>
-  <a href="/detection" class="active">detection</a>
+  <a href="/dashboard">Overview</a>
+  <a href="/bgp">BGP</a>
+  <a href="/routewatch">Routewatch</a>
+  <a href="/detection" class="active">Detection</a>
+  <a href="/alerts">Alerts</a>
+  <a href="/pathfinder">Pathfinder</a>
+  <span class="sep"></span>
+  <a href="/debug/flows" target="_blank" class="dbg">⚡ Live Flows</a>
+  <a href="/debug/rawflows" target="_blank" class="dbg">🔬 Raw Fields</a>
 </nav>
 
 <div class="content">

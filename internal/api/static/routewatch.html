@@ -24,11 +24,13 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; min-height: 100vh; }
 
-nav { display: flex; align-items: center; background: var(--bg2); border-bottom: 1px solid var(--border); padding: 0 16px; height: 44px; }
-.nav-brand { font-size: 13px; font-weight: 700; color: var(--text); margin-right: 24px; text-decoration: none; }
-.nav-link { font-size: 12px; color: var(--muted); padding: 0 12px; height: 44px; display: flex; align-items: center; text-decoration: none; border-bottom: 2px solid transparent; }
-.nav-link:hover { color: var(--text); }
-.nav-link.active { color: var(--accent); border-bottom-color: var(--accent); }
+nav { display: flex; gap: 2px; padding: 0 20px; background: var(--bg2); border-bottom: 1px solid var(--border); align-items: center }
+nav a { padding: 10px 16px; color: var(--muted); font-size: 13px; text-decoration: none; border-bottom: 2px solid transparent; display: inline-block; transition: .1s }
+nav a:hover { color: var(--text) }
+nav a.active { color: var(--accent); border-color: var(--accent) }
+nav .sep { margin-left: auto; width: 1px; height: 20px; background: var(--border) }
+nav a.dbg { padding: 6px 12px; font-size: 12px; color: var(--yellow); text-decoration: none; border: 1px solid rgba(249,226,175,.25); border-radius: 4px; margin-left: 8px; transition: .15s }
+nav a.dbg:hover { background: rgba(249,226,175,.1); border-color: var(--yellow) }
 
 .content { max-width: 1200px; margin: 0 auto; padding: 20px 16px; }
 
@@ -89,13 +91,15 @@ nav { display: flex; align-items: center; background: var(--bg2); border-bottom:
 <body>
 
 <nav>
-  <a class="nav-brand" href="/">argus</a>
-  <a class="nav-link" href="/">Overview</a>
-  <a class="nav-link" href="/detection">Detection</a>
-  <a class="nav-link" href="/alerts">Alerts</a>
-  <a class="nav-link" href="/pathfinder">Pathfinder</a>
-  <a class="nav-link" href="/bgp">BGP</a>
-  <a class="nav-link active" href="/routewatch">ROUTEWATCH</a>
+  <a href="/dashboard">Overview</a>
+  <a href="/bgp">BGP</a>
+  <a href="/routewatch" class="active">Routewatch</a>
+  <a href="/detection">Detection</a>
+  <a href="/alerts">Alerts</a>
+  <a href="/pathfinder">Pathfinder</a>
+  <span class="sep"></span>
+  <a href="/debug/flows" target="_blank" class="dbg">⚡ Live Flows</a>
+  <a href="/debug/rawflows" target="_blank" class="dbg">🔬 Raw Fields</a>
 </nav>
 
 <div class="content" x-data="routewatch()" x-init="load()">

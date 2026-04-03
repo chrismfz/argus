@@ -24,74 +24,66 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; min-height: 100vh; }
 
-/* ── nav ── */
-nav { display: flex; align-items: center; gap: 0; background: var(--bg2); border-bottom: 1px solid var(--border); padding: 0 16px; height: 44px; }
+nav { display: flex; align-items: center; background: var(--bg2); border-bottom: 1px solid var(--border); padding: 0 16px; height: 44px; }
 .nav-brand { font-size: 13px; font-weight: 700; color: var(--text); margin-right: 24px; text-decoration: none; }
-.nav-link { font-size: 12px; color: var(--muted); padding: 0 12px; height: 44px; display: flex; align-items: center; text-decoration: none; border-bottom: 2px solid transparent; transition: .15s; }
+.nav-link { font-size: 12px; color: var(--muted); padding: 0 12px; height: 44px; display: flex; align-items: center; text-decoration: none; border-bottom: 2px solid transparent; }
 .nav-link:hover { color: var(--text); }
 .nav-link.active { color: var(--accent); border-bottom-color: var(--accent); }
-.nav-badge { font-size: 10px; background: var(--bg3); border: 1px solid var(--border); border-radius: 10px; padding: 1px 7px; margin-left: 6px; color: var(--muted); }
 
-/* ── layout ── */
 .content { max-width: 1200px; margin: 0 auto; padding: 20px 16px; }
 
-/* ── header row ── */
 .page-header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
-.page-title { font-size: 16px; font-weight: 700; color: var(--text); }
-.page-sub { font-size: 12px; color: var(--muted); }
+.page-title { font-size: 16px; font-weight: 700; }
+.page-sub { font-size: 11px; color: var(--muted); margin-top: 3px; }
 .refresh-btn { margin-left: auto; font-size: 11px; padding: 4px 12px; background: var(--bg3); border: 1px solid var(--border); border-radius: 4px; color: var(--muted); cursor: pointer; }
 .refresh-btn:hover { color: var(--text); border-color: var(--accent); }
 
-/* ── stat cards ── */
-.stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
+.stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; }
 .stat { background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; padding: 14px 16px; }
 .stat-val { font-size: 22px; font-weight: 700; color: var(--accent); font-family: var(--mono); }
 .stat-lbl { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-top: 4px; }
 
-/* ── notice ── */
 .notice { padding: 14px; font-size: 12px; color: var(--muted); border: 1px solid var(--border); border-radius: 6px; background: var(--bg2); margin-bottom: 16px; }
 .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-right: 6px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ── main table ── */
+/* ── table ── */
 .rw-table { width: 100%; border-collapse: collapse; }
 .rw-table th { padding: 7px 10px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
-.rw-table th.r { text-align: right; }
 .rw-table td { padding: 8px 10px; border-bottom: 1px solid rgba(42,49,71,.4); vertical-align: middle; }
 .rw-table tr.asn-row { cursor: pointer; transition: background .1s; }
 .rw-table tr.asn-row:hover { background: rgba(91,156,246,.05); }
 .rw-table tr.asn-row.expanded { background: rgba(91,156,246,.06); }
 
-/* ── badges ── */
-.dual-badge { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 3px; font-weight: 600; background: rgba(63,185,122,.12); color: var(--green); border: 1px solid rgba(63,185,122,.25); }
-.single-badge { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 3px; font-weight: 600; background: rgba(245,166,35,.1); color: var(--amber); border: 1px solid rgba(245,166,35,.2); }
-.up-pill { display: inline-block; font-size: 10px; padding: 1px 7px; border-radius: 10px; background: var(--bg3); border: 1px solid var(--border); color: var(--muted); margin: 1px 2px; }
-.up-pill.syn { border-color: rgba(91,156,246,.4); color: var(--accent); }
-.up-pill.grix { border-color: rgba(63,185,122,.4); color: var(--teal); }
-.mono { font-family: var(--mono); }
-
-/* ── expand panel ── */
-.expand-panel { background: var(--bg); padding: 0; }
-.expand-inner { padding: 12px 16px 16px; }
-.expand-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: 10px; }
-.pfx-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 10px; }
-.pfx-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 5px; padding: 10px 12px; }
-.pfx-cidr { font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--accent); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
-.path-row { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; flex-wrap: wrap; }
-.path-label { font-size: 10px; padding: 1px 6px; border-radius: 3px; font-weight: 600; white-space: nowrap; }
-.path-best { background: rgba(63,185,122,.15); color: var(--green); border: 1px solid rgba(63,185,122,.3); }
-.path-alt  { background: rgba(90,101,128,.15);  color: var(--muted); border: 1px solid var(--border); }
-.asp-chip { font-size: 10px; font-family: var(--mono); padding: 1px 5px; border-radius: 3px; background: var(--bg3); border: 1px solid var(--border); color: var(--muted); }
-.asp-chip.origin { color: var(--accent); border-color: rgba(91,156,246,.3); }
-.asp-arrow { color: var(--muted); font-size: 9px; }
-.path-meta { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+/* ── transit pills ── */
+.tr-pill { display: inline-block; font-size: 10px; padding: 1px 7px; border-radius: 10px; background: var(--bg3); border: 1px solid var(--border); color: var(--muted); margin: 1px 2px; }
+.tr-pill.syn  { border-color: rgba(91,156,246,.4);  color: var(--accent); }
+.tr-pill.grix { border-color: rgba(63,185,122,.4);  color: var(--teal); }
+.tr-pill.he   { border-color: rgba(165,125,240,.4); color: var(--purple); }
 
 /* ── traffic bar ── */
-.traffic-bar { height: 3px; background: var(--bg3); border-radius: 2px; margin-top: 4px; overflow: hidden; }
-.traffic-fill { height: 100%; background: var(--accent); border-radius: 2px; opacity: .5; transition: width .3s; }
+.traffic-bar { height: 3px; background: var(--bg3); border-radius: 2px; margin-top: 3px; overflow: hidden; }
+.traffic-fill { height: 100%; background: var(--accent); border-radius: 2px; opacity: .5; }
 
-/* ── responsive ── */
-@media (max-width: 800px) { .stat-row { grid-template-columns: 1fr 1fr; } }
+/* ── expand panel ── */
+.expand-panel { background: var(--bg); border-bottom: 1px solid var(--border); }
+.expand-inner { padding: 14px 16px 16px; }
+.expand-hdr { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: 10px; display: flex; align-items: center; gap: 10px; }
+.pf-note { font-size: 11px; color: var(--muted); font-style: italic; }
+.pfx-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 8px; }
+.pfx-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 5px; padding: 9px 12px; }
+.pfx-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.pfx-cidr { font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--accent); }
+.pfx-hops { font-size: 10px; color: var(--muted); background: var(--bg3); border: 1px solid var(--border); border-radius: 3px; padding: 1px 5px; }
+.pfx-link { font-size: 10px; color: var(--muted); text-decoration: none; margin-left: auto; }
+.pfx-link:hover { color: var(--accent); }
+.asp-wrap { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; }
+.asp-chip { font-size: 10px; font-family: var(--mono); padding: 1px 5px; border-radius: 3px; background: var(--bg3); border: 1px solid var(--border); color: var(--muted); }
+.asp-chip.origin { color: var(--accent); border-color: rgba(91,156,246,.3); }
+.asp-chip.transit { color: var(--teal); border-color: rgba(63,185,122,.3); }
+.asp-arrow { color: var(--muted); font-size: 9px; }
+.pf-btn { display: inline-block; margin-top: 8px; font-size: 11px; padding: 3px 10px; background: var(--bg3); border: 1px solid var(--border); border-radius: 4px; color: var(--muted); text-decoration: none; cursor: pointer; }
+.pf-btn:hover { color: var(--accent); border-color: var(--accent); }
 </style>
 </head>
 <body>
@@ -108,16 +100,14 @@ nav { display: flex; align-items: center; gap: 0; background: var(--bg2); border
 
 <div class="content" x-data="routewatch()" x-init="load()">
 
-  <!-- Header -->
   <div class="page-header">
     <div>
-      <div class="page-title">ROUTEWATCH <span style="font-weight:400;color:var(--muted);font-size:13px;">— Path Intelligence</span></div>
-      <div class="page-sub" style="margin-top:3px">
-        Passive BGP path analysis · top traffic ASNs · adj-in RIB refreshes every 5 min ·
-        <span x-show="data?.computed_at" x-text="'data '+dataAge()+' old'"></span>
+      <div class="page-title">ROUTEWATCH <span style="font-weight:400;color:var(--muted);font-size:13px">— Path Intelligence</span></div>
+      <div class="page-sub">
+        Passive BGP path analysis · GoBGP best-path RIB · adj-in refreshes every 5 min ·
+        <span x-show="data?.computed_at" x-text="'data ' + dataAge() + ' old'"></span>
         <span x-show="!data?.computed_at && !loading">waiting for first load…</span>
-        <span x-show="loading"> loading…</span>
-        · next page refresh in <span x-text="countdown+'s'"></span>
+        · next refresh in <span x-text="countdown + 's'"></span>
       </div>
     </div>
     <button class="refresh-btn" @click="load()">
@@ -126,15 +116,11 @@ nav { display: flex; align-items: center; gap: 0; background: var(--bg2); border
     </button>
   </div>
 
-  <!-- Stat cards -->
+  <!-- Stats: 3 cards, no misleading multi-path -->
   <div class="stat-row">
     <div class="stat">
       <div class="stat-val" x-text="data?.asn_count ?? '—'"></div>
       <div class="stat-lbl">ASNs tracked</div>
-    </div>
-    <div class="stat">
-      <div class="stat-val" x-text="data?.multi_path_count?.toLocaleString() ?? '—'"></div>
-      <div class="stat-lbl">Dual-path prefixes</div>
     </div>
     <div class="stat">
       <div class="stat-val" x-text="data?.prefix_count?.toLocaleString() ?? '—'"></div>
@@ -142,150 +128,130 @@ nav { display: flex; align-items: center; gap: 0; background: var(--bg2); border
     </div>
     <div class="stat">
       <div class="stat-val" x-text="data?.rib_size?.toLocaleString() ?? '—'"></div>
-      <div class="stat-lbl">Total adj-in RIB</div>
+      <div class="stat-lbl">Total RIB (GoBGP)</div>
     </div>
   </div>
 
-  <!-- Loading / empty states -->
-  <div class="notice" x-show="loading && !data">
-    <span class="spinner"></span> Loading path intelligence…
-  </div>
-  <div class="notice" x-show="!loading && !data">
-    No data — RIB watcher may still be warming up (first refresh takes ~30s after restart).
+  <!-- Notes -->
+  <div class="notice" x-show="loading && !data"><span class="spinner"></span> Loading path intelligence…</div>
+  <div class="notice" x-show="!loading && !data">No data — RIB watcher warming up (first refresh ~30s after restart).</div>
+  <div class="notice" x-show="data" style="border-color:rgba(91,156,246,.2);color:var(--muted);font-size:11px">
+    Transit labels derived from GoBGP AS-path (best path only — GoBGP does not negotiate ADD-PATH with MikroTik).
+    Click any row to see prefixes and their paths. Click <strong style="color:var(--accent)">↗ Pathfinder</strong> on a prefix for full RouterOS multi-path detail.
   </div>
 
   <!-- Main table -->
-  <template x-if="data && data.asns">
+  <template x-if="data?.asns">
     <div style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;overflow:hidden">
-      <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px">
+      <div style="padding:11px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px">
         <span style="font-size:12px;font-weight:600">Top ASNs by inbound traffic</span>
         <span style="font-size:11px;color:var(--muted)">last 60 min</span>
-        <span style="margin-left:auto;font-size:11px;color:var(--muted)" x-text="data.asns.length+' ASNs'"></span>
+        <span style="margin-left:auto;font-size:11px;color:var(--muted)" x-text="data.asns.length + ' ASNs'"></span>
       </div>
       <table class="rw-table">
         <thead>
           <tr>
-            <th style="width:44px"></th>
+            <th style="width:36px"></th>
             <th>ASN</th>
             <th>Name</th>
-            <th class="r">Traffic in</th>
-            <th class="r">Prefixes</th>
-            <th class="r">Dual-path</th>
-            <th>Upstreams</th>
-            <th>Path coverage</th>
+            <th style="text-align:right">Traffic in</th>
+            <th style="text-align:right">Prefixes</th>
+            <th>Transit via</th>
           </tr>
         </thead>
         <tbody>
-          <template x-for="row in flatASNRows()" :key="row._key">
+          <!-- Single <tr> per x-for item — Alpine.js v3 single-root rule -->
+          <template x-for="row in flatRows()" :key="row._key">
+            <tr
+              :class="row._type === 'asn' ? ('asn-row' + (expanded===row.asn ? ' expanded' : '')) : ''"
+              @click="row._type==='asn' && toggle(row.asn)"
+              :style="row._type==='expand' ? 'cursor:default' : ''">
 
-            <!-- ASN row -->
-            <tr x-show="row._type==='asn'"
-                class="asn-row"
-                :class="{expanded: expanded===row.asn}"
-                @click="toggle(row.asn)">
-              <td style="width:44px;text-align:center">
-                <span style="font-size:16px;color:var(--muted);transition:.2s;display:inline-block"
+              <!-- Cell 1: chevron (ASN rows) OR full-colspan expand panel -->
+              <td :colspan="row._type==='asn' ? 1 : 6"
+                  :style="row._type==='expand' ? 'padding:0' : 'width:36px;text-align:center'">
+
+                <!-- ASN row: chevron -->
+                <span x-show="row._type==='asn'"
+                      style="font-size:16px;color:var(--muted);display:inline-block;transition:.2s"
                       :style="expanded===row.asn ? 'transform:rotate(90deg);color:var(--accent)' : ''">›</span>
-              </td>
-              <td>
-                <span class="mono" style="font-size:12px;font-weight:600;color:var(--accent)"
-                      x-text="'AS'+row.asn"></span>
-              </td>
-              <td>
-                <span style="font-size:12px" x-text="row.name||'—'"></span>
-              </td>
-              <td style="text-align:right">
-                <div class="mono" style="font-size:12px" x-text="fmtBytes(row.bytes_in_1h)"></div>
-                <div class="traffic-bar">
-                  <div class="traffic-fill" :style="'width:'+trafficPct(row.bytes_in_1h)+'%'"></div>
-                </div>
-              </td>
-              <td style="text-align:right;font-family:monospace;font-size:12px" x-text="row.prefix_count||'—'"></td>
-              <td style="text-align:right">
-                <span x-show="row.multi_path_count > 0" class="dual-badge" x-text="row.multi_path_count"></span>
-                <span x-show="row.multi_path_count === 0 && row.prefix_count > 0" class="single-badge">single</span>
-                <span x-show="!row.prefix_count" style="color:var(--muted);font-size:12px">—</span>
-              </td>
-              <td>
-                <template x-for="u in (row.upstreams||[])" :key="u">
-                  <span class="up-pill"
-                        :class="u.toLowerCase().includes('syn') ? 'syn' : u.toLowerCase().includes('grix')||u.toLowerCase().includes('ix') ? 'grix' : ''"
-                        x-text="u"></span>
-                </template>
-                <span x-show="!row.upstreams||row.upstreams.length===0" style="color:var(--muted)">—</span>
-              </td>
-              <td>
-                <template x-if="row.prefix_count > 0">
-                  <div style="font-size:11px;color:var(--muted)">
-                    <span :style="row.multi_path_count>0 ? 'color:var(--green)' : 'color:var(--amber)'"
-                          x-text="row.multi_path_count>0
-                            ? Math.round(row.multi_path_count/row.prefix_count*100)+'% redundant'
-                            : 'single-path only'"></span>
-                  </div>
-                </template>
-              </td>
-            </tr>
 
-            <!-- Expand panel row -->
-            <tr x-show="row._type==='expand'">
-              <td colspan="8" style="padding:0">
-                <div class="expand-panel">
+                <!-- Expand panel: prefix grid -->
+                <div x-show="row._type==='expand'" class="expand-panel">
                   <div class="expand-inner">
-                    <div class="expand-title">
-                      Top prefixes by path diversity — AS<span x-text="row.asn"></span>
-                      <span x-show="row.prefixes && row.prefixes.length" style="font-weight:400;margin-left:6px"
-                            x-text="'showing '+row.prefixes.length+' of '+row.prefix_count+' prefixes'"></span>
+                    <div class="expand-hdr">
+                      <span>AS<span x-text="row.asn"></span> — top prefixes by path length</span>
+                      <span x-show="row.prefix_count" x-text="'showing ' + (row.prefixes?.length||0) + ' of ' + row.prefix_count + ' prefixes'"></span>
+                      <span class="pf-note">· click ↗ for RouterOS multi-path detail</span>
                     </div>
                     <template x-if="!row.prefixes || row.prefixes.length===0">
                       <div style="font-size:12px;color:var(--muted)">
-                        No RIB data yet — adj-in watcher may be warming up.
-                        <a href="/pathfinder" style="color:var(--accent);text-decoration:none;margin-left:6px">Try Pathfinder ↗</a>
+                        No RIB data yet — watcher still warming up.
+                        <a :href="'/pathfinder?asn='+row.asn" style="color:var(--accent);text-decoration:none;margin-left:6px">Search ASN in Pathfinder ↗</a>
                       </div>
                     </template>
-                    <div class="pfx-grid">
+                    <div class="pfx-list">
                       <template x-for="pf in (row.prefixes||[])" :key="pf.prefix">
                         <div class="pfx-card">
-                          <div class="pfx-cidr">
-                            <span x-text="pf.prefix"></span>
-                            <span x-show="pf.path_count > 1" class="dual-badge" x-text="pf.path_count+' paths'"></span>
-                            <span x-show="pf.path_count <= 1" class="single-badge">1 path</span>
-                            <a :href="'/pathfinder?prefix='+pf.prefix" target="_blank"
-                               style="font-size:10px;color:var(--muted);text-decoration:none;margin-left:auto"
-                               title="Open in Pathfinder">↗</a>
+                          <div class="pfx-top">
+                            <span class="pfx-cidr" x-text="pf.prefix"></span>
+                            <span class="pfx-hops" x-text="pf.hops + ' hops'"></span>
+                            <a class="pfx-link" :href="'/pathfinder?prefix='+encodeURIComponent(pf.prefix)" target="_blank">↗ Pathfinder</a>
                           </div>
-                          <template x-for="(p, pi) in (pf.paths||[])" :key="pi">
-                            <div class="path-row">
-                              <span class="path-label" :class="p.is_best ? 'path-best' : 'path-alt'"
-                                    x-text="p.is_best ? 'best' : 'alt'"></span>
-                              <span x-show="p.upstream" class="up-pill"
-                                    :class="(p.upstream||'').toLowerCase().includes('syn') ? 'syn' : (p.upstream||'').toLowerCase().includes('grix')||((p.upstream||'').toLowerCase().includes('ix')) ? 'grix' : ''"
-                                    x-text="p.upstream"></span>
-                              <span class="path-meta" x-text="p.next_hop" style="color:var(--muted)"></span>
-                              <span class="path-meta" x-show="p.hops" x-text="p.hops+'h'" style="color:var(--muted)"></span>
-                            </div>
-                            <!-- AS path chips -->
-                            <div x-show="p.as_path && p.as_path.length" style="display:flex;flex-wrap:wrap;gap:2px;margin-bottom:6px;padding-left:48px">
-                              <template x-for="(asn,ai) in (p.as_path||[])" :key="ai">
-                                <span class="asp-chip" :class="{origin: ai===p.as_path.length-1}" x-text="asn"></span>
-                                <span x-show="ai < p.as_path.length-1" class="asp-arrow">›</span>
-                              </template>
-                            </div>
-                          </template>
+                          <!-- AS-path chips -->
+                          <div class="asp-wrap">
+                            <template x-for="(asn, ai) in (pf.as_path||[])" :key="ai">
+                              <span class="asp-chip"
+                                    :class="{
+                                      origin: ai === pf.as_path.length-1,
+                                      transit: ai === 1 && pf.as_path.length > 2
+                                    }"
+                                    x-text="asn"></span>
+                              <span x-show="ai < pf.as_path.length-1" class="asp-arrow">›</span>
+                            </template>
+                          </div>
                         </div>
                       </template>
+                    </div>
+                    <div style="margin-top:10px">
+                      <a class="pf-btn" :href="'/pathfinder?asn='+row.asn" target="_blank">
+                        Search all AS<span x-text="row.asn"></span> prefixes in Pathfinder ↗
+                      </a>
                     </div>
                   </div>
                 </div>
               </td>
-            </tr>
 
+              <!-- Cells 2-6: ASN row data only -->
+              <td x-show="row._type==='asn'">
+                <span style="font-family:var(--mono);font-size:12px;font-weight:600;color:var(--accent)" x-text="'AS'+row.asn"></span>
+              </td>
+              <td x-show="row._type==='asn'" style="font-size:12px" x-text="row.name||'—'"></td>
+              <td x-show="row._type==='asn'" style="text-align:right">
+                <div style="font-family:var(--mono);font-size:12px" x-text="fmtBytes(row.bytes_in_1h)"></div>
+                <div class="traffic-bar"><div class="traffic-fill" :style="'width:'+trafficPct(row.bytes_in_1h)+'%'"></div></div>
+              </td>
+              <td x-show="row._type==='asn'" style="text-align:right;font-family:monospace;font-size:12px"
+                  x-text="row.prefix_count || '—'"></td>
+              <td x-show="row._type==='asn'">
+                <template x-for="t in (row.transits||[])" :key="t">
+                  <span class="tr-pill"
+                        :class="t.toLowerCase().includes('syn') ? 'syn'
+                               : t.toLowerCase().includes('grix') || t.toLowerCase().includes('ix') ? 'grix'
+                               : t.toLowerCase().includes('he') || t==='AS6939' ? 'he'
+                               : ''"
+                        x-text="t"></span>
+                </template>
+                <span x-show="!row.transits || row.transits.length===0" style="color:var(--muted)">—</span>
+              </td>
+            </tr>
           </template>
         </tbody>
       </table>
     </div>
   </template>
 
-</div><!-- /content -->
+</div>
 
 <script>
 function routewatch() { return {
@@ -297,26 +263,22 @@ function routewatch() { return {
   init() {
     setInterval(() => {
       this.countdown = this.countdown > 0 ? this.countdown - 1 : 0
-      if (this.countdown === 0) { this.load() }
+      if (this.countdown === 0) this.load()
     }, 1000)
   },
 
   async load() {
     this.loading = true
     try {
-      const d = await fetch('/routewatch/status').then(r => r.json())
-      this.data = d
+      this.data = await fetch('/routewatch/status').then(r => r.json())
     } catch(e) { console.error('[routewatch]', e) }
     finally { this.loading = false; this.countdown = 60 }
   },
 
-  toggle(asn) {
-    this.expanded = this.expanded === asn ? null : asn
-  },
+  toggle(asn) { this.expanded = this.expanded === asn ? null : asn },
 
-  // Flat row list for Alpine x-for single-root constraint.
-  // Each item is either {_type:'asn', ...asnFields} or {_type:'expand', ...asnFields}
-  flatASNRows() {
+  // Flat rows for Alpine x-for single-root constraint.
+  flatRows() {
     if (!this.data?.asns) return []
     const rows = []
     for (const a of this.data.asns) {
@@ -338,7 +300,7 @@ function routewatch() { return {
     if (!this.data?.computed_at) return '?'
     const s = Math.round(Date.now()/1000 - this.data.computed_at)
     if (s < 60) return s+'s'
-    return Math.round(s/60)+'m '+((s%60)+'s')
+    return Math.floor(s/60)+'m '+((s%60)+'s')
   },
 
   fmtBytes(b) {

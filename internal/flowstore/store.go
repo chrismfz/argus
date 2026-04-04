@@ -212,7 +212,7 @@ func Init(
 // loop runs the three periodic tickers.
 func (s *Store) loop() {
 	tick5m  := time.NewTicker(5 * time.Minute)
-	tick1h  := time.NewTicker(1 * time.Hour)
+	tick1h  := time.NewTicker(30 * time.Minute)
 	tick24h := time.NewTicker(24 * time.Hour)
 	defer tick5m.Stop()
 	defer tick1h.Stop()
@@ -272,7 +272,7 @@ func (s *Store) Accumulate(rec *FlowEvent) {
 
 	now  := time.Now()
 	ts5  := (now.Unix() / 300) * 300
-	ts1h := (now.Unix() / 3600) * 3600
+	ts1h := (now.Unix() / 1800) * 1800
 
 	s.mu.Lock()
 	defer s.mu.Unlock()

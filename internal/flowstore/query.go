@@ -107,11 +107,12 @@ func cutoffFor(window time.Duration) int64 {
 	return time.Now().Add(-window).Unix()
 }
 
-// hourCutoff returns the hour-aligned cutoff — we include any hourly bucket
-// whose ts >= cutoff so that the very first hour bucket is included in full.
+// hourCutoff returns the 30-min-aligned cutoff — we include any detail bucket
+// whose ts >= cutoff so the first bucket is included in full.
 func hourCutoff(window time.Duration) int64 {
+	const bucket = int64(30 * 60) // 30-min buckets
 	raw := cutoffFor(window)
-	return (raw / 3600) * 3600
+	return (raw / bucket) * bucket
 }
 
 // ── Timeline ──────────────────────────────────────────────────────────────────

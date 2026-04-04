@@ -85,6 +85,16 @@ func main() {
 	defer cancel()
 	go handleSignals(cancel)
 
+// ── Auth CLI — short-circuit before config/server init ───────────────────
+	// Usage:  argus auth <command> [flags]
+	// The server does not need to be running.
+	if len(os.Args) > 1 && os.Args[1] == "auth" {
+		os.Args = append(os.Args[:1], os.Args[2:]...)
+		runAuthCLI()
+		return
+	}
+
+
 	// ── CLI flags ─────────────────────────────────────────────────────────────
 	for i := 1; i < len(os.Args); i++ {
 		switch os.Args[i] {

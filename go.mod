@@ -3,7 +3,7 @@ module argus
 go 1.25.0
 
 require (
-	github.com/chrismfz/goauth v0.0.0-20260404121536-2aeb9ae23eb6
+	github.com/chrismfz/goauth v0.0.0-20260404132434-d1a1a5221c1a
 	github.com/e-XpertSolutions/go-iforest/v2 v2.0.0
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/gosnmp/gosnmp v1.43.2
@@ -53,8 +53,8 @@ require (
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/text v0.35.0 // indirect
 	golang.org/x/tools v0.43.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260319201613-d00831a3d3e7 // indirect
-	google.golang.org/grpc v1.79.3 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260401024825-9d38bb4040a9 // indirect
+	google.golang.org/grpc v1.80.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	modernc.org/libc v1.70.0 // indirect
 	modernc.org/mathutil v1.7.1 // indirect

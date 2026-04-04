@@ -11,7 +11,6 @@ package api
 
 import (
 	"net/http"
-	"strings"
 	"log"
 	"github.com/chrismfz/goauth"
 )
@@ -59,15 +58,10 @@ func handleLoginAPI(w http.ResponseWriter, r *http.Request) {
 
 // handleLogout proxies to the goauth LogoutHandler (GET|POST /logout).
 func handleLogout(w http.ResponseWriter, r *http.Request) {
-	if Auth == nil {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		return
+	if Auth != nil {
+		Auth.Destroy(r)
 	}
-	Auth.LogoutHandler()(w, r)
-	// After destroying the session, redirect browsers to login.
-	if strings.Contains(r.Header.Get("Accept"), "text/html") {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-	}
+	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
 // ── Login page HTML ───────────────────────────────────────────────────────────

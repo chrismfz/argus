@@ -23,3 +23,6 @@ var bgpHTML []byte
 //go:embed static/routewatch.html
 var routewatchHTML []byte
 
+
+//go:embed static/asn.html
+var asnHTML []byte

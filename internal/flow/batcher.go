@@ -9,6 +9,7 @@ import (
 	"argus/internal/enrich"
 	"argus/internal/telemetry"
 	"github.com/yl2chen/cidranger"
+	"argus/internal/flowstore"
 )
 
 // FlowEnricher enriches FlowRecords (GeoIP, BGP, interfaces) and feeds
@@ -138,6 +139,33 @@ func (b *FlowEnricher) enrichAndFeed(batch []*FlowRecord) {
 			})
 		}
 	}
+
+
+     // ── FlowStore tap ──────────────────────────────────────────────────────
+// ── FlowStore tap ──────────────────────────────────────────────────────
+if flowstore.Global != nil {
+    for _, rec := range batch {
+        flowstore.Global.Accumulate(&flowstore.FlowEvent{
+            FlowDirection:       rec.FlowDirection,
+            SrcHost:             rec.SrcHost,
+            DstHost:             rec.DstHost,
+            PeerSrcAS:           rec.PeerSrcAS,
+            PeerSrcASName:       rec.PeerSrcASName,
+            PeerDstAS:           rec.PeerDstAS,
+            PeerDstASName:       rec.PeerDstASName,
+            InputInterface:      rec.InputInterface,
+            OutputInterface:     rec.OutputInterface,
+            InputInterfaceName:  rec.InputInterfaceName,
+            OutputInterfaceName: rec.OutputInterfaceName,
+            Proto:               rec.Proto,
+            TCPFlags:            rec.TCPFlags,
+            SrcPort:             rec.SrcPort,
+            DstPort:             rec.DstPort,
+            Bytes:               rec.Bytes,
+            Packets:             rec.Packets,
+        })
+    }
+}
 
 	// ── Raw debug tap ──────────────────────────────────────────────────────
 	// (RawTap is fed in main.go from the raw NetFlow map, before conversion)

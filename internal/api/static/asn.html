@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>argus · ASN drill-down</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.4.3/echarts.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/alpinejs/3.13.3/cdn.min.js" defer></script>
+<style>
+:root {
+  --bg:     #0f1117;
+  --bg2:    #161b27;
+  --bg3:    #1e2535;
+  --border: #2a3147;
+  --text:   #cdd6f4;
+  --muted:  #6c7086;
+  --accent: #89b4fa;
+  --green:  #a6e3a1;
+  --red:    #f38ba8;
+  --yellow: #f9e2af;
+  --purple: #cba6f7;
+  --teal:   #94e2d5;
+  --orange: #fab387;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:13px;min-height:100vh}
+
+/* ── Nav ── */
+nav{display:flex;align-items:center;background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;height:44px;gap:2px}
+.nav-brand{font-size:13px;font-weight:700;color:var(--text);margin-right:20px;text-decoration:none}
+.nav-link{font-size:12px;color:var(--muted);padding:0 12px;height:44px;display:flex;align-items:center;text-decoration:none;border-bottom:2px solid transparent}
+.nav-link:hover{color:var(--text)}
+.nav-link.active{color:var(--accent);border-bottom-color:var(--accent)}
+
+/* ── Page header ── */
+.page-head{padding:20px 24px 0;max-width:1400px;margin:0 auto}
+.asn-hero{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+.asn-num{font-size:22px;font-weight:800;color:var(--text);letter-spacing:-.5px;font-family:'Segoe UI',monospace}
+.asn-name{font-size:15px;color:var(--accent);margin-top:2px}
+.asn-badges{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:2px 8px;border-radius:4px;background:var(--bg3);border:1px solid var(--border);color:var(--muted)}
+.badge.green{border-color:rgba(166,227,161,.25);color:var(--green)}
+.badge.red{border-color:rgba(243,139,168,.25);color:var(--red)}
+.badge.yellow{border-color:rgba(249,226,175,.25);color:var(--yellow)}
+.meta-right{margin-left:auto;text-align:right;font-size:11px;color:var(--muted);line-height:1.8}
+.meta-right b{color:var(--text);font-weight:600}
+
+/* ── Controls ── */
+.controls{display:flex;align-items:center;gap:8px;padding:0 24px;max-width:1400px;margin:0 auto 16px;flex-wrap:wrap}
+.controls label{font-size:11px;color:var(--muted)}
+.controls select,.controls button{background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:4px 10px;font-size:12px;cursor:pointer;outline:none}
+.controls select:focus,.controls button:hover{border-color:var(--accent);color:var(--accent)}
+.dir-btn{padding:4px 12px!important;border-radius:4px}
+.dir-btn.active{background:var(--accent);color:var(--bg)!important;border-color:var(--accent)!important}
+
+/* ── Content grid ── */
+.content{padding:0 24px 40px;max-width:1400px;margin:0 auto}
+.section{margin-bottom:20px}
+.section-title{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px}
+
+/* ── Cards ── */
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px}
+.row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.row-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:900px){.row-3,.row-2{grid-template-columns:1fr}}
+
+/* ── Chart ── */
+.chart-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:8px;margin-bottom:12px}
+.chart-head{display:flex;align-items:center;padding:12px 16px 0;gap:12px}
+.chart-head .label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.chart-tabs{display:flex;gap:4px;margin-left:auto}
+.chart-tab{font-size:11px;padding:2px 8px;border-radius:4px;background:var(--bg3);border:1px solid var(--border);color:var(--muted);cursor:pointer}
+.chart-tab.active{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+.echarts{width:100%;height:240px}
+
+/* ── Mini stat cards ── */
+.mini-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;font-weight:600}
+.proto-row{display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--border)}
+.proto-row:last-child{border:none}
+.proto-name{font-size:12px;color:var(--text);font-family:monospace}
+.proto-bar-wrap{flex:1;margin:0 10px;height:4px;background:var(--bg3);border-radius:2px;overflow:hidden}
+.proto-bar{height:100%;border-radius:2px;background:var(--accent)}
+.proto-bar.out{background:var(--orange)}
+.proto-bytes{font-size:11px;color:var(--muted);font-family:monospace;min-width:58px;text-align:right}
+
+.country-flag{font-size:14px;margin-right:4px}
+
+/* ── Tables ── */
+.tbl-wrap{overflow-x:auto;border-radius:8px;border:1px solid var(--border)}
+table{width:100%;border-collapse:collapse;background:var(--bg2)}
+thead th{text-align:left;font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:8px 12px;border-bottom:1px solid var(--border);white-space:nowrap}
+tbody td{padding:7px 12px;border-bottom:1px solid var(--border);font-size:12px;white-space:nowrap}
+tbody tr:last-child td{border:none}
+tbody tr:hover{background:var(--bg3)}
+.mono{font-family:'JetBrains Mono','Fira Mono',monospace;font-size:11px}
+.pill{display:inline-block;font-size:10px;padding:1px 7px;border-radius:10px;font-weight:600}
+.pill-in{background:rgba(166,227,161,.12);color:var(--green);border:1px solid rgba(166,227,161,.25)}
+.pill-out{background:rgba(250,179,135,.12);color:var(--orange);border:1px solid rgba(250,179,135,.25)}
+.pill-tcp{background:rgba(137,180,250,.12);color:var(--accent)}
+.pill-udp{background:rgba(203,166,247,.12);color:var(--purple)}
+.pill-icmp{background:rgba(249,226,175,.12);color:var(--yellow)}
+.bytes-col{color:var(--accent);font-family:monospace}
+.ptr-cell{color:var(--muted);font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis}
+
+/* ── TCP Flags ── */
+.flags-row{display:flex;gap:6px;flex-wrap:wrap}
+.flag-chip{display:flex;flex-direction:column;align-items:center;gap:3px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:8px 14px;min-width:64px}
+.flag-name{font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;font-family:monospace}
+.flag-pct{font-size:16px;font-weight:700}
+.flag-pct.hot{color:var(--red)}
+.flag-pct.warm{color:var(--yellow)}
+.flag-pct.cool{color:var(--teal)}
+
+/* ── Detection history ── */
+.dh-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px}
+.dh-row:last-child{border:none}
+.dh-ts{color:var(--muted);font-family:monospace;font-size:11px;white-space:nowrap}
+.dh-ip{color:var(--text);font-family:monospace}
+.dh-rule{color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis}
+.dh-status{font-size:10px;padding:1px 7px;border-radius:10px;font-weight:600;background:rgba(243,139,168,.15);color:var(--red);border:1px solid rgba(243,139,168,.25)}
+
+/* ── Spinner ── */
+.spinner{display:inline-block;width:12px;height:12px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-right:4px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-row{text-align:center;padding:24px;color:var(--muted)}
+
+/* ── Empty ── */
+.empty{text-align:center;padding:24px;color:var(--muted);font-size:12px}
+</style>
+</head>
+<body x-data="asnPage()" x-init="init()">
+
+<nav>
+  <a class="nav-brand" href="/">argus</a>
+  <a class="nav-link" href="/dashboard">Overview</a>
+  <a class="nav-link" href="/detection">Detection</a>
+  <a class="nav-link" href="/alerts">Alerts</a>
+  <a class="nav-link" href="/pathfinder">Pathfinder</a>
+  <a class="nav-link" href="/bgp">BGP</a>
+  <a class="nav-link" href="/routewatch">Routewatch</a>
+</nav>
+
+<!-- ── Page header ── -->
+<div class="page-head">
+  <div class="asn-hero">
+    <div>
+      <div class="asn-num">AS<span x-text="asn"></span></div>
+      <div class="asn-name" x-text="meta?.asn_name || '—'"></div>
+      <div class="asn-badges" x-show="meta">
+        <span class="badge" x-show="totalIn > 0">
+          ▼ <span x-text="fmtBytes(totalIn)"></span> received
+        </span>
+        <span class="badge" x-show="totalOut > 0">
+          ▲ <span x-text="fmtBytes(totalOut)"></span> sent
+        </span>
+        <span class="badge green" x-show="activeBlackholes > 0">
+          🚫 <span x-text="activeBlackholes"></span> active blackhole<span x-show="activeBlackholes !== 1">s</span>
+        </span>
+      </div>
+    </div>
+    <div class="meta-right" x-show="meta">
+      <div>first seen <b x-text="fmtTs(meta?.first_seen)"></b></div>
+      <div>last seen  <b x-text="fmtTs(meta?.last_seen)"></b></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Controls ── -->
+<div class="controls">
+  <label>Window</label>
+  <select x-model="window" @change="reload()">
+    <option value="1h">1 hour</option>
+    <option value="6h">6 hours</option>
+    <option value="24h" selected>24 hours</option>
+    <option value="48h">48 hours</option>
+    <option value="7d">7 days</option>
+  </select>
+
+  <label style="margin-left:8px">Direction</label>
+  <button class="dir-btn" :class="{active:dir==='both'}" @click="dir='both';reloadDetail()">Both</button>
+  <button class="dir-btn" :class="{active:dir==='in'}"   @click="dir='in';reloadDetail()">▼ In</button>
+  <button class="dir-btn" :class="{active:dir==='out'}"  @click="dir='out';reloadDetail()">▲ Out</button>
+
+  <label style="margin-left:8px">Chart split</label>
+  <button class="dir-btn" :class="{active:chartMode==='volume'}"  @click="chartMode='volume';drawChart()">Volume</button>
+  <button class="dir-btn" :class="{active:chartMode==='iface'}"   @click="chartMode='iface';drawChart()">By Interface</button>
+
+  <span x-show="loadingTimeline || loadingDetail" style="margin-left:auto;color:var(--muted)">
+    <span class="spinner"></span>loading…
+  </span>
+</div>
+
+<!-- ── Content ── -->
+<div class="content">
+
+  <!-- Traffic chart -->
+  <div class="chart-wrap">
+    <div class="chart-head">
+      <span class="label">Traffic</span>
+      <span style="font-size:11px;color:var(--muted)" x-show="!loadingTimeline && timelinePoints.length === 0">no data for this window</span>
+    </div>
+    <div id="chart-main" class="echarts" style="height:220px"></div>
+  </div>
+
+  <!-- Proto / Ports / Country -->
+  <div class="row-3 section">
+
+    <!-- Protocol breakdown -->
+    <div class="card">
+      <div class="mini-label">Protocol split</div>
+      <template x-if="loadingDetail"><div class="loading-row"><span class="spinner"></span></div></template>
+      <template x-if="!loadingDetail && protoRows.length === 0"><div class="empty">no data</div></template>
+      <template x-for="p in protoRows" :key="p.proto+''+p.dir">
+        <div class="proto-row">
+          <span class="proto-name" x-text="protoName(p.proto)"></span>
+          <span :class="p.dir==='in'?'pill pill-in':'pill pill-out'" x-text="p.dir"></span>
+          <div class="proto-bar-wrap">
+            <div class="proto-bar" :class="{out:p.dir==='out'}" :style="`width:${p._pct}%`"></div>
+          </div>
+          <span class="proto-bytes" x-text="fmtBytes(p.bytes)"></span>
+        </div>
+      </template>
+    </div>
+
+    <!-- Top destination ports -->
+    <div class="card">
+      <div class="mini-label">Top ports</div>
+      <template x-if="loadingDetail"><div class="loading-row"><span class="spinner"></span></div></template>
+      <template x-if="!loadingDetail && portRows.length === 0"><div class="empty">no data</div></template>
+      <template x-for="p in portRows" :key="p.dst_port+''+p.dir">
+        <div class="proto-row">
+          <span class="proto-name" x-text="portLabel(p.dst_port)"></span>
+          <span :class="p.dir==='in'?'pill pill-in':'pill pill-out'" x-text="p.dir"></span>
+          <div class="proto-bar-wrap">
+            <div class="proto-bar" :class="{out:p.dir==='out'}" :style="`width:${p._pct}%`"></div>
+          </div>
+          <span class="proto-bytes" x-text="fmtBytes(p.bytes)"></span>
+        </div>
+      </template>
+    </div>
+
+    <!-- Country breakdown -->
+    <div class="card">
+      <div class="mini-label">Source countries</div>
+      <template x-if="loadingDetail"><div class="loading-row"><span class="spinner"></span></div></template>
+      <template x-if="!loadingDetail && countryRows.length === 0"><div class="empty">no data</div></template>
+      <template x-for="c in countryRows" :key="c.country+''+c.dir">
+        <div class="proto-row">
+          <span>
+            <span class="country-flag" x-text="flag(c.country)"></span>
+            <span x-text="c.country || '??'"></span>
+          </span>
+          <span :class="c.dir==='in'?'pill pill-in':'pill pill-out'" x-text="c.dir"></span>
+          <div class="proto-bar-wrap">
+            <div class="proto-bar" :class="{out:c.dir==='out'}" :style="`width:${c._pct}%`"></div>
+          </div>
+          <span class="proto-bytes" x-text="fmtBytes(c.bytes)"></span>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- TCP Flags (shown only when TCP flows present) -->
+  <div class="section" x-show="tcpFlags && tcpFlags.tcp_flows > 0">
+    <div class="section-title">TCP flags <span style="font-weight:400;color:var(--muted)" x-text="tcpFlags ? '(' + tcpFlags.tcp_flows.toLocaleString() + ' TCP flows)' : ''"></span></div>
+    <div class="card">
+      <div class="flags-row">
+        <template x-for="f in flagChips" :key="f.name">
+          <div class="flag-chip">
+            <span class="flag-name" x-text="f.name"></span>
+            <span class="flag-pct" :class="f.pct > 80 ? 'hot' : f.pct > 30 ? 'warm' : 'cool'" x-text="f.pct + '%'"></span>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+
+  <!-- Top IP pairs -->
+  <div class="section">
+    <div class="section-title">Top IP pairs <span style="font-weight:400;color:var(--muted);font-size:10px">(peer → your IP, up to 50, hourly aggregated)</span></div>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Dir</th>
+            <th>Peer IP</th>
+            <th>PTR</th>
+            <th>Country</th>
+            <th>Your IP</th>
+            <th>Proto</th>
+            <th>Port</th>
+            <th>Bytes</th>
+            <th>Flows</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-if="loadingDetail">
+            <tr><td colspan="9" class="loading-row"><span class="spinner"></span> loading…</td></tr>
+          </template>
+          <template x-if="!loadingDetail && ipPairs.length === 0">
+            <tr><td colspan="9" class="empty">no data for selected window / direction</td></tr>
+          </template>
+          <template x-for="p in ipPairs" :key="p.peer_ip+''+p.local_ip+''+p.proto+''+p.dst_port+''+p.dir">
+            <tr>
+              <td><span :class="p.dir==='in'?'pill pill-in':'pill pill-out'" x-text="p.dir"></span></td>
+              <td class="mono" x-text="p.peer_ip"></td>
+              <td class="ptr-cell" x-text="ptrCache[p.peer_ip] ?? '…'"></td>
+              <td><span class="country-flag" x-text="flag(p.country)"></span><span x-text="p.country||''"></span></td>
+              <td class="mono" x-text="p.local_ip"></td>
+              <td><span :class="protoPill(p.proto)" x-text="protoName(p.proto)"></span></td>
+              <td class="mono" x-text="portLabel(p.dst_port)"></td>
+              <td class="bytes-col" x-text="fmtBytes(p.bytes)"></td>
+              <td class="mono" x-text="p.flows?.toLocaleString()"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Top prefixes -->
+  <div class="section">
+    <div class="section-title">Top BGP prefixes</div>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Prefix</th>
+            <th>Dir</th>
+            <th>Bytes</th>
+            <th>Packets</th>
+            <th>Flows</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-if="loadingDetail">
+            <tr><td colspan="6" class="loading-row"><span class="spinner"></span></td></tr>
+          </template>
+          <template x-if="!loadingDetail && prefixes.length === 0">
+            <tr><td colspan="6" class="empty">no prefix data</td></tr>
+          </template>
+          <template x-for="p in prefixes" :key="p.prefix+''+p.dir">
+            <tr>
+              <td class="mono" x-text="p.prefix"></td>
+              <td><span :class="p.dir==='in'?'pill pill-in':'pill pill-out'" x-text="p.dir"></span></td>
+              <td class="bytes-col" x-text="fmtBytes(p.bytes)"></td>
+              <td class="mono" x-text="fmtNum(p.packets)"></td>
+              <td class="mono" x-text="fmtNum(p.flows)"></td>
+              <td>
+                <a :href="`/pathfinder?q=${p.prefix}`" style="font-size:10px;color:var(--accent);text-decoration:none" title="Open in Pathfinder">↗ Pathfinder</a>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Detection & Blackhole history -->
+  <div class="section">
+    <div class="section-title">Detection &amp; blackhole history <span style="font-weight:400;color:var(--muted);font-size:10px">(from active blackholes list)</span></div>
+    <div class="card">
+      <template x-if="loadingBH"><div class="loading-row"><span class="spinner"></span></div></template>
+      <template x-if="!loadingBH && bhRows.length === 0">
+        <div class="empty">no detections or blackholes for this ASN</div>
+      </template>
+      <template x-for="b in bhRows" :key="b.prefix+''+b.blackholed_at">
+        <div class="dh-row">
+          <span class="dh-ts" x-text="fmtTs(b.blackholed_at)"></span>
+          <span class="dh-ip mono" x-text="b.prefix"></span>
+          <span class="dh-rule" x-text="b.rule || b.description || '—'"></span>
+          <span class="dh-status" x-text="b.active ? 'active' : 'expired'"></span>
+        </div>
+      </template>
+    </div>
+  </div>
+
+</div><!-- /content -->
+
+<script>
+const CHART_ID = 'chart-main'
+let chart = null
+
+function asnPage() { return {
+  asn: '',
+  window: '24h',
+  dir: 'both',
+  chartMode: 'volume',
+
+  meta: null,
+  timelinePoints: [],
+  ifaceSplits: [],
+  ipPairs: [],
+  prefixes: [],
+  protoRows: [],
+  portRows: [],
+  countryRows: [],
+  tcpFlags: null,
+  bhRows: [],
+  ptrCache: {},
+
+  loadingTimeline: false,
+  loadingDetail: false,
+  loadingBH: false,
+
+  // ── computed ──────────────────────────────────────────────────────────────
+
+  get totalIn()  { return this.meta?.total_in  ?? 0 },
+  get totalOut() { return this.meta?.total_out ?? 0 },
+
+  get activeBlackholes() {
+    return this.bhRows.filter(b => b.active).length
+  },
+
+  get flagChips() {
+    const f = this.tcpFlags
+    if (!f || f.tcp_flows === 0) return []
+    const total = f.tcp_flows
+    const pct = n => Math.round(n / total * 100)
+    return [
+      { name:'SYN', pct: pct(f.syn) },
+      { name:'ACK', pct: pct(f.ack) },
+      { name:'RST', pct: pct(f.rst) },
+      { name:'FIN', pct: pct(f.fin) },
+      { name:'PSH', pct: pct(f.psh) },
+      { name:'URG', pct: pct(f.urg) },
+    ].filter(c => c.pct > 0)
+  },
+
+  // ── lifecycle ─────────────────────────────────────────────────────────────
+
+  init() {
+    this.asn = window.location.pathname.split('/').filter(Boolean).pop()
+    document.title = `argus · AS${this.asn}`
+    chart = echarts.init(document.getElementById(CHART_ID), 'dark')
+    window.addEventListener('resize', () => chart?.resize())
+    this.reload()
+    this.loadBH()
+  },
+
+  async reload() {
+    await Promise.all([this.loadSummary(), this.loadTimeline(), this.reloadDetail()])
+  },
+
+  async reloadDetail() {
+    await this.loadDetail()
+  },
+
+  // ── data fetchers ─────────────────────────────────────────────────────────
+
+  async loadSummary() {
+    try {
+      const r = await fetch(`/asn/${this.asn}/summary`)
+      if (!r.ok) return
+      const d = await r.json()
+      this.meta = d.meta
+    } catch(e) { console.error('summary', e) }
+  },
+
+  async loadTimeline() {
+    this.loadingTimeline = true
+    try {
+      const r = await fetch(`/asn/${this.asn}/timeline?window=${this.window}`)
+      if (!r.ok) return
+      const d = await r.json()
+      this.timelinePoints = d.points ?? []
+      this.ifaceSplits    = d.ifaces ?? []
+      this.$nextTick(() => this.drawChart())
+    } catch(e) { console.error('timeline', e) }
+    finally { this.loadingTimeline = false }
+  },
+
+  async loadDetail() {
+    this.loadingDetail = true
+    try {
+      const r = await fetch(`/asn/${this.asn}/detail?window=${this.window}&dir=${this.dir}`)
+      if (!r.ok) return
+      const d = await r.json()
+
+      this.ipPairs  = d.top_ips  ?? []
+      this.prefixes = d.prefixes ?? []
+      this.tcpFlags = d.tcp_flags
+
+      // Annotate with percentages for bar rendering
+      this.protoRows  = this.withPct(d.proto    ?? [])
+      this.portRows   = this.withPct(d.ports    ?? [])
+      this.countryRows= this.withPct(d.countries?? [])
+
+      // Async PTR resolution for all peer IPs
+      this.resolveAllPTR()
+    } catch(e) { console.error('detail', e) }
+    finally { this.loadingDetail = false }
+  },
+
+  async loadBH() {
+    this.loadingBH = true
+    try {
+      const r = await fetch('/blackhole-list')
+      if (!r.ok) return
+      const list = await r.json()
+      const asnNum = parseInt(this.asn)
+      this.bhRows = (list ?? []).filter(b =>
+        b.asn === asnNum || String(b.asn) === this.asn
+      ).sort((a,b) => (b.blackholed_at||0) - (a.blackholed_at||0))
+    } catch(e) { console.error('bh', e) }
+    finally { this.loadingBH = false }
+  },
+
+  // ── PTR resolution ────────────────────────────────────────────────────────
+
+  async resolveAllPTR() {
+    const ips = [...new Set(this.ipPairs.map(p => p.peer_ip))]
+    for (const ip of ips) {
+      if (this.ptrCache[ip] !== undefined) continue
+      this.ptrCache[ip] = '…'
+      this.resolvePTR(ip)
+    }
+  },
+
+  async resolvePTR(ip) {
+    try {
+      const r = await fetch(`/infoip?ip=${encodeURIComponent(ip)}`)
+      if (!r.ok) { this.ptrCache[ip] = ''; return }
+      const d = await r.json()
+      this.ptrCache[ip] = d.ptr || ''
+    } catch { this.ptrCache[ip] = '' }
+  },
+
+  // ── Chart ─────────────────────────────────────────────────────────────────
+
+  drawChart() {
+    if (!chart) return
+
+    if (this.chartMode === 'iface') {
+      this.drawIfaceChart()
+    } else {
+      this.drawVolumeChart()
+    }
+  },
+
+  drawVolumeChart() {
+    // Build per-timestamp in/out series from flat points array
+    const inMap  = {}, outMap = {}
+    for (const p of this.timelinePoints) {
+      if (p.dir === 'in')  inMap[p.ts]  = (inMap[p.ts]  || 0) + p.bytes
+      if (p.dir === 'out') outMap[p.ts] = (outMap[p.ts] || 0) + p.bytes
+    }
+    const tss = [...new Set(this.timelinePoints.map(p => p.ts))].sort()
+
+    chart.setOption({
+      backgroundColor: 'transparent',
+      tooltip: { trigger:'axis', formatter: params => {
+        const ts = new Date(params[0].axisValue * 1000).toLocaleString()
+        return params.map(p => `${p.marker}${p.seriesName}: <b>${fmtBytes(p.value)}</b>`).join('<br>') + `<br><small>${ts}</small>`
+      }},
+      legend: { data:['Inbound','Outbound'], textStyle:{color:'#6c7086'}, right:0, top:4 },
+      grid: { left:60, right:20, top:32, bottom:28 },
+      xAxis: { type:'category', data: tss, axisLabel:{ color:'#6c7086', fontSize:10,
+        formatter: v => { const d=new Date(v*1000); return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}` }
+      }, axisLine:{lineStyle:{color:'#2a3147'}}, splitLine:{show:false} },
+      yAxis: { type:'value', axisLabel:{ color:'#6c7086', fontSize:10, formatter: fmtBytes },
+        splitLine:{lineStyle:{color:'#2a3147'}} },
+      series: [
+        { name:'Inbound',  type:'line', smooth:true, areaStyle:{opacity:.18},
+          lineStyle:{width:2}, itemStyle:{color:'#89b4fa'}, symbol:'none',
+          data: tss.map(t => inMap[t] || 0) },
+        { name:'Outbound', type:'line', smooth:true, areaStyle:{opacity:.18},
+          lineStyle:{width:2}, itemStyle:{color:'#fab387'}, symbol:'none',
+          data: tss.map(t => outMap[t] || 0) },
+      ]
+    }, true)
+  },
+
+  drawIfaceChart() {
+    if (!this.ifaceSplits.length) { this.drawVolumeChart(); return }
+
+    // Collect unique interface names
+    const ifaceNames = [...new Set(this.ifaceSplits.map(s => s.iface))].sort()
+    const tss = [...new Set(this.ifaceSplits.map(s => s.ts))].sort()
+
+    // Build map: ts → iface → bytes
+    const m = {}
+    for (const s of this.ifaceSplits) {
+      if (!m[s.ts]) m[s.ts] = {}
+      m[s.ts][s.iface] = (m[s.ts][s.iface] || 0) + s.bytes
+    }
+
+    const palette = ['#89b4fa','#a6e3a1','#fab387','#cba6f7','#94e2d5','#f9e2af']
+    const series = ifaceNames.map((iface, i) => ({
+      name: iface,
+      type: 'bar',
+      stack: 'iface',
+      itemStyle: { color: palette[i % palette.length] },
+      data: tss.map(t => (m[t] || {})[iface] || 0)
+    }))
+
+    chart.setOption({
+      backgroundColor: 'transparent',
+      tooltip: { trigger:'axis', formatter: params => {
+        return params.filter(p=>p.value>0).map(p => `${p.marker}${p.seriesName}: <b>${fmtBytes(p.value)}</b>`).join('<br>')
+      }},
+      legend: { data: ifaceNames, textStyle:{color:'#6c7086'}, right:0, top:4 },
+      grid: { left:60, right:20, top:32, bottom:28 },
+      xAxis: { type:'category', data: tss, axisLabel:{ color:'#6c7086', fontSize:10,
+        formatter: v => { const d=new Date(v*1000); return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}` }
+      }, axisLine:{lineStyle:{color:'#2a3147'}}, splitLine:{show:false} },
+      yAxis: { type:'value', axisLabel:{ color:'#6c7086', fontSize:10, formatter: fmtBytes },
+        splitLine:{lineStyle:{color:'#2a3147'}} },
+      series
+    }, true)
+  },
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
+  withPct(rows) {
+    if (!rows.length) return []
+    const max = Math.max(...rows.map(r => r.bytes), 1)
+    return rows.map(r => ({ ...r, _pct: Math.round(r.bytes / max * 100) }))
+  },
+
+  protoName(n) {
+    return { 1:'ICMP', 6:'TCP', 17:'UDP', 47:'GRE', 50:'ESP', 58:'ICMPv6', 89:'OSPF' }[n] ?? `#${n}`
+  },
+
+  protoPill(n) {
+    return { 1:'pill pill-icmp', 6:'pill pill-tcp', 17:'pill pill-udp' }[n] ?? 'pill'
+  },
+
+  portLabel(p) {
+    const names = {
+      21:'FTP', 22:'SSH', 23:'Telnet', 25:'SMTP', 53:'DNS',
+      80:'HTTP', 110:'POP3', 143:'IMAP', 179:'BGP', 443:'HTTPS',
+      465:'SMTPS', 587:'SMTP', 993:'IMAPS', 995:'POP3S',
+      3306:'MySQL', 5432:'PgSQL', 8080:'HTTP-alt', 8443:'HTTPS-alt'
+    }
+    return names[p] ? `${p} ${names[p]}` : String(p)
+  },
+
+  flag(cc) {
+    if (!cc || cc.length !== 2) return '🌐'
+    return String.fromCodePoint(
+      ...cc.toUpperCase().split('').map(c => 0x1F1E0 + c.charCodeAt(0) - 65)
+    )
+  },
+
+  fmtTs(ts) {
+    if (!ts) return '—'
+    return new Date(ts * 1000).toLocaleString()
+  },
+}}
+
+// ── Standalone helpers (also used inside ECharts formatters) ──────────────────
+function fmtBytes(b) {
+  if (!b || b === 0) return '0 B'
+  const u = ['B','KB','MB','GB','TB']
+  let i = 0; while (b >= 1024 && i < u.length-1) { b /= 1024; i++ }
+  return b.toFixed(i ? 1 : 0) + ' ' + u[i]
+}
+function fmtNum(n) {
+  return n != null ? n.toLocaleString() : '—'
+}
+</script>
+</body>
+</html>

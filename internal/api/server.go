@@ -19,6 +19,7 @@ import (
 	"database/sql"
 	"argus/internal/config"
 	"argus/internal/cfmapi"
+	"argus/internal/flowstore"
 )
 
 type GeoIPResponse struct {
@@ -279,6 +280,10 @@ func Start() {
 mainMux.HandleFunc("/pathfinder/ping", WithMainIPOnly(handlePathfinderPing))
 mainMux.HandleFunc("/pathfinder/traceroute", WithMainIPOnly(handlePathfinderTraceroute))
 
+mainMux.HandleFunc("/asn/{asn}",          WithMainIPOnly(handleASNPage))
+mainMux.HandleFunc("/asn/{asn}/timeline", WithMainIPOnly(flowstore.HandleASNTimeline(DB)))
+mainMux.HandleFunc("/asn/{asn}/detail",   WithMainIPOnly(flowstore.HandleASNDetail(DB)))
+mainMux.HandleFunc("/asn/{asn}/summary",  WithMainIPOnly(flowstore.HandleASNSummary(DB)))
 
   // ── BGP cockpit ──────────────────────────────────────────────────────
   mainMux.HandleFunc("/bgp", WithMainIPOnly(func(w http.ResponseWriter, r *http.Request) {
@@ -549,4 +554,11 @@ func handleBGPStatus(w http.ResponseWriter, r *http.Request) {
 		"prefixes_received":  bgp.GetPathCount(),
 		"peers":              peers,
 	})
+}
+
+// handleASNPage serves the per-ASN drill-down page.
+// asnHTML is embedded in embed.go alongside dashboardHTML, pathfinderHTML, etc.
+func handleASNPage(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Content-Type", "text/html; charset=utf-8")
+    w.Write(asnHTML)
 }

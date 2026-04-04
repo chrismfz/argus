@@ -41,6 +41,8 @@ import (
 	"argus/internal/rib"
 
 	"github.com/chrismfz/goauth"
+	"argus/internal/flowstore"
+
 )
 
 var debug bool
@@ -321,6 +323,21 @@ if err := telemetry.InitIfaceRingSchema(db); err != nil {
 	telemetry.StartScheduler(ctx, db)
 	log.Printf("[telemetry] aggregator ready (myASN=%d nets=%d)", cfg.MyASN, len(myNets))
 
+
+// ── FlowStore ─────────────────────────────────────────────────────────────
+if listener != nil {
+    if err := flowstore.Init(db, uint32(cfg.MyASN), myNets, cfg.UpstreamInterfaces, listener.Ranger, geo); err != nil {
+        log.Printf("[flowstore] init failed: %v", err)
+    } else {
+        log.Printf("[flowstore] ready")
+    }
+} else {
+    if err := flowstore.Init(db, uint32(cfg.MyASN), myNets, cfg.UpstreamInterfaces, nil, geo); err != nil {
+        log.Printf("[flowstore] init failed: %v", err)
+    } else {
+        log.Printf("[flowstore] ready")
+    }
+}
 
 
 	// ── Protection list ───────────────────────────────────────────────────────

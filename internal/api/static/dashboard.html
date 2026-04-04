@@ -45,6 +45,9 @@ tbody td{padding:7px 8px;border-bottom:1px solid var(--border);font-size:13px;wh
 tbody tr:hover{background:var(--bg3)}
 tbody tr:last-child td{border:none}
 .asn-num{color:var(--muted);font-size:12px}
+/* ── ASN drill-down links ── */
+.asn-link{color:var(--accent);text-decoration:none;font-family:monospace;font-size:12px}
+.asn-link:hover{text-decoration:underline}
 .bytes{font-family:monospace;color:var(--accent)}
 .bar-bg{height:6px;background:var(--bg3);border-radius:3px;overflow:hidden;min-width:60px}
 .bar-fill{height:100%;border-radius:3px;background:var(--accent);transition:width .3s}
@@ -94,11 +97,9 @@ header .logout:hover{opacity:1;background:rgba(243,139,168,.08);border-color:var
   <button :class="{active:tab==='upstreams'}" @click="tab='upstreams';loadUpstreams()">Upstreams</button>
   <a href="/bgp" class="page">BGP</a>
   <a href="/routewatch" class="page">Routewatch</a>
-
   <a href="/detection" class="page">Detection</a>
   <a href="/alerts" class="page">Alerts</a>
   <a href="/pathfinder" class="page">Pathfinder</a>
-
   <button :class="{active:tab==='control'}"   @click="tab='control';loadControl()">⚙ Control</button>
   <span class="sep"></span>
   <a href="/debug/flows" target="_blank" class="dbg">⚡ Live Flows</a>
@@ -119,9 +120,8 @@ header .logout:hover{opacity:1;background:rgba(243,139,168,.08);border-color:var
     <span>auto-refresh in <b x-text="nextRefresh"></b>s</span>
   </div>
 
-<div class="grid" style="grid-template-columns:repeat(6,1fr);margin-bottom:16px">
-
-  <div class="card">
+  <div class="grid" style="grid-template-columns:repeat(6,1fr);margin-bottom:16px">
+    <div class="card">
       <div class="card-title">current in</div>
       <div class="stat" x-text="(overview.rateMbpsIn ?? '—') + ' Mbps'"></div>
       <div class="stat-sub">1-min avg</div>
@@ -131,7 +131,6 @@ header .logout:hover{opacity:1;background:rgba(243,139,168,.08);border-color:var
       <div class="stat" x-text="(overview.rateMbpsOut ?? '—') + ' Mbps'"></div>
       <div class="stat-sub">1-min avg</div>
     </div>
-
     <div class="card">
       <div class="card-title">total inbound</div>
       <div class="stat" x-text="fmtBytes(overview.total_in ?? 0)"></div>
@@ -142,14 +141,22 @@ header .logout:hover{opacity:1;background:rgba(243,139,168,.08);border-color:var
       <div class="stat" x-text="fmtBytes(overview.total_out ?? 0)"></div>
       <div class="stat-sub" x-text="(overview.flows_out ?? 0).toLocaleString() + ' flows'"></div>
     </div>
+    <!-- ↓ top inbound AS — name links to drill-down -->
     <div class="card">
       <div class="card-title">top inbound AS</div>
-      <div class="stat" style="font-size:18px" x-text="overview.asn_in?.[0]?.name ?? '—'"></div>
+      <a :href="overview.asn_in?.[0]?.asn ? '/asn/'+overview.asn_in[0].asn : '#'"
+         style="text-decoration:none;display:block">
+        <div class="stat" style="font-size:18px" x-text="overview.asn_in?.[0]?.name ?? '—'"></div>
+      </a>
       <div class="stat-sub" x-text="fmtBytes(overview.asn_in?.[0]?.bytes_in ?? 0)"></div>
     </div>
+    <!-- ↓ top outbound AS — name links to drill-down -->
     <div class="card">
       <div class="card-title">top outbound AS</div>
-      <div class="stat" style="font-size:18px" x-text="overview.asn_out?.[0]?.name ?? '—'"></div>
+      <a :href="overview.asn_out?.[0]?.asn ? '/asn/'+overview.asn_out[0].asn : '#'"
+         style="text-decoration:none;display:block">
+        <div class="stat" style="font-size:18px" x-text="overview.asn_out?.[0]?.name ?? '—'"></div>
+      </a>
       <div class="stat-sub" x-text="fmtBytes(overview.asn_out?.[0]?.bytes_out ?? 0)"></div>
     </div>
   </div>
@@ -159,13 +166,14 @@ header .logout:hover{opacity:1;background:rgba(243,139,168,.08);border-color:var
     <div id="chart-throughput" class="chart"></div>
   </div>
 
+  <!-- ↓ bar charts are clickable — see drawASNBar() -->
   <div class="grid grid-2">
     <div class="card">
-      <div class="card-title">top 10 inbound AS (24h)</div>
+      <div class="card-title">top 10 inbound AS (24h) <span style="font-size:10px;font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0">· click to drill down</span></div>
       <div id="chart-asn-in" style="height:260px"></div>
     </div>
     <div class="card">
-      <div class="card-title">top 10 outbound AS (24h)</div>
+      <div class="card-title">top 10 outbound AS (24h) <span style="font-size:10px;font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0">· click to drill down</span></div>
       <div id="chart-asn-out" style="height:260px"></div>
     </div>
   </div>
@@ -190,7 +198,8 @@ header .logout:hover{opacity:1;background:rgba(243,139,168,.08);border-color:var
         <tbody>
           <template x-for="a in (asnData.top_in ?? [])" :key="a.asn">
             <tr>
-              <td><span class="asn-num" x-text="a.asn"></span></td>
+              <!-- ↓ ASN number links to drill-down -->
+              <td><a class="asn-link" :href="'/asn/'+a.asn" x-text="a.asn" @click.stop></a></td>
               <td x-text="a.name || '—'"></td>
               <td class="bytes" x-text="fmtBytes(a.bytes_in)"></td>
               <td><div class="bar-bg"><div class="bar-fill" :style="'width:'+pct(a.bytes_in, maxAsnIn)+'%'"></div></div></td>
@@ -207,7 +216,8 @@ header .logout:hover{opacity:1;background:rgba(243,139,168,.08);border-color:var
         <tbody>
           <template x-for="a in (asnData.top_out ?? [])" :key="a.asn">
             <tr>
-              <td><span class="asn-num" x-text="a.asn"></span></td>
+              <!-- ↓ ASN number links to drill-down -->
+              <td><a class="asn-link" :href="'/asn/'+a.asn" x-text="a.asn" @click.stop></a></td>
               <td x-text="a.name || '—'"></td>
               <td class="bytes" x-text="fmtBytes(a.bytes_out)"></td>
               <td><div class="bar-bg"><div class="bar-fill out" :style="'width:'+pct(a.bytes_out, maxAsnOut)+'%'"></div></div></td>
@@ -631,24 +641,20 @@ function app() { return {
     finally { this.loading = false }
   },
 
-  // ── FIX 3 & 4: dynamic height + ID·name labels on both node types ──────────
   drawIfaceSankeyChart(id, pairs, inbound) {
     const el = document.getElementById(id)
     if (!el || !pairs.length) return
 
-    // Dynamic height: give each unique ASN node ~26px of room, min 380px
     const uniqueASNs = new Set(pairs.map(p => p.asn)).size
     const h = Math.max(380, uniqueASNs * 26 + 80)
     el.style.height = h + 'px'
 
     if (!charts[id]) charts[id] = echarts.init(el, 'dark')
 
-    // Interface label: "sfp1-Synapsecom (idx 3)"
     const ifLabel  = p => p.iface_name
       ? `${p.iface_name} (idx ${p.iface_idx})`
       : `if${p.iface_idx}`
 
-    // ASN label: "AS8280 · Synapsecom S.A."
     const asnLabel = p => p.asn_name
       ? `AS${p.asn} · ${p.asn_name}`
       : `AS${p.asn}`
@@ -670,7 +676,6 @@ function app() { return {
       }},
       series:[{
         type:'sankey', layout:'none', emphasis:{focus:'adjacency'},
-        // explicit margins so nodes use the full card width
         left: '5%', right: '35%', top: '5%', bottom: '5%',
         data:nodes, links,
         lineStyle:{color:'gradient',opacity:.4},
@@ -679,8 +684,6 @@ function app() { return {
       }]
     })
 
-    // Force resize after paint — ECharts may have initialised on a
-    // partially-hidden element and captured a stale width
     setTimeout(() => { if (charts[id]) charts[id].resize() }, 60)
   },
 
@@ -754,6 +757,7 @@ function app() { return {
     })
   },
 
+  // ↓ bar charts are clickable — navigates to /asn/{asn} drill-down
   drawASNBar(id, data, field, color) {
     const c = ec(id)
     const top = data.slice(0,10)
@@ -763,7 +767,12 @@ function app() { return {
       grid:{top:10,right:20,bottom:40,left:10,containLabel:true},
       xAxis:{type:'value',axisLabel:{color:'#6c7086',formatter:v=>fmtBytesS(v)},splitLine:{lineStyle:{color:'#2a3147'}}},
       yAxis:{type:'category',data:top.map(a=>a.name||`AS${a.asn}`),axisLabel:{color:'#cdd6f4',width:150,overflow:'truncate'}},
-      series:[{type:'bar',data:top.map(a=>a[field]),itemStyle:{color,borderRadius:[0,4,4,0]},barMaxWidth:22}]
+      series:[{type:'bar',data:top.map(a=>a[field]),itemStyle:{color,borderRadius:[0,4,4,0]},barMaxWidth:22,cursor:'pointer'}]
+    })
+    c.off('click')
+    c.on('click', params => {
+      const a = top[params.dataIndex]
+      if (a?.asn) window.location.href = '/asn/' + a.asn
     })
   },
 
@@ -868,7 +877,6 @@ function fmtBytes(b) { return fmtBytesS(b) }
     </select></label>
   </div>
 
-  <!-- FIX 1: summary cards — name on top, idx below -->
   <div class="grid" :style="'grid-template-columns:repeat('+Math.min(upstreamsData.length||1,4)+',1fr);margin-bottom:16px'">
     <template x-for="iface in upstreamsData" :key="iface.index">
       <div class="card">
@@ -892,7 +900,6 @@ function fmtBytes(b) { return fmtBytesS(b) }
     </template>
   </div>
 
-  <!-- FIX 2: per-interface chart titles — name + idx tag -->
   <template x-for="(iface, i) in upstreamsData" :key="iface.index">
     <div class="card" style="margin-bottom:16px">
       <div class="card-title" style="display:flex;align-items:center">
@@ -907,7 +914,6 @@ function fmtBytes(b) { return fmtBytesS(b) }
     <p class="notice">No interface data yet — traffic accumulates per minute. Check that upstream_interfaces is set in config.yaml.</p>
   </template>
 
-  <!-- FIX 3 & 4 handled in drawIfaceSankeyChart() above — dynamic height + labels -->
   <div class="card" style="margin-bottom:16px" x-show="ifaceSankeyOut.length > 0">
     <div class="card-title">outgoing traffic — upstream × AS sankey</div>
     <div id="chart-iface-sankey-out" class="chart-tall"></div>
@@ -1121,9 +1127,8 @@ function fmtBytes(b) { return fmtBytesS(b) }
                 <span style="font-size:11px;color:var(--muted)" x-text="b.country||'—'"></span>
               </td>
               <td>
-                <span class="asn-num" x-text="'AS'+b.asn"
-                  style="cursor:pointer;text-decoration:underline dotted"
-                  @click="bhFilter.asn=String(b.asn)"></span>
+                <!-- ↓ ASN links to drill-down -->
+                <a class="asn-link" :href="'/asn/'+b.asn" x-text="'AS'+b.asn" title="Traffic drill-down"></a>
                 <span style="color:var(--muted);font-size:12px;margin-left:4px" x-text="b.asn_name"></span>
               </td>
               <td><span class="tag-pill" style="color:var(--yellow);font-size:11px" x-text="b.rule"></span></td>

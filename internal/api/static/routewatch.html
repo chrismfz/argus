@@ -84,8 +84,10 @@ nav a.dbg:hover { background: rgba(249,226,175,.1); border-color: var(--yellow) 
 .asp-chip.origin { color: var(--accent); border-color: rgba(91,156,246,.3); }
 .asp-chip.transit { color: var(--teal); border-color: rgba(63,185,122,.3); }
 .asp-arrow { color: var(--muted); font-size: 9px; }
-.pf-btn { display: inline-block; margin-top: 8px; font-size: 11px; padding: 3px 10px; background: var(--bg3); border: 1px solid var(--border); border-radius: 4px; color: var(--muted); text-decoration: none; cursor: pointer; }
+.pf-btn { display: inline-block; margin-top: 8px; font-size: 11px; padding: 3px 10px; background: var(--bg3); border: 1px solid var(--border); border-radius: 4px; color: var(--muted); text-decoration: none; cursor: pointer; margin-right: 6px; }
 .pf-btn:hover { color: var(--accent); border-color: var(--accent); }
+.pf-btn.drill { color: var(--accent); border-color: rgba(91,156,246,.3); }
+.pf-btn.drill:hover { border-color: var(--accent); }
 </style>
 </head>
 <body>
@@ -120,7 +122,7 @@ nav a.dbg:hover { background: rgba(249,226,175,.1); border-color: var(--yellow) 
     </button>
   </div>
 
-  <!-- Stats: 3 cards, no misleading multi-path -->
+  <!-- Stats -->
   <div class="stat-row">
     <div class="stat">
       <div class="stat-val" x-text="data?.asn_count ?? '—'"></div>
@@ -142,6 +144,7 @@ nav a.dbg:hover { background: rgba(249,226,175,.1); border-color: var(--yellow) 
   <div class="notice" x-show="data" style="border-color:rgba(91,156,246,.2);color:var(--muted);font-size:11px">
     Transit labels derived from GoBGP AS-path (best path only — GoBGP does not negotiate ADD-PATH with MikroTik).
     Click any row to see prefixes and their paths. Click <strong style="color:var(--accent)">↗ Pathfinder</strong> on a prefix for full RouterOS multi-path detail.
+    Click an <strong style="color:var(--accent)">ASN number</strong> for traffic drill-down.
   </div>
 
   <!-- Main table -->
@@ -217,9 +220,13 @@ nav a.dbg:hover { background: rgba(249,226,175,.1); border-color: var(--yellow) 
                         </div>
                       </template>
                     </div>
+                    <!-- ↓ expand panel footer: Pathfinder + drill-down links -->
                     <div style="margin-top:10px">
                       <a class="pf-btn" :href="'/pathfinder?asn='+row.asn" target="_blank">
                         Search all AS<span x-text="row.asn"></span> prefixes in Pathfinder ↗
+                      </a>
+                      <a class="pf-btn drill" :href="'/asn/'+row.asn" @click.stop>
+                        AS<span x-text="row.asn"></span> traffic drill-down ↗
                       </a>
                     </div>
                   </div>
@@ -228,7 +235,12 @@ nav a.dbg:hover { background: rgba(249,226,175,.1); border-color: var(--yellow) 
 
               <!-- Cells 2-6: ASN row data only -->
               <td x-show="row._type==='asn'">
-                <span style="font-family:var(--mono);font-size:12px;font-weight:600;color:var(--accent)" x-text="'AS'+row.asn"></span>
+                <!-- ↓ ASN number links to drill-down; @click.stop prevents row toggle -->
+                <a :href="'/asn/'+row.asn"
+                   style="font-family:var(--mono);font-size:12px;font-weight:600;color:var(--accent);text-decoration:none"
+                   x-text="'AS'+row.asn"
+                   @click.stop
+                   title="Traffic drill-down"></a>
               </td>
               <td x-show="row._type==='asn'" style="font-size:12px" x-text="row.name||'—'"></td>
               <td x-show="row._type==='asn'" style="text-align:right">

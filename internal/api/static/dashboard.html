@@ -71,6 +71,8 @@ button.btn.secondary{background:var(--bg3);color:var(--text);border:1px solid va
 .note-input{display:flex;gap:8px;margin-top:12px}
 .note-input input{flex:1}
 .history-table tbody tr td:first-child{font-weight:600}
+header .logout{margin-left:auto;font-size:12px;color:var(--red);text-decoration:none;opacity:.7;transition:.15s;padding:3px 8px;border:1px solid rgba(243,139,168,.2);border-radius:4px}
+header .logout:hover{opacity:1;background:rgba(243,139,168,.08);border-color:var(--red)}
 </style>
 </head>
 <body x-data="app()" x-init="init()">
@@ -80,6 +82,7 @@ button.btn.secondary{background:var(--bg3);color:var(--text);border:1px solid va
   <span class="tag" x-text="'AS' + (overview.asn_out?.[0]?.asn ?? '—')"></span>
   <span class="tag" x-text="lastUpdated ? 'updated ' + lastUpdated : 'loading…'"></span>
   <span class="tag" :style="live ? 'color:var(--green)' : 'color:var(--red)'" x-text="live ? '● live' : '○ stale'"></span>
+  <a href="#" class="logout" @click.prevent="fetch('/logout',{method:'POST'}).then(()=>window.location.href='/login')">⏻ logout</a>
 </header>
 
 <nav>

@@ -76,16 +76,26 @@ Examples:
 		authCmdUserDelete(&dbPath),
 	)
 
-	sessionCmd := &cobra.Command{
-		Use:   "session",
-		Short: "Manage active sessions",
-	}
-	sessionCmd.AddCommand(
-		authCmdSessionList(&dbPath),
-		authCmdSessionPurge(&dbPath),
-	)
+sessionCmd := &cobra.Command{
+                Use:   "session",
+                Short: "Manage active sessions",
+        }
+        sessionCmd.AddCommand(
+                authCmdSessionList(&dbPath),
+                authCmdSessionPurge(&dbPath),
+        )
 
-	root.AddCommand(userCmd, sessionCmd)
+        logCmd := &cobra.Command{
+                Use:   "log",
+                Short: "View auth audit log",
+        }
+        logCmd.AddCommand(
+                authCmdLogTail(&dbPath),
+                authCmdLogPurge(&dbPath),
+        )
+
+        root.AddCommand(userCmd, sessionCmd, logCmd)
+
 
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
@@ -480,3 +490,89 @@ func authCmdSessionPurge(dbPath *string) *cobra.Command {
 		},
 	}
 }
+
+
+// ── log tail ──────────────────────────────────────────────────────────────────
+
+func authCmdLogTail(dbPath *string) *cobra.Command {
+        var limit int
+        var ip string
+
+        cmd := &cobra.Command{
+                Use:   "tail",
+                Short: "Show recent login attempts",
+                Example: `  argus auth log tail
+  argus auth log tail -n 100
+  argus auth log tail --ip 5.5.5.5`,
+                RunE: func(cmd *cobra.Command, args []string) error {
+                        m, err := authOpen(dbPath)
+                        if err != nil {
+                                return err
+                        }
+                        defer m.Close()
+
+                        var entries []goauth.AuthLogEntry
+                        if ip != "" {
+                                entries, err = m.QueryAuthLogByIP(ip, limit)
+                        } else {
+                                entries, err = m.QueryAuthLog(limit)
+                        }
+                        if err != nil {
+                                return err
+                        }
+                        if len(entries) == 0 {
+                                fmt.Println("No auth log entries.")
+                                return nil
+                        }
+
+                        tw := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
+                        fmt.Fprintln(tw, "TIME\tEVENT\tUSERNAME\tIP\tREASON")
+                        fmt.Fprintln(tw, "----\t-----\t--------\t--\t------")
+                        for _, e := range entries {
+                                fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+                                        e.Time.Format("2006-01-02 15:04:05"),
+                                        e.Event,
+                                        e.Username,
+                                        e.IP,
+                                        e.Reason,
+                                )
+                        }
+                        tw.Flush()
+                        return nil
+                },
+        }
+
+        cmd.Flags().IntVarP(&limit, "count", "n", 50, "Number of entries to show")
+        cmd.Flags().StringVar(&ip, "ip", "", "Filter by IP address")
+        return cmd
+}
+
+// ── log purge ─────────────────────────────────────────────────────────────────
+
+func authCmdLogPurge(dbPath *string) *cobra.Command {
+        var days int
+
+        cmd := &cobra.Command{
+                Use:   "purge",
+                Short: "Delete auth log entries older than N days",
+                Example: `  argus auth log purge --days 90`,
+                RunE: func(cmd *cobra.Command, args []string) error {
+                        m, err := authOpen(dbPath)
+                        if err != nil {
+                                return err
+                        }
+                        defer m.Close()
+
+                        n, err := m.PurgeAuthLog(time.Duration(days) * 24 * time.Hour)
+                        if err != nil {
+                                return err
+                        }
+                        fmt.Printf("✓ Purged %d auth log entries older than %d days\n", n, days)
+                        return nil
+                },
+        }
+
+        cmd.Flags().IntVar(&days, "days", 90, "Delete entries older than this many days")
+        return cmd
+}
+

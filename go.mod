@@ -3,7 +3,7 @@ module argus
 go 1.25.0
 
 require (
-	github.com/chrismfz/goauth v0.0.0-20260404132434-d1a1a5221c1a
+	github.com/chrismfz/goauth v0.0.0-20260404150707-679f0266ae7c
 	github.com/e-XpertSolutions/go-iforest/v2 v2.0.0
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/gosnmp/gosnmp v1.43.2

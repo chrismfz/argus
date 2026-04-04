@@ -100,15 +100,24 @@ func WithAuth(handler http.HandlerFunc) http.HandlerFunc {
 
 // WithMainIPOnly enforces IP allowlist only — no token.
 // Used for telemetry, dashboard, debug pages, and pprof.
-func WithMainIPOnly(h http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if !ipAllowed(r, config.AppConfig.API.AllowIPs) {
-			http.Error(w, "Forbidden", http.StatusForbidden)
-			return
-		}
-		h(w, r)
-	}
-}
+    func WithMainIPOnly(h http.HandlerFunc) http.HandlerFunc {
+        return func(w http.ResponseWriter, r *http.Request) {
+            if ipAllowed(r, config.AppConfig.API.AllowIPs) {
+                h(w, r)
+                return
+            }
+            if sessionAllowed(r) {
+                h(w, r)
+                return
+            }
+            // Not a trusted IP and no session — redirect browsers, block API clients.
+            if strings.Contains(r.Header.Get("Accept"), "text/html") {
+                http.Redirect(w, r, "/login?next="+r.URL.RequestURI(), http.StatusSeeOther)
+                return
+            }
+            http.Error(w, "Forbidden", http.StatusForbidden)
+        }
+    }
 
 // WithMainIPOnlyHandler wraps an http.Handler (needed for pprof.Handler(...)).
 func WithMainIPOnlyHandler(h http.Handler) http.Handler {
@@ -301,8 +310,30 @@ mainMux.HandleFunc("/pathfinder/traceroute", WithMainIPOnly(handlePathfinderTrac
 		}
 	}))
 
+    // ── Auth endpoints — public, no IP/session guard ───────────────────────
+    mainMux.HandleFunc("/login",  func(w http.ResponseWriter, r *http.Request) {
+        switch r.Method {
+        case http.MethodGet:
+            handleLoginPage(w, r)
+        case http.MethodPost:
+            handleLoginAPI(w, r)
+        default:
+            http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+        }
+    })
+    mainMux.HandleFunc("/logout", handleLogout)
+
+
+
 	// Stack: panic recovery → global IP/rate/ban guard → mux routing → per-route auth
-	handler := withRecovery(globalGuard(mainMux))
+    // LoadAndSave must be outermost so the session is available to all
+    // middleware beneath it (including WithMainIPOnly's sessionAllowed check).
+    inner := withRecovery(globalGuard(mainMux))
+    var handler http.Handler = inner
+    if Auth != nil {
+        handler = Auth.LoadAndSave(inner)
+    }
+
 
 	apiAddr := fmt.Sprintf("%s:%d", config.AppConfig.API.ListenAddress, config.AppConfig.API.Port)
 	srv := &http.Server{

@@ -39,6 +39,8 @@ import (
 	"argus/internal/routeros"
 	"argus/internal/bgpmon"
 	"argus/internal/rib"
+
+	"github.com/chrismfz/goauth"
 )
 
 var debug bool
@@ -644,6 +646,43 @@ if listener != nil {
 	} else {
 		log.Printf("[bgpmon] disabled — RouterOS not connected")
 	}
+
+
+
+
+    // ── goauth ────────────────────────────────────────────────────────────────
+    if cfg.Auth.DBPath != "" {
+        cookieName := cfg.Auth.CookieName
+        if cookieName == "" {
+            cookieName = "__Host-argus-sid"
+        }
+        sessionTTL := cfg.Auth.SessionTTL
+        if sessionTTL == 0 {
+            sessionTTL = 8 * time.Hour
+        }
+        idleTimeout := cfg.Auth.IdleTimeout
+        if idleTimeout == 0 {
+            idleTimeout = 30 * time.Minute
+        }
+        authMgr, err := goauth.New(goauth.Config{
+            DBPath:       cfg.Auth.DBPath,
+            SessionTTL:   sessionTTL,
+            IdleTimeout:  idleTimeout,
+            CookieName:   cookieName,
+            SecureCookie: cfg.Auth.SecureCookie,
+        })
+        if err != nil {
+            log.Fatalf("[AUTH] failed to init: %v", err)
+        }
+        api.Auth = authMgr
+        defer authMgr.Close()
+        log.Printf("[AUTH] session store: %s", cfg.Auth.DBPath)
+    } else {
+        log.Printf("[AUTH] db_path not configured — browser auth disabled")
+    }
+ 
+
+
 
 	// ── API ───────────────────────────────────────────────────────────────────
 	go func() {

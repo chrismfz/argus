@@ -56,6 +56,14 @@ dns:
 
 timezone: "Europe/Athens"
 
+auth:
+  db_path:       /opt/argus/etc/auth.db
+  session_ttl:   8h
+  idle_timeout:  30m
+  secure_cookie: true          # set false only if testing over plain HTTP
+  cookie_name:   __Host-argus-sid
+ 
+
 debug: false
 
 enrich: "geoip, bgp, snmp"

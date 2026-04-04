@@ -188,7 +188,7 @@ Memory struct {
 
     } `yaml:"detection"`
 
-
+Auth AuthConfig `yaml:"auth"`
 
 
 API struct {
@@ -215,6 +215,15 @@ type CFMConfig struct {
     URL     string `yaml:"url"`        // e.g. https://cfm.example.com
     Token   string `yaml:"token"`      // shared token (header "Token")
 }
+
+
+    type AuthConfig struct {
+        DBPath        string        `yaml:"db_path"`
+        SessionTTL    time.Duration `yaml:"session_ttl"`
+        IdleTimeout   time.Duration `yaml:"idle_timeout"`
+        SecureCookie  bool          `yaml:"secure_cookie"`
+        CookieName    string        `yaml:"cookie_name"`
+    }
 
 
 // Add this struct (alongside SNMPConfig, CFMConfig etc.)

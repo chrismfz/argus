@@ -82,12 +82,14 @@ func realIP(r *http.Request) net.IP {
         if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
             first := strings.TrimSpace(strings.Split(fwd, ",")[0])
             if ip := net.ParseIP(first); ip != nil {
+                log.Printf("[AUTH] realIP: loopback→XFF=%s", ip)
                 return ip
             }
         }
-        // Loopback with no XFF = local tool (CLI, curl from server) → still loopback
+        log.Printf("[AUTH] realIP: loopback, no XFF")
         return directIP
     }
+    log.Printf("[AUTH] realIP: direct=%s", directIP)
     return directIP
 }
 

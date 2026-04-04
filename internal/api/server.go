@@ -70,6 +70,27 @@ func ipAllowed(r *http.Request, cidrs []string) bool {
 	return false
 }
 
+// realIP returns the true client IP.
+// When the direct connection is from loopback (nginx proxying), it reads
+// X-Forwarded-For to get the actual client address.
+// XFF is only trusted from loopback — external clients cannot spoof it.
+func realIP(r *http.Request) net.IP {
+    host, _, _ := net.SplitHostPort(r.RemoteAddr)
+    directIP := net.ParseIP(host)
+
+    if directIP != nil && directIP.IsLoopback() {
+        if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+            first := strings.TrimSpace(strings.Split(fwd, ",")[0])
+            if ip := net.ParseIP(first); ip != nil {
+                return ip
+            }
+        }
+        // Loopback with no XFF = local tool (CLI, curl from server) → still loopback
+        return directIP
+    }
+    return directIP
+}
+
 // WithAuth accepts if EITHER the source IP is allowed OR a valid Bearer token
 // is present. This means:
 //   - IPs in allow_ips (+ loopback) work with no token — dashboard, CLI, local
@@ -100,35 +121,49 @@ func WithAuth(handler http.HandlerFunc) http.HandlerFunc {
 
 // WithMainIPOnly enforces IP allowlist only — no token.
 // Used for telemetry, dashboard, debug pages, and pprof.
-    func WithMainIPOnly(h http.HandlerFunc) http.HandlerFunc {
-        return func(w http.ResponseWriter, r *http.Request) {
-            if ipAllowed(r, config.AppConfig.API.AllowIPs) {
-                h(w, r)
-                return
-            }
-            if sessionAllowed(r) {
-                h(w, r)
-                return
-            }
-            // Not a trusted IP and no session — redirect browsers, block API clients.
-            if strings.Contains(r.Header.Get("Accept"), "text/html") {
-                http.Redirect(w, r, "/login?next="+r.URL.RequestURI(), http.StatusSeeOther)
-                return
-            }
-            http.Error(w, "Forbidden", http.StatusForbidden)
+func WithMainIPOnly(h http.HandlerFunc) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        ip := realIP(r)
+        if ip != nil && ip.IsLoopback() {
+            h(w, r)
+            return
         }
+        if ipAllowed(r, config.AppConfig.API.AllowIPs) {
+            h(w, r)
+            return
+        }
+        if sessionAllowed(r) {
+            h(w, r)
+            return
+        }
+        if strings.Contains(r.Header.Get("Accept"), "text/html") {
+            http.Redirect(w, r, "/login?next="+r.URL.RequestURI(), http.StatusSeeOther)
+            return
+        }
+        http.Error(w, "Forbidden", http.StatusForbidden)
     }
-
-// WithMainIPOnlyHandler wraps an http.Handler (needed for pprof.Handler(...)).
-func WithMainIPOnlyHandler(h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !ipAllowed(r, config.AppConfig.API.AllowIPs) {
-			http.Error(w, "Forbidden", http.StatusForbidden)
-			return
-		}
-		h.ServeHTTP(w, r)
-	})
 }
+
+func WithMainIPOnlyHandler(h http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        ip := realIP(r)
+        if ip != nil && ip.IsLoopback() {
+            h.ServeHTTP(w, r)
+            return
+        }
+        if ipAllowed(r, config.AppConfig.API.AllowIPs) {
+            h.ServeHTTP(w, r)
+            return
+        }
+        if sessionAllowed(r) {
+            h.ServeHTTP(w, r)
+            return
+        }
+        http.Error(w, "Forbidden", http.StatusForbidden)
+    })
+}
+
+
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 

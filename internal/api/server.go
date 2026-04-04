@@ -70,6 +70,27 @@ func ipAllowed(r *http.Request, cidrs []string) bool {
 	return false
 }
 
+
+func realIPAllowed(r *http.Request, cidrs []string) bool {
+    ip := realIP(r)
+    if ip == nil {
+        return false
+    }
+    if ip.IsLoopback() {
+        return true
+    }
+    for _, c := range cidrs {
+        if _, n, err := net.ParseCIDR(c); err == nil && n.Contains(ip) {
+            return true
+        }
+        if net.ParseIP(c) != nil && ip.Equal(net.ParseIP(c)) {
+            return true
+        }
+    }
+    return false
+}
+
+
 // realIP returns the true client IP.
 // When the direct connection is from loopback (nginx proxying), it reads
 // X-Forwarded-For to get the actual client address.
@@ -125,12 +146,7 @@ func WithAuth(handler http.HandlerFunc) http.HandlerFunc {
 // Used for telemetry, dashboard, debug pages, and pprof.
 func WithMainIPOnly(h http.HandlerFunc) http.HandlerFunc {
     return func(w http.ResponseWriter, r *http.Request) {
-        ip := realIP(r)
-        if ip != nil && ip.IsLoopback() {
-            h(w, r)
-            return
-        }
-        if ipAllowed(r, config.AppConfig.API.AllowIPs) {
+        if realIPAllowed(r, config.AppConfig.API.AllowIPs) {
             h(w, r)
             return
         }
@@ -148,12 +164,7 @@ func WithMainIPOnly(h http.HandlerFunc) http.HandlerFunc {
 
 func WithMainIPOnlyHandler(h http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        ip := realIP(r)
-        if ip != nil && ip.IsLoopback() {
-            h.ServeHTTP(w, r)
-            return
-        }
-        if ipAllowed(r, config.AppConfig.API.AllowIPs) {
+        if realIPAllowed(r, config.AppConfig.API.AllowIPs) {
             h.ServeHTTP(w, r)
             return
         }
@@ -164,7 +175,6 @@ func WithMainIPOnlyHandler(h http.Handler) http.Handler {
         http.Error(w, "Forbidden", http.StatusForbidden)
     })
 }
-
 
 
 // ── Start ─────────────────────────────────────────────────────────────────────

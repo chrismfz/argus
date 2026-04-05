@@ -149,8 +149,8 @@ tbody tr:hover{background:var(--bg3)}
   <div class="asn-hero">
     <div>
       <div class="asn-num">AS<span x-text="asn"></span></div>
-      <div class="asn-name" x-text="meta?.asn_name || '—'"></div>
-      <div class="asn-badges" x-show="meta">
+      <div class="asn-name" x-text="displayName"></div>
+      <div class="asn-badges">
         <span class="badge" x-show="totalIn > 0">
           ▼ <span x-text="fmtBytes(totalIn)"></span> received
         </span>
@@ -159,6 +159,12 @@ tbody tr:hover{background:var(--bg3)}
         </span>
         <span class="badge green" x-show="activeBlackholes > 0">
           🚫 <span x-text="activeBlackholes"></span> active blackhole<span x-show="activeBlackholes !== 1">s</span>
+        </span>
+        <span class="badge yellow" x-show="!hasLocalData">
+          local flowstore data unavailable
+        </span>
+        <span class="badge" :class="hasBGPData ? 'green' : 'yellow'">
+          BGP enrichment <span x-text="hasBGPData ? 'available' : 'partial'"></span>
         </span>
       </div>
     </div>
@@ -181,9 +187,9 @@ tbody tr:hover{background:var(--bg3)}
   </select>
 
   <label style="margin-left:8px">Direction</label>
-  <button class="dir-btn" :class="{active:dir==='both'}" @click="dir='both';reloadDetail()">Both</button>
-  <button class="dir-btn" :class="{active:dir==='in'}"   @click="dir='in';reloadDetail()">▼ In</button>
-  <button class="dir-btn" :class="{active:dir==='out'}"  @click="dir='out';reloadDetail()">▲ Out</button>
+  <button class="dir-btn" :class="{active:dir==='both'}" @click="dir='both';reload()">Both</button>
+  <button class="dir-btn" :class="{active:dir==='in'}"   @click="dir='in';reload()">▼ In</button>
+  <button class="dir-btn" :class="{active:dir==='out'}"  @click="dir='out';reload()">▲ Out</button>
 
   <label style="margin-left:8px">Chart split</label>
   <button class="dir-btn" :class="{active:chartMode==='volume'}"  @click="chartMode='volume';drawChart()">Volume</button>
@@ -396,6 +402,46 @@ tbody tr:hover{background:var(--bg3)}
     </div>
   </div>
 
+  <div class="section">
+    <div class="section-title">ASN intelligence</div>
+    <div class="row-2">
+      <div class="card">
+        <div class="mini-label">BGP profile</div>
+        <div x-show="!hasBGPData" class="empty">No BGP prefixes currently visible for this ASN.</div>
+        <div x-show="hasBGPData">
+          <div class="proto-row">
+            <span>Visible prefixes</span>
+            <span class="mono" x-text="bgpPrefixes.length"></span>
+          </div>
+          <div class="proto-row">
+            <span>Sample prefixes</span>
+            <span class="mono" x-text="bgpPrefixes.slice(0,3).join(', ') || '—'"></span>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="mini-label">External context</div>
+        <div class="proto-row">
+          <span>Display name</span>
+          <span class="mono" x-text="external?.display_name || displayName"></span>
+        </div>
+        <div class="proto-row">
+          <span>Name source</span>
+          <span class="mono" x-text="external?.name_source || 'fallback'"></span>
+        </div>
+        <div class="proto-row">
+          <span>Fallback active</span>
+          <span class="mono" x-text="external?.fallback_active ? 'yes' : 'no'"></span>
+        </div>
+        <div style="margin-top:10px">
+          <template x-for="lnk in links" :key="lnk.url">
+            <div><a class="ip-link" :href="lnk.url" target="_blank" rel="noopener" x-text="lnk.label"></a></div>
+          </template>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </div><!-- /content -->
 
 <script>
@@ -418,6 +464,11 @@ function asnPage() { return {
   countryRows: [],
   tcpFlags: null,
   bhRows: [],
+  hasLocalData: false,
+  hasBGPData: false,
+  bgpResult: null,
+  external: null,
+  links: [],
   ptrCache: {},
   ipSearch: '',
 
@@ -432,6 +483,14 @@ function asnPage() { return {
 
   get activeBlackholes() {
     return this.bhRows.filter(b => b.active).length
+  },
+
+  get displayName() {
+    return this.meta?.asn_name || this.external?.display_name || `AS${this.asn || ''}`
+  },
+
+  get bgpPrefixes() {
+    return (this.bgpResult?.prefixes ?? []).map(p => p.prefix).filter(Boolean)
   },
 
   get flagChips() {
@@ -461,57 +520,44 @@ function asnPage() { return {
   },
 
   async reload() {
-    await Promise.all([this.loadSummary(), this.loadTimeline(), this.reloadDetail()])
-  },
-
-  async reloadDetail() {
-    await this.loadDetail()
+    await this.loadProfile()
   },
 
   // ── data fetchers ─────────────────────────────────────────────────────────
 
-  async loadSummary() {
-    try {
-      const r = await fetch(`/asn/${this.asn}/summary`)
-      if (!r.ok) return
-      const d = await r.json()
-      this.meta = d.meta
-    } catch(e) { console.error('summary', e) }
-  },
-
-  async loadTimeline() {
+  async loadProfile() {
     this.loadingTimeline = true
-    try {
-      const r = await fetch(`/asn/${this.asn}/timeline?window=${this.window}`)
-      if (!r.ok) return
-      const d = await r.json()
-      this.timelinePoints = d.points ?? []
-      this.ifaceSplits    = d.ifaces ?? []
-      this.$nextTick(() => this.drawChart())
-    } catch(e) { console.error('timeline', e) }
-    finally { this.loadingTimeline = false }
-  },
-
-  async loadDetail() {
     this.loadingDetail = true
     try {
-      const r = await fetch(`/asn/${this.asn}/detail?window=${this.window}&dir=${this.dir}`)
+      const r = await fetch(`/asn/${this.asn}/profile?window=${this.window}&dir=${this.dir}`)
       if (!r.ok) return
       const d = await r.json()
-
-      this.ipPairs  = d.top_ips  ?? []
-      this.prefixes = d.prefixes ?? []
-      this.tcpFlags = d.tcp_flags
+      const local = d.local ?? {}
+      this.meta = local.meta ?? null
+      this.timelinePoints = local.timeline ?? []
+      this.ifaceSplits    = local.ifaces ?? []
+      this.ipPairs        = local.top_ips ?? []
+      this.prefixes       = local.prefixes ?? []
+      this.tcpFlags       = local.tcp_flags
+      this.hasLocalData   = !!d.has_local_data
+      this.hasBGPData     = !!d.has_bgp_data
+      this.bgpResult      = d.bgp?.result ?? null
+      this.external       = d.external ?? null
+      this.links          = d.links ?? []
 
       // Annotate with percentages for bar rendering
-      this.protoRows  = this.withPct(d.proto    ?? [])
-      this.portRows   = this.withPct(d.ports    ?? [])
-      this.countryRows= this.withPct(d.countries?? [])
+      this.protoRows   = this.withPct(local.proto ?? [])
+      this.portRows    = this.withPct(local.ports ?? [])
+      this.countryRows = this.withPct(local.countries ?? [])
 
       // Async PTR resolution for all peer IPs
       this.resolveAllPTR()
-    } catch(e) { console.error('detail', e) }
-    finally { this.loadingDetail = false }
+      this.$nextTick(() => this.drawChart())
+    } catch(e) { console.error('profile', e) }
+    finally {
+      this.loadingTimeline = false
+      this.loadingDetail = false
+    }
   },
 
   async loadBH() {

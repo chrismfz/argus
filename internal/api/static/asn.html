@@ -50,6 +50,8 @@ nav{display:flex;align-items:center;background:var(--bg2);border-bottom:1px soli
 .controls label{font-size:11px;color:var(--muted)}
 .controls select,.controls button{background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:4px 10px;font-size:12px;cursor:pointer;outline:none}
 .controls select:focus,.controls button:hover{border-color:var(--accent);color:var(--accent)}
+.controls input{background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:4px 10px;font-size:12px;outline:none;font-family:monospace}
+.controls input:focus{border-color:var(--accent)}
 .dir-btn{padding:4px 12px!important;border-radius:4px}
 .dir-btn.active{background:var(--accent);color:var(--bg)!important;border-color:var(--accent)!important}
 
@@ -101,6 +103,8 @@ tbody tr:hover{background:var(--bg3)}
 .pill-icmp{background:rgba(249,226,175,.12);color:var(--yellow)}
 .bytes-col{color:var(--accent);font-family:monospace}
 .ptr-cell{color:var(--muted);font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis}
+.ip-link{color:var(--accent);text-decoration:none}
+.ip-link:hover{text-decoration:underline}
 
 /* ── TCP Flags ── */
 .flags-row{display:flex;gap:6px;flex-wrap:wrap}
@@ -184,6 +188,10 @@ tbody tr:hover{background:var(--bg3)}
   <label style="margin-left:8px">Chart split</label>
   <button class="dir-btn" :class="{active:chartMode==='volume'}"  @click="chartMode='volume';drawChart()">Volume</button>
   <button class="dir-btn" :class="{active:chartMode==='iface'}"   @click="chartMode='iface';drawChart()">By Interface</button>
+
+  <label style="margin-left:8px">IP</label>
+  <input x-model="ipSearch" placeholder="1.2.3.4" @keyup.enter="openIPPage()">
+  <button @click="openIPPage()">Open IP page</button>
 
   <span x-show="loadingTimeline || loadingDetail" style="margin-left:auto;color:var(--muted)">
     <span class="spinner"></span>loading…
@@ -303,10 +311,15 @@ tbody tr:hover{background:var(--bg3)}
           <template x-for="p in ipPairs" :key="p.peer_ip+''+p.local_ip+''+p.proto+''+p.dst_port+''+p.dir">
             <tr>
               <td><span :class="p.dir==='in'?'pill pill-in':'pill pill-out'" x-text="p.dir"></span></td>
-              <td class="mono" x-text="p.peer_ip"></td>
+              <td class="mono"><a class="ip-link" :href="`/ip/${encodeURIComponent(p.peer_ip)}`" x-text="p.peer_ip"></a></td>
               <td class="ptr-cell" x-text="ptrCache[p.peer_ip] ?? '…'"></td>
               <td><span class="country-flag" x-text="flag(p.country)"></span><span x-text="p.country||''"></span></td>
-              <td class="mono" x-text="p.local_ip"></td>
+              <td class="mono">
+                <template x-if="p.local_ip">
+                  <a class="ip-link" :href="`/ip/${encodeURIComponent(p.local_ip)}`" x-text="p.local_ip"></a>
+                </template>
+                <template x-if="!p.local_ip"><span>—</span></template>
+              </td>
               <td><span :class="protoPill(p.proto)" x-text="protoName(p.proto)"></span></td>
               <td class="mono" x-text="portLabel(p.dst_port)"></td>
               <td class="bytes-col" x-text="fmtBytes(p.bytes)"></td>
@@ -368,7 +381,14 @@ tbody tr:hover{background:var(--bg3)}
       <template x-for="b in bhRows" :key="b.prefix+''+b.blackholed_at">
         <div class="dh-row">
           <span class="dh-ts" x-text="fmtTs(b.blackholed_at)"></span>
-          <span class="dh-ip mono" x-text="b.prefix"></span>
+          <span class="dh-ip mono">
+            <template x-if="ipFromPrefix(b.prefix)">
+              <a class="ip-link" :href="`/ip/${encodeURIComponent(ipFromPrefix(b.prefix))}`" x-text="b.prefix"></a>
+            </template>
+            <template x-if="!ipFromPrefix(b.prefix)">
+              <span x-text="b.prefix"></span>
+            </template>
+          </span>
           <span class="dh-rule" x-text="b.rule || b.description || '—'"></span>
           <span class="dh-status" x-text="b.active ? 'active' : 'expired'"></span>
         </div>
@@ -399,6 +419,7 @@ function asnPage() { return {
   tcpFlags: null,
   bhRows: [],
   ptrCache: {},
+  ipSearch: '',
 
   loadingTimeline: false,
   loadingDetail: false,
@@ -647,6 +668,23 @@ function asnPage() { return {
   fmtTs(ts) {
     if (!ts) return '—'
     return new Date(ts * 1000).toLocaleString()
+  },
+
+  openIPPage() {
+    const ip = (this.ipSearch || '').trim()
+    if (!ip) return
+    window.location.href = `/ip/${encodeURIComponent(ip)}`
+  },
+
+  ipFromPrefix(prefix) {
+    if (!prefix) return ''
+    if (!prefix.includes('/')) return prefix
+    const [ip, mask] = prefix.split('/')
+    const m = Number(mask)
+    if (!Number.isFinite(m)) return ''
+    if (ip.includes(':') && m === 128) return ip
+    if (ip.includes('.') && m === 32) return ip
+    return ''
   },
 }}
 

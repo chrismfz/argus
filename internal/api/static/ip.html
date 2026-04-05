@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>argus · IP</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/alpinejs/3.13.3/cdn.min.js" defer></script>
+<style>
+:root{--bg:#0f1117;--bg2:#161b27;--bg3:#1e2535;--border:#2a3147;--text:#cdd6f4;--muted:#6c7086;--accent:#89b4fa;--red:#f38ba8}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;font-size:13px;min-height:100vh}
+nav{display:flex;gap:2px;padding:0 20px;background:var(--bg2);border-bottom:1px solid var(--border);align-items:center}
+nav a{padding:10px 16px;color:var(--muted);font-size:13px;text-decoration:none;border-bottom:2px solid transparent}
+nav a:hover{color:var(--text)}
+nav a.active{color:var(--accent);border-color:var(--accent)}
+.content{max-width:980px;margin:0 auto;padding:20px}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px}
+.title{font-size:18px;font-weight:700;margin-bottom:4px}
+.muted{color:var(--muted)}
+.grid{display:grid;grid-template-columns:160px 1fr;gap:8px 12px;margin-top:14px}
+.mono{font-family:ui-monospace,Menlo,monospace}
+.badge{display:inline-block;background:var(--bg3);border:1px solid var(--border);padding:2px 8px;border-radius:999px;font-size:11px;color:var(--muted)}
+.err{color:var(--red)}
+</style>
+</head>
+<body x-data="ipPage()" x-init="init()">
+<nav>
+  <a href="/dashboard">Overview</a>
+  <a href="/bgp">BGP</a>
+  <a href="/routewatch">Routewatch</a>
+  <a href="/detection">Detection</a>
+  <a href="/alerts">Alerts</a>
+  <a href="/pathfinder">Pathfinder</a>
+  <a class="active" href="#">IP</a>
+</nav>
+
+<div class="content">
+  <div class="card">
+    <div class="title mono" x-text="ip || 'Invalid IP'"></div>
+    <div class="muted" x-show="loading">Loading IP data…</div>
+    <div class="err" x-show="error" x-text="error"></div>
+
+    <template x-if="result && !error">
+      <div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+          <span class="badge" x-text="result.country || '—'"></span>
+          <span class="badge" x-text="result.prefix || '—'"></span>
+          <a class="badge" :href="result.asn ? '/asn/' + result.asn : '#'" style="color:var(--accent);text-decoration:none" x-text="result.asn ? ('AS' + result.asn) : 'AS—'"></a>
+          <span class="badge" x-text="result.asn_name || '—'"></span>
+        </div>
+
+        <div class="grid">
+          <div class="muted">PTR</div><div class="mono" x-text="result.ptr || '—'"></div>
+          <div class="muted">Communities</div><div class="mono" x-text="(result.communities || []).join(', ') || '—'"></div>
+          <div class="muted">AS path</div>
+          <div class="mono" x-text="(result.as_path || []).map(h => 'AS' + h.asn).join(' → ') || '—'"></div>
+        </div>
+      </div>
+    </template>
+  </div>
+</div>
+
+<script>
+function ipPage(){ return {
+  ip: '',
+  loading: false,
+  error: '',
+  result: null,
+
+  init() {
+    this.ip = decodeURIComponent(window.location.pathname.split('/').filter(Boolean).pop() || '')
+    document.title = this.ip ? `argus · IP ${this.ip}` : 'argus · IP'
+    this.load()
+  },
+
+  async load() {
+    if (!this.ip) { this.error = 'Invalid IP'; return }
+    this.loading = true
+    this.error = ''
+    this.result = null
+    try {
+      const r = await fetch('/infoip?ip=' + encodeURIComponent(this.ip))
+      if (!r.ok) throw new Error('Lookup failed')
+      this.result = await r.json()
+    } catch (e) {
+      this.error = e?.message || 'Lookup failed'
+    } finally {
+      this.loading = false
+    }
+  },
+}}
+</script>
+</body>
+</html>

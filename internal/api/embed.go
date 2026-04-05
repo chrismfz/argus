@@ -26,3 +26,6 @@ var routewatchHTML []byte
 
 //go:embed static/asn.html
 var asnHTML []byte
+
+//go:embed static/ip.html
+var ipHTML []byte

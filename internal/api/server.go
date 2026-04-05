@@ -281,6 +281,7 @@ func Start() {
 	mainMux.HandleFunc("/asn/{asn}/timeline", WithMainIPOnly(flowstore.HandleASNTimeline(DB)))
 	mainMux.HandleFunc("/asn/{asn}/detail", WithMainIPOnly(flowstore.HandleASNDetail(DB)))
 	mainMux.HandleFunc("/asn/{asn}/summary", WithMainIPOnly(flowstore.HandleASNSummary(DB)))
+	mainMux.HandleFunc("/ip/{ip}", WithMainIPOnly(handleIPPage))
 
 	// ── BGP cockpit ──────────────────────────────────────────────────────
 	mainMux.HandleFunc("/bgp", WithMainIPOnly(func(w http.ResponseWriter, r *http.Request) {
@@ -587,4 +588,9 @@ func handleBGPStatus(w http.ResponseWriter, r *http.Request) {
 func handleASNPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write(asnHTML)
+}
+
+func handleIPPage(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write(ipHTML)
 }

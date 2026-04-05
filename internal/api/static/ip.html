@@ -6,7 +6,7 @@
 <title>argus · IP</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/alpinejs/3.13.3/cdn.min.js" defer></script>
 <style>
-:root{--bg:#0f1117;--bg2:#161b27;--bg3:#1e2535;--border:#2a3147;--text:#cdd6f4;--muted:#6c7086;--accent:#89b4fa;--red:#f38ba8}
+:root{--bg:#0f1117;--bg2:#161b27;--bg3:#1e2535;--border:#2a3147;--text:#cdd6f4;--muted:#6c7086;--accent:#89b4fa;--red:#f38ba8;--green:#a6e3a1;--yellow:#f9e2af}
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;font-size:13px;min-height:100vh}
 nav{display:flex;gap:2px;padding:0 20px;background:var(--bg2);border-bottom:1px solid var(--border);align-items:center}
@@ -21,6 +21,16 @@ nav a.active{color:var(--accent);border-color:var(--accent)}
 .mono{font-family:ui-monospace,Menlo,monospace}
 .badge{display:inline-block;background:var(--bg3);border:1px solid var(--border);padding:2px 8px;border-radius:999px;font-size:11px;color:var(--muted)}
 .err{color:var(--red)}
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);padding:2px 8px;border-radius:999px;font-size:11px}
+.chip.active{color:var(--green);border-color:rgba(166,227,161,.4);background:rgba(166,227,161,.08)}
+.chip.expired{color:var(--yellow);border-color:rgba(249,226,175,.4);background:rgba(249,226,175,.08)}
+.section{margin-top:18px}
+.section-title{font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+table{width:100%;border-collapse:collapse}
+th,td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+th{text-align:left;font-size:11px;color:var(--muted);font-weight:600}
+td{font-size:12px}
+.empty-row td{color:var(--muted);font-style:italic}
 </style>
 </head>
 <body x-data="ipPage()" x-init="init()">
@@ -54,6 +64,82 @@ nav a.active{color:var(--accent);border-color:var(--accent)}
           <div class="muted">Communities</div><div class="mono" x-text="(result.communities || []).join(', ') || '—'"></div>
           <div class="muted">AS path</div>
           <div class="mono" x-text="(result.as_path || []).map(h => 'AS' + h.asn).join(' → ') || '—'"></div>
+          <div class="muted">Blackhole</div>
+          <div>
+            <span class="chip" :class="result.blackhole?.active ? 'active' : 'expired'">
+              <span x-text="result.blackhole?.active ? 'active' : 'inactive'"></span>
+            </span>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Latest blackhole event</div>
+          <table>
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Prefix</th>
+                <th>Status</th>
+                <th>Detector</th>
+                <th>Risk reason</th>
+                <th>Expires</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-if="!result.blackhole?.latest_event">
+                <tr class="empty-row">
+                  <td colspan="6">never blackholed</td>
+                </tr>
+              </template>
+              <template x-if="result.blackhole?.latest_event">
+                <tr>
+                  <td class="mono" x-text="fmtTs(result.blackhole.latest_event.timestamp)"></td>
+                  <td class="mono" x-text="result.blackhole.latest_event.prefix || '—'"></td>
+                  <td>
+                    <span class="chip" :class="result.blackhole?.active ? 'active' : 'expired'" x-text="result.blackhole?.active ? 'active' : 'expired'"></span>
+                  </td>
+                  <td>
+                    <span class="chip" x-text="result.blackhole.latest_event.rule || '—'"></span>
+                  </td>
+                  <td>
+                    <span class="chip" x-text="result.blackhole.latest_event.reason || '—'"></span>
+                  </td>
+                  <td class="mono" x-text="fmtTs(result.blackhole.latest_event.expires_at)"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Detections</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Detector</th>
+                <th>Risk reason</th>
+                <th>Count</th>
+                <th>First seen</th>
+                <th>Last seen</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-if="!(result.detections || []).length">
+                <tr class="empty-row">
+                  <td colspan="5">no detections</td>
+                </tr>
+              </template>
+              <template x-for="(d, i) in (result.detections || [])" :key="i">
+                <tr>
+                  <td><span class="chip" x-text="d.detector || '—'"></span></td>
+                  <td><span class="chip" x-text="d.risk || '—'"></span></td>
+                  <td class="mono" x-text="d.count ?? 0"></td>
+                  <td class="mono" x-text="fmtTs(d.first_seen)"></td>
+                  <td class="mono" x-text="fmtTs(d.last_seen)"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
         </div>
       </div>
     </template>
@@ -87,6 +173,12 @@ function ipPage(){ return {
     } finally {
       this.loading = false
     }
+  },
+
+  fmtTs(ts) {
+    if (!ts) return '—'
+    const d = new Date(ts)
+    return Number.isNaN(d.getTime()) ? ts : d.toLocaleString()
   },
 }}
 </script>

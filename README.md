@@ -165,6 +165,14 @@ dns:
 timezone: "Europe/Athens"
 enrich: "geoip, bgp, snmp"
 
+auth:
+  db_path:         /opt/argus/etc/auth.db
+  session_db_path: /opt/argus/etc/auth_sessions.db  # optional; isolates session writes
+  session_ttl:     8h
+  idle_timeout:    30m
+  secure_cookie:   true
+  cookie_name:     __Host-argus-sid
+
 detection:
   enable_detection_engine: true
   rules_config: /opt/argus/etc/detection.yml
@@ -554,4 +562,3 @@ sudo nginx -t && sudo systemctl reload nginx
 
  4. when DNS is pointed, get the cert (modifies the config automatically)
 sudo certbot --nginx -d argus.example.tld
-

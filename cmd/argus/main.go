@@ -692,18 +692,23 @@ if listener != nil {
             idleTimeout = 30 * time.Minute
         }
         authMgr, err := goauth.New(goauth.Config{
-            DBPath:       cfg.Auth.DBPath,
-            SessionTTL:   sessionTTL,
-            IdleTimeout:  idleTimeout,
-            CookieName:   cookieName,
-            SecureCookie: cfg.Auth.SecureCookie,
+            DBPath:        cfg.Auth.DBPath,
+            SessionDBPath: cfg.Auth.SessionDBPath,
+            SessionTTL:    sessionTTL,
+            IdleTimeout:   idleTimeout,
+            CookieName:    cookieName,
+            SecureCookie:  cfg.Auth.SecureCookie,
         })
         if err != nil {
             log.Fatalf("[AUTH] failed to init: %v", err)
         }
         api.Auth = authMgr
         defer authMgr.Close()
-        log.Printf("[AUTH] session store: %s", cfg.Auth.DBPath)
+        if cfg.Auth.SessionDBPath != "" {
+            log.Printf("[AUTH] session store: %s (auth db: %s)", cfg.Auth.SessionDBPath, cfg.Auth.DBPath)
+        } else {
+            log.Printf("[AUTH] session store: %s", cfg.Auth.DBPath)
+        }
     } else {
         log.Printf("[AUTH] db_path not configured — browser auth disabled")
     }
@@ -727,4 +732,3 @@ if listener != nil {
 	<-ctx.Done()
 	log.Println("Shutdown complete.")
 }
-

@@ -58,6 +58,9 @@ timezone: "Europe/Athens"
 
 auth:
   db_path:       /opt/argus/etc/auth.db
+  # Optional: separate SQLite file for session rows to reduce lock contention.
+  # Leave empty or remove to keep sessions in db_path.
+  session_db_path: /opt/argus/etc/auth_sessions.db
   session_ttl:   8h
   idle_timeout:  30m
   secure_cookie: true          # set false only if testing over plain HTTP

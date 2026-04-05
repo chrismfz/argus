@@ -48,6 +48,8 @@ tbody tr:last-child td{border:none}
 /* ── ASN drill-down links ── */
 .asn-link{color:var(--accent);text-decoration:none;font-family:monospace;font-size:12px}
 .asn-link:hover{text-decoration:underline}
+.ip-link{color:var(--accent);text-decoration:none;font-family:monospace}
+.ip-link:hover{text-decoration:underline}
 .bytes{font-family:monospace;color:var(--accent)}
 .bar-bg{height:6px;background:var(--bg3);border-radius:3px;overflow:hidden;min-width:60px}
 .bar-fill{height:100%;border-radius:3px;background:var(--accent);transition:width .3s}
@@ -249,7 +251,7 @@ header .logout:hover{opacity:1;background:rgba(243,139,168,.08);border-color:var
         <tbody>
           <template x-for="h in (hostsData.hosts_in ?? [])" :key="h.ip">
             <tr>
-              <td x-text="h.ip"></td>
+              <td><a class="ip-link" :href="'/ip/' + encodeURIComponent(h.ip)" x-text="h.ip"></a></td>
               <td class="bytes" x-text="fmtBytes(h.bytes_in)"></td>
             </tr>
           </template>
@@ -263,7 +265,7 @@ header .logout:hover{opacity:1;background:rgba(243,139,168,.08);border-color:var
         <tbody>
           <template x-for="h in (hostsData.hosts_out ?? [])" :key="h.ip">
             <tr>
-              <td x-text="h.ip"></td>
+              <td><a class="ip-link" :href="'/ip/' + encodeURIComponent(h.ip)" x-text="h.ip"></a></td>
               <td class="bytes" x-text="fmtBytes(h.bytes_out)"></td>
             </tr>
           </template>
@@ -849,7 +851,17 @@ function app() { return {
     if (minutes <= 1440) return 'last 24 h'
     if (minutes <= 2880) return 'last 48 h'
     return 'last week'
-  }
+  },
+  ipFromPrefix(prefix) {
+    if (!prefix) return ''
+    if (!prefix.includes('/')) return prefix
+    const [ip, mask] = prefix.split('/')
+    const m = Number(mask)
+    if (!Number.isFinite(m)) return ''
+    if (ip.includes(':') && m === 128) return ip
+    if (ip.includes('.') && m === 32) return ip
+    return ''
+  },
 }}
 
 // Standalone byte formatters (used inside chart tooltip formatters outside Alpine context)
@@ -1013,6 +1025,10 @@ function fmtBytes(b) { return fmtBytesS(b) }
               </div>
             </template>
             <div style="margin-top:8px">
+              <a class="btn secondary" style="font-size:11px;text-decoration:none;display:inline-block;margin-right:6px"
+                 :href="'/ip/' + encodeURIComponent(ipLookup.result.ip)">
+                Open IP page
+              </a>
               <button class="btn secondary" style="font-size:11px"
                 @click="announceForm.prefix = ipLookup.result.ip + '/32'">
                 + Blackhole this IP
@@ -1045,6 +1061,11 @@ function fmtBytes(b) { return fmtBytesS(b) }
                 </div>
                 <div style="color:var(--muted)">rule: <span style="color:var(--yellow)" x-text="bhSearch.result.rule"></span></div>
                 <div style="color:var(--muted)">expires: <span x-text="fmtExpiry(bhSearch.result.expires_at)"></span></div>
+                <a class="btn secondary"
+                   style="margin-top:6px;margin-right:6px;font-size:11px;text-decoration:none;display:inline-block"
+                   :href="'/ip/' + encodeURIComponent(ipFromPrefix(bhSearch.result.prefix) || bhSearch.ip)">
+                  Open IP page
+                </a>
                 <button class="btn secondary" style="margin-top:6px;font-size:11px;color:var(--red);border-color:var(--red)"
                   @click="doWithdraw(bhSearch.result.prefix)">Withdraw</button>
               </div>
@@ -1121,7 +1142,14 @@ function fmtBytes(b) { return fmtBytesS(b) }
         <tbody>
           <template x-for="b in filteredBlackholes" :key="b.prefix">
             <tr>
-              <td style="font-family:monospace;color:var(--accent)" x-text="b.prefix"></td>
+              <td style="font-family:monospace;color:var(--accent)">
+                <template x-if="ipFromPrefix(b.prefix)">
+                  <a class="ip-link" :href="'/ip/' + encodeURIComponent(ipFromPrefix(b.prefix))" x-text="b.prefix"></a>
+                </template>
+                <template x-if="!ipFromPrefix(b.prefix)">
+                  <span x-text="b.prefix"></span>
+                </template>
+              </td>
               <td>
                 <span style="font-size:13px" x-text="countryFlag(b.country)"></span>
                 <span style="font-size:11px;color:var(--muted)" x-text="b.country||'—'"></span>

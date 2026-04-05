@@ -4,6 +4,7 @@ import (
 	"argus/internal/config"
 	"database/sql"
 	"log"
+	"net"
 	"strings"
 	"sync"
 	"time"
@@ -156,6 +157,10 @@ func fetchLatestBlackholeEvent(ip string) (map[string]interface{}, error) {
 	if DB == nil {
 		return nil, nil
 	}
+	cidrSuffix := "/32"
+	if parsed := net.ParseIP(ip); parsed != nil && parsed.To4() == nil {
+		cidrSuffix = "/128"
+	}
 	var (
 		prefix, ts, expires, rule, reason, asn, asnName, country, ptr sql.NullString
 	)
@@ -165,7 +170,7 @@ func fetchLatestBlackholeEvent(ip string) (map[string]interface{}, error) {
 		WHERE prefix = ? OR prefix = ?
 		ORDER BY timestamp DESC
 		LIMIT 1
-	`, ip, ip+"/32").Scan(&prefix, &ts, &expires, &rule, &reason, &asn, &asnName, &country, &ptr)
+	`, ip, ip+cidrSuffix).Scan(&prefix, &ts, &expires, &rule, &reason, &asn, &asnName, &country, &ptr)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}

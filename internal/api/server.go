@@ -185,6 +185,7 @@ func WithMainIPOnlyHandler(h http.Handler) http.Handler {
 
 func Start() {
 	mainMux := http.NewServeMux()
+	startIPProfileCleanupJob()
 
 	// ── Authenticated API endpoints ───────────────────────────────────────
 	mainMux.HandleFunc("/infoip", WithAuth(handleInfoIP))
@@ -411,12 +412,62 @@ func handleInfoIP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid IP", http.StatusBadRequest)
 		return
 	}
-	res := map[string]interface{}{
-		"ip":       ipStr,
-		"ptr":      Resolver.LookupPTR(ipStr),
-		"asn":      Geo.GetASNNumber(ipStr),
-		"asn_name": Geo.GetASNName(ipStr),
-		"country":  Geo.GetCountry(ipStr),
+	now := time.Now()
+	res := map[string]interface{}{"ip": ipStr}
+	staleAfter := 24 * time.Hour
+	if config.AppConfig != nil && config.AppConfig.IPProfile.StaleAfter > 0 {
+		staleAfter = config.AppConfig.IPProfile.StaleAfter
+	}
+
+	cacheRow, fresh, err := lookupFreshIPProfile(ipStr, now, staleAfter)
+	if err != nil {
+		log.Printf("[WARN] ip_profile lookup failed ip=%s err=%v", ipStr, err)
+	}
+	if fresh && cacheRow != nil {
+		asn, _ := strconv.ParseUint(strings.TrimSpace(cacheRow.ASN), 10, 32)
+		res["ptr"] = cacheRow.PTR
+		res["asn"] = uint32(asn)
+		res["asn_name"] = cacheRow.ASNName
+		res["country"] = cacheRow.Country
+		res["cache"] = map[string]interface{}{
+			"hit":        true,
+			"hits":       cacheRow.Hits,
+			"updated_at": cacheRow.UpdatedAt,
+			"first_seen": cacheRow.FirstSeen,
+			"last_seen":  cacheRow.LastSeen,
+		}
+	} else {
+		ptr := ""
+		asn := uint32(0)
+		asnName := ""
+		country := ""
+		if Resolver != nil {
+			ptr = Resolver.LookupPTR(ipStr)
+		}
+		if Geo != nil {
+			asn = Geo.GetASNNumber(ipStr)
+			asnName = Geo.GetASNName(ipStr)
+			country = Geo.GetCountry(ipStr)
+		}
+		res["ptr"] = ptr
+		res["asn"] = asn
+		res["asn_name"] = asnName
+		res["country"] = country
+
+		row := &ipProfileRow{
+			IP:      ipStr,
+			ASN:     strconv.FormatUint(uint64(asn), 10),
+			ASNName: asnName,
+			Country: country,
+			PTR:     ptr,
+		}
+		if err := upsertIPProfile(row, now); err != nil {
+			log.Printf("[WARN] ip_profile upsert failed ip=%s err=%v", ipStr, err)
+		}
+		res["cache"] = map[string]interface{}{
+			"hit":   false,
+			"stale": cacheRow != nil,
+		}
 	}
 	if Ranger != nil {
 		if entries, err := Ranger.ContainingNetworks(ip); err == nil && len(entries) > 0 {
@@ -438,6 +489,19 @@ func handleInfoIP(w http.ResponseWriter, r *http.Request) {
 				res["communities"] = comms
 			}
 		}
+	}
+	if event, err := fetchLatestBlackholeEvent(ipStr); err != nil {
+		log.Printf("[WARN] blackhole history lookup failed ip=%s err=%v", ipStr, err)
+	} else {
+		res["blackhole"] = map[string]interface{}{
+			"active":       event != nil && event["is_active"] == true,
+			"latest_event": event,
+		}
+	}
+	if history, err := fetchIPDetectionsHistory(ipStr, 20); err != nil {
+		log.Printf("[WARN] detections history lookup failed ip=%s err=%v", ipStr, err)
+	} else {
+		res["detections"] = history
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(res)

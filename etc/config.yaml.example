@@ -223,6 +223,12 @@ api:
     - "192.168.0.0/16"
     - "84.54.49.0/24"
 
+ip_profile:
+  stale_after: 24h
+  retention: 720h
+  cleanup_interval: 15m
+  max_entries: 10000
+
 
 cfm:
   enabled: true

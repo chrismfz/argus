@@ -43,6 +43,21 @@ CREATE TABLE IF NOT EXISTS whitelist (
   created_at TEXT NOT NULL,
   expires_at TEXT
 );
+
+CREATE TABLE IF NOT EXISTS ip_profile (
+  ip TEXT PRIMARY KEY,
+  asn TEXT,
+  asn_name TEXT,
+  country TEXT,
+  ptr TEXT,
+  first_seen TEXT NOT NULL,
+  last_seen TEXT NOT NULL,
+  hits INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ip_profile_updated_at ON ip_profile(updated_at);
+CREATE INDEX IF NOT EXISTS idx_ip_profile_last_seen ON ip_profile(last_seen);
 `
 
 func InitSQLiteSchema(db *sql.DB) error {

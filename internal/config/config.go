@@ -219,6 +219,7 @@ type CFMConfig struct {
 
     type AuthConfig struct {
         DBPath        string        `yaml:"db_path"`
+        SessionDBPath string        `yaml:"session_db_path"`
         SessionTTL    time.Duration `yaml:"session_ttl"`
         IdleTimeout   time.Duration `yaml:"idle_timeout"`
         SecureCookie  bool          `yaml:"secure_cookie"`

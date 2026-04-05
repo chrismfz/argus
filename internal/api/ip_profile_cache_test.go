@@ -33,6 +33,21 @@ func openIPProfileTestDB(t *testing.T) *sql.DB {
 	`); err != nil {
 		t.Fatalf("create ip_profile: %v", err)
 	}
+	if _, err := db.Exec(`
+		CREATE TABLE blackholes (
+			prefix TEXT PRIMARY KEY,
+			timestamp TEXT NOT NULL,
+			expires_at TEXT NOT NULL,
+			rule TEXT,
+			reason TEXT,
+			asn TEXT,
+			asn_name TEXT,
+			country TEXT,
+			ptr TEXT
+		)
+	`); err != nil {
+		t.Fatalf("create blackholes: %v", err)
+	}
 	return db
 }
 
@@ -90,5 +105,57 @@ func TestCleanupIPProfileCache_RetentionAndCap(t *testing.T) {
 	}
 	if kept != 1 {
 		t.Fatalf("expected 1 row kept, got %d", kept)
+	}
+}
+
+func TestFetchLatestBlackholeEvent_IPv4UsesSlash32(t *testing.T) {
+	oldDB := DB
+	t.Cleanup(func() { DB = oldDB })
+
+	DB = openIPProfileTestDB(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	expires := now.Add(1 * time.Hour).Format(time.RFC3339)
+	if _, err := DB.Exec(`
+		INSERT INTO blackholes (prefix, timestamp, expires_at, rule, reason, asn, asn_name, country, ptr)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, "203.0.113.9/32", now.Format(time.RFC3339), expires, "v4-rule", "v4-reason", "64500", "ExampleNet", "US", "v4.example.test"); err != nil {
+		t.Fatalf("insert blackhole ipv4: %v", err)
+	}
+
+	event, err := fetchLatestBlackholeEvent("203.0.113.9")
+	if err != nil {
+		t.Fatalf("fetchLatestBlackholeEvent ipv4: %v", err)
+	}
+	if event == nil {
+		t.Fatalf("expected ipv4 event, got nil")
+	}
+	if got := event["prefix"]; got != "203.0.113.9/32" {
+		t.Fatalf("expected prefix 203.0.113.9/32, got %v", got)
+	}
+}
+
+func TestFetchLatestBlackholeEvent_IPv6UsesSlash128(t *testing.T) {
+	oldDB := DB
+	t.Cleanup(func() { DB = oldDB })
+
+	DB = openIPProfileTestDB(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	expires := now.Add(1 * time.Hour).Format(time.RFC3339)
+	if _, err := DB.Exec(`
+		INSERT INTO blackholes (prefix, timestamp, expires_at, rule, reason, asn, asn_name, country, ptr)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, "2001:db8::1234/128", now.Format(time.RFC3339), expires, "v6-rule", "v6-reason", "64501", "ExampleV6Net", "US", "v6.example.test"); err != nil {
+		t.Fatalf("insert blackhole ipv6: %v", err)
+	}
+
+	event, err := fetchLatestBlackholeEvent("2001:db8::1234")
+	if err != nil {
+		t.Fatalf("fetchLatestBlackholeEvent ipv6: %v", err)
+	}
+	if event == nil {
+		t.Fatalf("expected ipv6 event, got nil")
+	}
+	if got := event["prefix"]; got != "2001:db8::1234/128" {
+		t.Fatalf("expected prefix 2001:db8::1234/128, got %v", got)
 	}
 }

@@ -1,25 +1,26 @@
 package api
 
 import (
+	"argus/internal/bgp"
+	"argus/internal/bgpstate"
+	"argus/internal/cfmapi"
+	"argus/internal/config"
+	"argus/internal/enrich"
+	"argus/internal/flowstore"
 	"context"
+	"database/sql"
 	"encoding/json"
+	"fmt"
+	apipb "github.com/osrg/gobgp/v3/api"
+	"github.com/yl2chen/cidranger"
+	"log"
 	"net"
 	"net/http"
 	"net/http/pprof"
-	"argus/internal/enrich"
-	"argus/internal/bgp"
-	"argus/internal/bgpstate"
-	"github.com/yl2chen/cidranger"
-	"log"
-	"fmt"
 	"sort"
-	"time"
+	"strconv"
 	"strings"
-	apipb "github.com/osrg/gobgp/v3/api"
-	"database/sql"
-	"argus/internal/config"
-	"argus/internal/cfmapi"
-	"argus/internal/flowstore"
+	"time"
 )
 
 type GeoIPResponse struct {
@@ -32,12 +33,12 @@ type GeoIPResponse struct {
 	Communities []string `json:"communities,omitempty"`
 }
 
-var Geo         *enrich.GeoIP
-var Resolver    *enrich.DNSResolver
-var Ranger      cidranger.Ranger
-var DB          *sql.DB
+var Geo *enrich.GeoIP
+var Resolver *enrich.DNSResolver
+var Ranger cidranger.Ranger
+var DB *sql.DB
 var TelemetryDB *sql.DB
-var CFM         *cfmapi.Client
+var CFM *cfmapi.Client
 
 // BGPMon is the session monitor (bgpstate.Monitor), set by main.go.
 // Nil when RouterOS is not connected; handlers degrade gracefully.
@@ -71,48 +72,46 @@ func ipAllowed(r *http.Request, cidrs []string) bool {
 	return false
 }
 
-
 func realIPAllowed(r *http.Request, cidrs []string) bool {
-    ip := realIP(r)
-    if ip == nil {
-        return false
-    }
-    if ip.IsLoopback() {
-        return true
-    }
-    for _, c := range cidrs {
-        if _, n, err := net.ParseCIDR(c); err == nil && n.Contains(ip) {
-            return true
-        }
-        if net.ParseIP(c) != nil && ip.Equal(net.ParseIP(c)) {
-            return true
-        }
-    }
-    return false
+	ip := realIP(r)
+	if ip == nil {
+		return false
+	}
+	if ip.IsLoopback() {
+		return true
+	}
+	for _, c := range cidrs {
+		if _, n, err := net.ParseCIDR(c); err == nil && n.Contains(ip) {
+			return true
+		}
+		if net.ParseIP(c) != nil && ip.Equal(net.ParseIP(c)) {
+			return true
+		}
+	}
+	return false
 }
-
 
 // realIP returns the true client IP.
 // When the direct connection is from loopback (nginx proxying), it reads
 // X-Forwarded-For to get the actual client address.
 // XFF is only trusted from loopback — external clients cannot spoof it.
 func realIP(r *http.Request) net.IP {
-    host, _, _ := net.SplitHostPort(r.RemoteAddr)
-    directIP := net.ParseIP(host)
+	host, _, _ := net.SplitHostPort(r.RemoteAddr)
+	directIP := net.ParseIP(host)
 
-    if directIP != nil && directIP.IsLoopback() {
-        if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-            first := strings.TrimSpace(strings.Split(fwd, ",")[0])
-            if ip := net.ParseIP(first); ip != nil {
-                log.Printf("[AUTH] realIP: loopback→XFF=%s", ip)
-                return ip
-            }
-        }
-        log.Printf("[AUTH] realIP: loopback, no XFF")
-        return directIP
-    }
-    log.Printf("[AUTH] realIP: direct=%s", directIP)
-    return directIP
+	if directIP != nil && directIP.IsLoopback() {
+		if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+			first := strings.TrimSpace(strings.Split(fwd, ",")[0])
+			if ip := net.ParseIP(first); ip != nil {
+				log.Printf("[AUTH] realIP: loopback→XFF=%s", ip)
+				return ip
+			}
+		}
+		log.Printf("[AUTH] realIP: loopback, no XFF")
+		return directIP
+	}
+	log.Printf("[AUTH] realIP: direct=%s", directIP)
+	return directIP
 }
 
 // WithAuth accepts if EITHER the source IP is allowed OR a valid Bearer token
@@ -122,66 +121,65 @@ func realIP(r *http.Request) net.IP {
 //   - When nginx sits in front, all requests arrive as 127.0.0.1 — no token needed
 
 func WithAuth(handler http.HandlerFunc) http.HandlerFunc {
-    return func(w http.ResponseWriter, r *http.Request) {
-        if realIPAllowed(r, config.AppConfig.API.AllowIPs) {
-            handler(w, r)
-            return
-        }
-        // Bearer token
-        if len(config.AppConfig.API.Tokens) > 0 {
-            if auth := r.Header.Get("Authorization"); len(auth) > 7 && auth[:7] == "Bearer " {
-                token := auth[7:]
-                for _, t := range config.AppConfig.API.Tokens {
-                    if token == t {
-                        handler(w, r)
-                        return
-                    }
-                }
-            }
-        }
-        // Session
-        if sessionAllowed(r) {
-            handler(w, r)
-            return
-        }
-        http.Error(w, "Forbidden", http.StatusForbidden)
-    }
+	return func(w http.ResponseWriter, r *http.Request) {
+		if realIPAllowed(r, config.AppConfig.API.AllowIPs) {
+			handler(w, r)
+			return
+		}
+		// Bearer token
+		if len(config.AppConfig.API.Tokens) > 0 {
+			if auth := r.Header.Get("Authorization"); len(auth) > 7 && auth[:7] == "Bearer " {
+				token := auth[7:]
+				for _, t := range config.AppConfig.API.Tokens {
+					if token == t {
+						handler(w, r)
+						return
+					}
+				}
+			}
+		}
+		// Session
+		if sessionAllowed(r) {
+			handler(w, r)
+			return
+		}
+		http.Error(w, "Forbidden", http.StatusForbidden)
+	}
 }
 
 // WithMainIPOnly enforces IP allowlist only — no token.
 // Used for telemetry, dashboard, debug pages, and pprof.
 func WithMainIPOnly(h http.HandlerFunc) http.HandlerFunc {
-    return func(w http.ResponseWriter, r *http.Request) {
-        if realIPAllowed(r, config.AppConfig.API.AllowIPs) {
-            h(w, r)
-            return
-        }
-        if sessionAllowed(r) {
-            h(w, r)
-            return
-        }
-        if strings.Contains(r.Header.Get("Accept"), "text/html") {
-            http.Redirect(w, r, "/login?next="+r.URL.RequestURI(), http.StatusSeeOther)
-            return
-        }
-        http.Error(w, "Forbidden", http.StatusForbidden)
-    }
+	return func(w http.ResponseWriter, r *http.Request) {
+		if realIPAllowed(r, config.AppConfig.API.AllowIPs) {
+			h(w, r)
+			return
+		}
+		if sessionAllowed(r) {
+			h(w, r)
+			return
+		}
+		if strings.Contains(r.Header.Get("Accept"), "text/html") {
+			http.Redirect(w, r, "/login?next="+r.URL.RequestURI(), http.StatusSeeOther)
+			return
+		}
+		http.Error(w, "Forbidden", http.StatusForbidden)
+	}
 }
 
 func WithMainIPOnlyHandler(h http.Handler) http.Handler {
-    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        if realIPAllowed(r, config.AppConfig.API.AllowIPs) {
-            h.ServeHTTP(w, r)
-            return
-        }
-        if sessionAllowed(r) {
-            h.ServeHTTP(w, r)
-            return
-        }
-        http.Error(w, "Forbidden", http.StatusForbidden)
-    })
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if realIPAllowed(r, config.AppConfig.API.AllowIPs) {
+			h.ServeHTTP(w, r)
+			return
+		}
+		if sessionAllowed(r) {
+			h.ServeHTTP(w, r)
+			return
+		}
+		http.Error(w, "Forbidden", http.StatusForbidden)
+	})
 }
-
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 
@@ -189,31 +187,31 @@ func Start() {
 	mainMux := http.NewServeMux()
 
 	// ── Authenticated API endpoints ───────────────────────────────────────
-	mainMux.HandleFunc("/infoip",           WithAuth(handleInfoIP))
-	mainMux.HandleFunc("/status",           WithAuth(handleStatus))
-	mainMux.HandleFunc("/communities",      WithAuth(handleCommunities))
-	mainMux.HandleFunc("/announce",         WithAuth(handleAnnounce))
-	mainMux.HandleFunc("/withdraw",         WithAuth(handleWithdraw))
-	mainMux.HandleFunc("/announcements",    WithAuth(handleListAnnouncements))
+	mainMux.HandleFunc("/infoip", WithAuth(handleInfoIP))
+	mainMux.HandleFunc("/status", WithAuth(handleStatus))
+	mainMux.HandleFunc("/communities", WithAuth(handleCommunities))
+	mainMux.HandleFunc("/announce", WithAuth(handleAnnounce))
+	mainMux.HandleFunc("/withdraw", WithAuth(handleWithdraw))
+	mainMux.HandleFunc("/announcements", WithAuth(handleListAnnouncements))
 	mainMux.HandleFunc("/bgpannouncements", WithAuth(handleAdjIn))
-	mainMux.HandleFunc("/aspathviz",        WithAuth(handleASPathViz))
-	mainMux.HandleFunc("/bgpstatus",        WithAuth(handleBGPStatus))
-	mainMux.HandleFunc("/blackhole-list",   WithAuth(handleBlackholeList))
+	mainMux.HandleFunc("/aspathviz", WithAuth(handleASPathViz))
+	mainMux.HandleFunc("/bgpstatus", WithAuth(handleBGPStatus))
+	mainMux.HandleFunc("/blackhole-list", WithAuth(handleBlackholeList))
 	mainMux.HandleFunc("/blackhole-search", WithAuth(handleBlackholeSearch))
-	mainMux.HandleFunc("/flush",            WithAuth(handleFlush))
-	mainMux.HandleFunc("/snmp/interfaces",  WithAuth(handleSNMPInterfaces))
+	mainMux.HandleFunc("/flush", WithAuth(handleFlush))
+	mainMux.HandleFunc("/snmp/interfaces", WithAuth(handleSNMPInterfaces))
 
 	// ── Telemetry — read-only, IP-only ────────────────────────────────────
-	mainMux.HandleFunc("/tel/overview",     WithMainIPOnly(handleTelOverview))
-	mainMux.HandleFunc("/tel/timeseries",   WithMainIPOnly(handleTelTimeSeries))
-	mainMux.HandleFunc("/tel/asn",          WithMainIPOnly(handleTelASN))
-	mainMux.HandleFunc("/tel/sankey",       WithMainIPOnly(handleTelSankey))
-	mainMux.HandleFunc("/tel/hosts",        WithMainIPOnly(handleTelHosts))
-	mainMux.HandleFunc("/tel/ports",        WithMainIPOnly(handleTelPorts))
-	mainMux.HandleFunc("/tel/snapshots",    WithMainIPOnly(handleTelSnapshots))
-	mainMux.HandleFunc("/tel/snapshot",     WithMainIPOnly(handleTelSnapshotGet))
-	mainMux.HandleFunc("/tel/history",      WithMainIPOnly(handleTelHistory))
-	mainMux.HandleFunc("/tel/interfaces",   WithMainIPOnly(handleTelInterfaces))
+	mainMux.HandleFunc("/tel/overview", WithMainIPOnly(handleTelOverview))
+	mainMux.HandleFunc("/tel/timeseries", WithMainIPOnly(handleTelTimeSeries))
+	mainMux.HandleFunc("/tel/asn", WithMainIPOnly(handleTelASN))
+	mainMux.HandleFunc("/tel/sankey", WithMainIPOnly(handleTelSankey))
+	mainMux.HandleFunc("/tel/hosts", WithMainIPOnly(handleTelHosts))
+	mainMux.HandleFunc("/tel/ports", WithMainIPOnly(handleTelPorts))
+	mainMux.HandleFunc("/tel/snapshots", WithMainIPOnly(handleTelSnapshots))
+	mainMux.HandleFunc("/tel/snapshot", WithMainIPOnly(handleTelSnapshotGet))
+	mainMux.HandleFunc("/tel/history", WithMainIPOnly(handleTelHistory))
+	mainMux.HandleFunc("/tel/interfaces", WithMainIPOnly(handleTelInterfaces))
 	mainMux.HandleFunc("/tel/iface-sankey", WithMainIPOnly(handleTelIfaceSankey))
 
 	// ── Alerter page ──────────────────────────────────────────────────────
@@ -268,76 +266,73 @@ func Start() {
 	// nginx: needs its own location block with proxy_buffering off
 	mainMux.HandleFunc("/alerter/stream", WithMainIPOnly(handleAlerterStream))
 
+	// ── Pathfinder — BGP path intelligence ───────────────────────────────
+	mainMux.HandleFunc("/pathfinder", WithMainIPOnly(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(pathfinderHTML)
+	}))
+	mainMux.HandleFunc("/pathfinder/asn", WithMainIPOnly(handlePathfinderASN))
+	mainMux.HandleFunc("/pathfinder/prefix", WithMainIPOnly(handlePathfinderPrefix))
 
-  // ── Pathfinder — BGP path intelligence ───────────────────────────────
-  mainMux.HandleFunc("/pathfinder", WithMainIPOnly(func(w http.ResponseWriter, r *http.Request) {
-      w.Header().Set("Content-Type", "text/html; charset=utf-8")
-      w.Write(pathfinderHTML)
-  }))
-  mainMux.HandleFunc("/pathfinder/asn",    WithMainIPOnly(handlePathfinderASN))
-  mainMux.HandleFunc("/pathfinder/prefix", WithMainIPOnly(handlePathfinderPrefix))
+	mainMux.HandleFunc("/pathfinder/ping", WithMainIPOnly(handlePathfinderPing))
+	mainMux.HandleFunc("/pathfinder/traceroute", WithMainIPOnly(handlePathfinderTraceroute))
 
-mainMux.HandleFunc("/pathfinder/ping", WithMainIPOnly(handlePathfinderPing))
-mainMux.HandleFunc("/pathfinder/traceroute", WithMainIPOnly(handlePathfinderTraceroute))
+	mainMux.HandleFunc("/asn/{asn}", WithMainIPOnly(handleASNPage))
+	mainMux.HandleFunc("/asn/{asn}/timeline", WithMainIPOnly(flowstore.HandleASNTimeline(DB)))
+	mainMux.HandleFunc("/asn/{asn}/detail", WithMainIPOnly(flowstore.HandleASNDetail(DB)))
+	mainMux.HandleFunc("/asn/{asn}/summary", WithMainIPOnly(flowstore.HandleASNSummary(DB)))
 
-mainMux.HandleFunc("/asn/{asn}",          WithMainIPOnly(handleASNPage))
-mainMux.HandleFunc("/asn/{asn}/timeline", WithMainIPOnly(flowstore.HandleASNTimeline(DB)))
-mainMux.HandleFunc("/asn/{asn}/detail",   WithMainIPOnly(flowstore.HandleASNDetail(DB)))
-mainMux.HandleFunc("/asn/{asn}/summary",  WithMainIPOnly(flowstore.HandleASNSummary(DB)))
+	// ── BGP cockpit ──────────────────────────────────────────────────────
+	mainMux.HandleFunc("/bgp", WithMainIPOnly(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(bgpHTML)
+	}))
 
-  // ── BGP cockpit ──────────────────────────────────────────────────────
-  mainMux.HandleFunc("/bgp", WithMainIPOnly(func(w http.ResponseWriter, r *http.Request) {
-      w.Header().Set("Content-Type", "text/html; charset=utf-8")
-      w.Write(bgpHTML)
-  }))
+	mainMux.HandleFunc("/routewatch", WithMainIPOnly(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(routewatchHTML)
+	}))
+	mainMux.HandleFunc("/routewatch/status", WithMainIPOnly(handleRouteWatchStatus))
 
-  mainMux.HandleFunc("/routewatch", WithMainIPOnly(func(w http.ResponseWriter, r *http.Request) {
-      w.Header().Set("Content-Type", "text/html; charset=utf-8")
-      w.Write(routewatchHTML)
-  }))
-  mainMux.HandleFunc("/routewatch/status", WithMainIPOnly(handleRouteWatchStatus))
+	mainMux.HandleFunc("/bgp/sessions", WithMainIPOnly(handleBGPSessions))
+	mainMux.HandleFunc("/bgp/events", WithMainIPOnly(handleBGPEvents))
+	mainMux.HandleFunc("/bgp/filters", WithMainIPOnly(handleBGPFilters))
+	mainMux.HandleFunc("/bgp/originated", WithMainIPOnly(handleBGPOriginated))
+	mainMux.HandleFunc("/bgp/advertisements", WithMainIPOnly(handleBGPAdvertisements))
+	mainMux.HandleFunc("/bgp/received", WithMainIPOnly(handleBGPReceived))
 
-
-  mainMux.HandleFunc("/bgp/sessions",   WithMainIPOnly(handleBGPSessions))
-  mainMux.HandleFunc("/bgp/events",     WithMainIPOnly(handleBGPEvents))
-  mainMux.HandleFunc("/bgp/filters",    WithMainIPOnly(handleBGPFilters))
-  mainMux.HandleFunc("/bgp/originated", WithMainIPOnly(handleBGPOriginated))
-  mainMux.HandleFunc("/bgp/advertisements",WithMainIPOnly(handleBGPAdvertisements))
-  mainMux.HandleFunc("/bgp/received",      WithMainIPOnly(handleBGPReceived))
-
-  // ── RouterOS / BGP session monitoring ────────────────────────────────
-  mainMux.HandleFunc("/routeros/bgp/sessions", WithMainIPOnly(handleROSBGPSessions))
-  mainMux.HandleFunc("/routeros/bgp/peers",    WithMainIPOnly(handleROSBGPPeers))
-  mainMux.HandleFunc("/routeros/router/info",  WithMainIPOnly(handleROSRouterInfo))
+	// ── RouterOS / BGP session monitoring ────────────────────────────────
+	mainMux.HandleFunc("/routeros/bgp/sessions", WithMainIPOnly(handleROSBGPSessions))
+	mainMux.HandleFunc("/routeros/bgp/peers", WithMainIPOnly(handleROSBGPPeers))
+	mainMux.HandleFunc("/routeros/router/info", WithMainIPOnly(handleROSRouterInfo))
 
 	// ── Dashboard & flow debug — IP-only ─────────────────────────────────
 	mainMux.HandleFunc("/dashboard", WithMainIPOnly(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write(dashboardHTML)
 	}))
-	mainMux.HandleFunc("/debug/flows",         WithMainIPOnly(handleFlowsDebug))
-	mainMux.HandleFunc("/tel/flows/stream",    WithMainIPOnly(handleFlowsStream))
-	mainMux.HandleFunc("/debug/rawflows",      WithMainIPOnly(handleRawFlowsDebug))
+	mainMux.HandleFunc("/debug/flows", WithMainIPOnly(handleFlowsDebug))
+	mainMux.HandleFunc("/tel/flows/stream", WithMainIPOnly(handleFlowsStream))
+	mainMux.HandleFunc("/debug/rawflows", WithMainIPOnly(handleRawFlowsDebug))
 	mainMux.HandleFunc("/tel/rawflows/stream", WithMainIPOnly(handleRawFlowsStream))
 
 	// ── pprof — IP-only (loopback always permitted) ───────────────────────
 	// Access from the server itself: curl http://127.0.0.1:9600/debug/pprof/
 	// Access from a management host: must be in api.allow_ips
-	mainMux.HandleFunc("/debug/pprof/",         WithMainIPOnly(pprof.Index))
-	mainMux.HandleFunc("/debug/pprof/cmdline",  WithMainIPOnly(pprof.Cmdline))
-	mainMux.HandleFunc("/debug/pprof/profile",  WithMainIPOnly(pprof.Profile))
-	mainMux.HandleFunc("/debug/pprof/symbol",   WithMainIPOnly(pprof.Symbol))
-	mainMux.HandleFunc("/debug/pprof/trace",    WithMainIPOnly(pprof.Trace))
-	mainMux.Handle("/debug/pprof/goroutine",    WithMainIPOnlyHandler(pprof.Handler("goroutine")))
-	mainMux.Handle("/debug/pprof/heap",         WithMainIPOnlyHandler(pprof.Handler("heap")))
-	mainMux.Handle("/debug/pprof/allocs",       WithMainIPOnlyHandler(pprof.Handler("allocs")))
-	mainMux.Handle("/debug/pprof/block",        WithMainIPOnlyHandler(pprof.Handler("block")))
-	mainMux.Handle("/debug/pprof/mutex",        WithMainIPOnlyHandler(pprof.Handler("mutex")))
+	mainMux.HandleFunc("/debug/pprof/", WithMainIPOnly(pprof.Index))
+	mainMux.HandleFunc("/debug/pprof/cmdline", WithMainIPOnly(pprof.Cmdline))
+	mainMux.HandleFunc("/debug/pprof/profile", WithMainIPOnly(pprof.Profile))
+	mainMux.HandleFunc("/debug/pprof/symbol", WithMainIPOnly(pprof.Symbol))
+	mainMux.HandleFunc("/debug/pprof/trace", WithMainIPOnly(pprof.Trace))
+	mainMux.Handle("/debug/pprof/goroutine", WithMainIPOnlyHandler(pprof.Handler("goroutine")))
+	mainMux.Handle("/debug/pprof/heap", WithMainIPOnlyHandler(pprof.Handler("heap")))
+	mainMux.Handle("/debug/pprof/allocs", WithMainIPOnlyHandler(pprof.Handler("allocs")))
+	mainMux.Handle("/debug/pprof/block", WithMainIPOnlyHandler(pprof.Handler("block")))
+	mainMux.Handle("/debug/pprof/mutex", WithMainIPOnlyHandler(pprof.Handler("mutex")))
 	mainMux.Handle("/debug/pprof/threadcreate", WithMainIPOnlyHandler(pprof.Handler("threadcreate")))
 
 	// Catch-all: unknown paths → 403 (don't leak route map to scanners)
 	mainMux.HandleFunc("/", notFoundHandler)
-
 
 	// ── Detection settings page & API ─────────────────────────────────────
 	mainMux.HandleFunc("/detection", WithMainIPOnly(func(w http.ResponseWriter, r *http.Request) {
@@ -367,36 +362,33 @@ mainMux.HandleFunc("/asn/{asn}/summary",  WithMainIPOnly(flowstore.HandleASNSumm
 		}
 	}))
 
-    // ── Auth endpoints — public, no IP/session guard ───────────────────────
-    mainMux.HandleFunc("/login",  func(w http.ResponseWriter, r *http.Request) {
-        switch r.Method {
-        case http.MethodGet:
-            handleLoginPage(w, r)
-        case http.MethodPost:
-            handleLoginAPI(w, r)
-        default:
-            http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-        }
-    })
-    mainMux.HandleFunc("/logout", handleLogout)
-
-
+	// ── Auth endpoints — public, no IP/session guard ───────────────────────
+	mainMux.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			handleLoginPage(w, r)
+		case http.MethodPost:
+			handleLoginAPI(w, r)
+		default:
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	mainMux.HandleFunc("/logout", handleLogout)
 
 	// Stack: panic recovery → global IP/rate/ban guard → mux routing → per-route auth
-    // LoadAndSave must be outermost so the session is available to all
-    // middleware beneath it (including WithMainIPOnly's sessionAllowed check).
-    inner := withRecovery(globalGuard(mainMux))
-    var handler http.Handler = inner
-    if Auth != nil {
-        handler = Auth.LoadAndSave(inner)
-    }
-
+	// LoadAndSave must be outermost so the session is available to all
+	// middleware beneath it (including WithMainIPOnly's sessionAllowed check).
+	inner := withRecovery(globalGuard(mainMux))
+	var handler http.Handler = inner
+	if Auth != nil {
+		handler = Auth.LoadAndSave(inner)
+	}
 
 	apiAddr := fmt.Sprintf("%s:%d", config.AppConfig.API.ListenAddress, config.AppConfig.API.Port)
 	srv := &http.Server{
 		Addr:              apiAddr,
 		Handler:           handler,
-		ReadHeaderTimeout: 2 * time.Second,  // slow-loris protection
+		ReadHeaderTimeout: 2 * time.Second, // slow-loris protection
 		ReadTimeout:       5 * time.Second,
 		WriteTimeout:      30 * time.Second, // pprof profile can take 30s
 		IdleTimeout:       60 * time.Second,
@@ -436,14 +428,7 @@ func handleInfoIP(w http.ResponseWriter, r *http.Request) {
 			if bgpEntry, ok := longest.(bgp.BGPEnrichedEntry); ok {
 				netCopy := longest.Network()
 				res["prefix"] = netCopy.String()
-				var hops []map[string]string
-				for _, asn := range bgpEntry.ASPath {
-					hops = append(hops, map[string]string{
-						"asn":      asn,
-						"asn_name": Geo.GetASNName(asn),
-						"country":  Geo.GetCountry(asn),
-					})
-				}
+				hops := buildASPathHops(bgpEntry.ASPath)
 				res["as_path"] = hops
 				var comms []string
 				for _, c := range bgpEntry.Communities {
@@ -455,6 +440,43 @@ func handleInfoIP(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(res)
+}
+
+func buildASPathHops(path []string) []map[string]string {
+	hops := make([]map[string]string, 0, len(path))
+	for _, hopASN := range path {
+		hops = append(hops, map[string]string{
+			"asn":      hopASN,
+			"asn_name": resolveASNLabel(hopASN),
+			// Country is an IP GeoIP field and isn't meaningful for ASN-only hops.
+			"country": "unsupported",
+		})
+	}
+	return hops
+}
+
+func resolveASNLabel(asn string) string {
+	n, err := strconv.ParseUint(strings.TrimSpace(asn), 10, 32)
+	if err != nil {
+		return "AS" + asn
+	}
+	asn32 := uint32(n)
+
+	if config.AppConfig != nil {
+		if name, ok := config.AppConfig.Pathfinder.TransitASNMap[asn32]; ok && strings.TrimSpace(name) != "" {
+			return name
+		}
+	}
+
+	if DB != nil {
+		if meta, err := flowstore.QueryMeta(DB, asn32); err == nil && meta != nil {
+			if strings.TrimSpace(meta.ASNName) != "" {
+				return meta.ASNName
+			}
+		}
+	}
+
+	return fmt.Sprintf("AS%d", asn32)
 }
 
 func lenMask(mask net.IPMask) int {
@@ -533,8 +555,12 @@ func handleBGPStatus(w http.ResponseWriter, r *http.Request) {
 		}
 		msgIn, msgOut := uint64(0), uint64(0)
 		if peer.State.Messages != nil {
-			if peer.State.Messages.Received != nil { msgIn = peer.State.Messages.Received.Total }
-			if peer.State.Messages.Sent != nil { msgOut = peer.State.Messages.Sent.Total }
+			if peer.State.Messages.Received != nil {
+				msgIn = peer.State.Messages.Received.Total
+			}
+			if peer.State.Messages.Sent != nil {
+				msgOut = peer.State.Messages.Sent.Total
+			}
 		}
 		peers = append(peers, PeerStatus{
 			IP: peer.Conf.NeighborAddress, RemoteASN: peer.Conf.PeerAsn,
@@ -559,6 +585,6 @@ func handleBGPStatus(w http.ResponseWriter, r *http.Request) {
 // handleASNPage serves the per-ASN drill-down page.
 // asnHTML is embedded in embed.go alongside dashboardHTML, pathfinderHTML, etc.
 func handleASNPage(w http.ResponseWriter, r *http.Request) {
-    w.Header().Set("Content-Type", "text/html; charset=utf-8")
-    w.Write(asnHTML)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write(asnHTML)
 }

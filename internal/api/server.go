@@ -21,6 +21,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -48,6 +49,13 @@ var BGPMon bgpstate.Monitor
 // RIB is the multi-path RIB watcher (bgpstate.RIBReader), set by main.go.
 // Phase 1 stub: always returns empty entries. Populated by ROUTEWATCH.
 var RIB bgpstate.RIBReader
+
+var ipProfileRefresh = struct {
+	mu         sync.Mutex
+	refreshing map[string]bool
+}{
+	refreshing: make(map[string]bool),
+}
 
 // ── Middleware ────────────────────────────────────────────────────────────────
 
@@ -452,6 +460,9 @@ func buildIPProfileResponse(ctx context.Context, ipStr string, includeTrace bool
 	if err != nil {
 		log.Printf("[WARN] ip_profile lookup failed ip=%s err=%v", ipStr, err)
 	}
+	sourceStatus := map[string]map[string]interface{}{
+		"cache": {"ok": err == nil, "hit": fresh && cacheRow != nil},
+	}
 	if fresh && cacheRow != nil {
 		asn, _ := strconv.ParseUint(strings.TrimSpace(cacheRow.ASN), 10, 32)
 		res["ptr"] = cacheRow.PTR
@@ -465,23 +476,35 @@ func buildIPProfileResponse(ctx context.Context, ipStr string, includeTrace bool
 			"first_seen": cacheRow.FirstSeen,
 			"last_seen":  cacheRow.LastSeen,
 		}
+		sourceStatus["cache"]["stale"] = false
+		sourceStatus["ptr"] = map[string]interface{}{"ok": true, "from_cache": true}
+		sourceStatus["geo"] = map[string]interface{}{"ok": true, "from_cache": true}
+	} else if cacheRow != nil {
+		asn, _ := strconv.ParseUint(strings.TrimSpace(cacheRow.ASN), 10, 32)
+		res["ptr"] = cacheRow.PTR
+		res["asn"] = uint32(asn)
+		res["asn_name"] = cacheRow.ASNName
+		res["country"] = cacheRow.Country
+		res["cache"] = map[string]interface{}{
+			"hit":        true,
+			"stale":      true,
+			"hits":       cacheRow.Hits,
+			"updated_at": cacheRow.UpdatedAt,
+			"first_seen": cacheRow.FirstSeen,
+			"last_seen":  cacheRow.LastSeen,
+		}
+		sourceStatus["cache"] = map[string]interface{}{"ok": true, "hit": true, "stale": true}
+		sourceStatus["ptr"] = map[string]interface{}{"ok": true, "from_cache": true, "stale": true}
+		sourceStatus["geo"] = map[string]interface{}{"ok": true, "from_cache": true, "stale": true}
+		refreshIPProfileAsync(ipStr)
 	} else {
-		ptr := ""
-		asn := uint32(0)
-		asnName := ""
-		country := ""
-		if Resolver != nil {
-			ptr = Resolver.LookupPTR(ipStr)
-		}
-		if Geo != nil {
-			asn = Geo.GetASNNumber(ipStr)
-			asnName = Geo.GetASNName(ipStr)
-			country = Geo.GetCountry(ipStr)
-		}
+		ptr, asn, asnName, country, providerStatus := resolveIPProviders(ipStr)
 		res["ptr"] = ptr
 		res["asn"] = asn
 		res["asn_name"] = asnName
 		res["country"] = country
+		sourceStatus["ptr"] = providerStatus["ptr"]
+		sourceStatus["geo"] = providerStatus["geo"]
 
 		row := &ipProfileRow{
 			IP:      ipStr,
@@ -497,6 +520,7 @@ func buildIPProfileResponse(ctx context.Context, ipStr string, includeTrace bool
 			"hit":   false,
 			"stale": cacheRow != nil,
 		}
+		sourceStatus["cache"]["stale"] = cacheRow != nil
 	}
 	if Ranger != nil {
 		if entries, err := Ranger.ContainingNetworks(ip); err == nil && len(entries) > 0 {
@@ -534,7 +558,63 @@ func buildIPProfileResponse(ctx context.Context, ipStr string, includeTrace bool
 	}
 	res["routing"] = buildRoutingContext(ctx, ip, res["prefix"], includeTrace)
 	res["external_links"] = buildASNExternalLinks(res["asn"])
+	res["source_status"] = sourceStatus
 	return res, http.StatusOK, nil
+}
+
+func resolveIPProviders(ipStr string) (ptr string, asn uint32, asnName string, country string, status map[string]map[string]interface{}) {
+	status = map[string]map[string]interface{}{
+		"ptr": {"ok": Resolver != nil},
+		"geo": {"ok": Geo != nil},
+	}
+	startPTR := time.Now()
+	if Resolver != nil {
+		ptr = Resolver.LookupPTR(ipStr)
+	}
+	status["ptr"]["latency_ms"] = time.Since(startPTR).Milliseconds()
+
+	startGeo := time.Now()
+	if Geo != nil {
+		asn = Geo.GetASNNumber(ipStr)
+		asnName = Geo.GetASNName(ipStr)
+		country = Geo.GetCountry(ipStr)
+	}
+	status["geo"]["latency_ms"] = time.Since(startGeo).Milliseconds()
+	return ptr, asn, asnName, country, status
+}
+
+func refreshIPProfileAsync(ipStr string) {
+	ipProfileRefresh.mu.Lock()
+	if ipProfileRefresh.refreshing[ipStr] {
+		ipProfileRefresh.mu.Unlock()
+		return
+	}
+	ipProfileRefresh.refreshing[ipStr] = true
+	ipProfileRefresh.mu.Unlock()
+
+	go func() {
+		defer func() {
+			ipProfileRefresh.mu.Lock()
+			delete(ipProfileRefresh.refreshing, ipStr)
+			ipProfileRefresh.mu.Unlock()
+		}()
+		start := time.Now()
+		ptr, asn, asnName, country, status := resolveIPProviders(ipStr)
+		row := &ipProfileRow{
+			IP:      ipStr,
+			ASN:     strconv.FormatUint(uint64(asn), 10),
+			ASNName: asnName,
+			Country: country,
+			PTR:     ptr,
+		}
+		if err := upsertIPProfile(row, time.Now()); err != nil {
+			log.Printf(`{"component":"ip_profile","event":"async_refresh","ip":%q,"ok":false,"latency_ms":%d,"error":%q}`, ipStr, time.Since(start).Milliseconds(), err.Error())
+			return
+		}
+		geoOK, _ := status["geo"]["ok"].(bool)
+		ptrOK, _ := status["ptr"]["ok"].(bool)
+		log.Printf(`{"component":"ip_profile","event":"async_refresh","ip":%q,"ok":true,"latency_ms":%d,"geo_ok":%t,"ptr_ok":%t}`, ipStr, time.Since(start).Milliseconds(), geoOK, ptrOK)
+	}()
 }
 
 func buildRoutingContext(ctx context.Context, ip net.IP, prefixVal interface{}, includeTrace bool) map[string]interface{} {

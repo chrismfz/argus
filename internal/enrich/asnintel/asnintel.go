@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"sort"
 	"strconv"
@@ -14,10 +15,12 @@ import (
 
 const (
 	defaultBaseURL       = "https://api.bgpview.io"
-	defaultTTL           = 15 * time.Minute
+	defaultFreshTTL      = 15 * time.Minute
+	defaultStaleTTL      = 2 * time.Hour
 	defaultReqTimeout    = 3 * time.Second
 	defaultRetryBudget   = 2 // extra attempts after first try
 	defaultMaxListValues = 30
+	defaultOpenFor       = 45 * time.Second
 )
 
 type OptionalField[T any] struct {
@@ -49,60 +52,112 @@ type Profile struct {
 }
 
 type cacheEntry struct {
-	profile Profile
-	expires time.Time
+	profile    Profile
+	freshUntil time.Time
+	expiresAt  time.Time
+}
+
+type CacheState struct {
+	Hit   bool `json:"hit"`
+	Stale bool `json:"stale"`
+}
+
+type ProviderStatus struct {
+	Provider    string `json:"provider"`
+	OK          bool   `json:"ok"`
+	LatencyMS   int64  `json:"latency_ms"`
+	Error       string `json:"error,omitempty"`
+	Timeout     bool   `json:"timeout,omitempty"`
+	CircuitOpen bool   `json:"circuit_open,omitempty"`
+	FromCache   bool   `json:"from_cache,omitempty"`
+	Stale       bool   `json:"stale,omitempty"`
+}
+
+type circuitState struct {
+	consecutiveFailures int
+	openUntil           time.Time
 }
 
 type Client struct {
 	httpClient *http.Client
 	baseURL    string
-	ttl        time.Duration
+	freshTTL   time.Duration
+	staleTTL   time.Duration
 	timeout    time.Duration
 	retries    int
+	openFor    time.Duration
 
-	mu    sync.RWMutex
-	cache map[uint32]cacheEntry
+	mu         sync.RWMutex
+	cache      map[uint32]cacheEntry
+	breakers   map[string]*circuitState
+	refreshing map[uint32]bool
 }
 
 func NewClient() *Client {
 	return &Client{
 		httpClient: &http.Client{Timeout: defaultReqTimeout + time.Second},
 		baseURL:    defaultBaseURL,
-		ttl:        defaultTTL,
+		freshTTL:   defaultFreshTTL,
+		staleTTL:   defaultStaleTTL,
 		timeout:    defaultReqTimeout,
 		retries:    defaultRetryBudget,
+		openFor:    defaultOpenFor,
 		cache:      make(map[uint32]cacheEntry),
+		breakers:   make(map[string]*circuitState),
+		refreshing: make(map[uint32]bool),
 	}
 }
 
-func (c *Client) GetProfile(ctx context.Context, asn uint32, observed [][]uint32) (Profile, bool, error) {
+func (c *Client) GetProfile(ctx context.Context, asn uint32, observed [][]uint32) (Profile, CacheState, map[string]ProviderStatus, error) {
 	now := time.Now().UTC()
-	if p, ok := c.getFromCache(asn, now); ok {
+	if p, cacheState, ok := c.getFromCache(asn, now); ok {
 		if meta := buildObservedPaths(observed); meta.PathCount > 0 {
 			p.ObservedPaths = OptionalField[ObservedPathsMetadata]{Present: true, Source: "flowstore:pathfinder", Value: meta}
 		}
-		return p, true, nil
+		status := map[string]ProviderStatus{
+			"cache": {
+				Provider:  "cache",
+				OK:        true,
+				FromCache: true,
+				Stale:     cacheState.Stale,
+			},
+		}
+		if cacheState.Stale {
+			c.refreshAsync(asn, observed)
+		}
+		return p, cacheState, status, nil
 	}
 
 	profile := Profile{ASN: asn, Source: "bgpview", FetchedAt: now}
+	sourceStatus := make(map[string]ProviderStatus, 5)
 
-	baseData, err := c.fetchJSON(ctx, fmt.Sprintf("%s/asn/%d", c.baseURL, asn))
+	baseData, baseStatus, err := c.fetchProviderJSON(ctx, "bgpview:base", fmt.Sprintf("%s/asn/%d", c.baseURL, asn))
+	sourceStatus["base"] = baseStatus
 	if err != nil {
 		if meta := buildObservedPaths(observed); meta.PathCount > 0 {
 			profile.ObservedPaths = OptionalField[ObservedPathsMetadata]{Present: true, Source: "flowstore:pathfinder", Value: meta}
 		}
-		return profile, false, err
+		return profile, CacheState{}, sourceStatus, err
 	}
 	fillBaseFields(&profile, baseData)
 
-	if prefixesData, err := c.fetchJSON(ctx, fmt.Sprintf("%s/asn/%d/prefixes", c.baseURL, asn)); err == nil {
+	if prefixesData, status, err := c.fetchProviderJSON(ctx, "bgpview:prefixes", fmt.Sprintf("%s/asn/%d/prefixes", c.baseURL, asn)); err == nil {
 		fillPrefixes(&profile, prefixesData)
+		sourceStatus["prefixes"] = status
+	} else {
+		sourceStatus["prefixes"] = status
 	}
-	if peersData, err := c.fetchJSON(ctx, fmt.Sprintf("%s/asn/%d/peers", c.baseURL, asn)); err == nil {
+	if peersData, status, err := c.fetchProviderJSON(ctx, "bgpview:peers", fmt.Sprintf("%s/asn/%d/peers", c.baseURL, asn)); err == nil {
 		fillPeers(&profile, peersData)
+		sourceStatus["peers"] = status
+	} else {
+		sourceStatus["peers"] = status
 	}
-	if ixsData, err := c.fetchJSON(ctx, fmt.Sprintf("%s/asn/%d/ixs", c.baseURL, asn)); err == nil {
+	if ixsData, status, err := c.fetchProviderJSON(ctx, "bgpview:ixs", fmt.Sprintf("%s/asn/%d/ixs", c.baseURL, asn)); err == nil {
 		fillIXPresence(&profile, ixsData)
+		sourceStatus["ixs"] = status
+	} else {
+		sourceStatus["ixs"] = status
 	}
 
 	if meta := buildObservedPaths(observed); meta.PathCount > 0 {
@@ -110,39 +165,85 @@ func (c *Client) GetProfile(ctx context.Context, asn uint32, observed [][]uint32
 	}
 	profile.FetchedAt = time.Now().UTC()
 	c.storeCache(profile)
-	return profile, false, nil
+	sourceStatus["cache"] = ProviderStatus{Provider: "cache", OK: true}
+	return profile, CacheState{Hit: false, Stale: false}, sourceStatus, nil
 }
 
-func (c *Client) getFromCache(asn uint32, now time.Time) (Profile, bool) {
+func (c *Client) getFromCache(asn uint32, now time.Time) (Profile, CacheState, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	entry, ok := c.cache[asn]
-	if !ok || now.After(entry.expires) {
-		return Profile{}, false
+	if !ok || now.After(entry.expiresAt) {
+		return Profile{}, CacheState{}, false
 	}
-	return entry.profile, true
+	state := CacheState{Hit: true, Stale: now.After(entry.freshUntil)}
+	return entry.profile, state, true
+}
+
+func (c *Client) refreshAsync(asn uint32, observed [][]uint32) {
+	c.mu.Lock()
+	if c.refreshing[asn] {
+		c.mu.Unlock()
+		return
+	}
+	c.refreshing[asn] = true
+	c.mu.Unlock()
+
+	go func() {
+		defer func() {
+			c.mu.Lock()
+			delete(c.refreshing, asn)
+			c.mu.Unlock()
+		}()
+		refreshCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if _, _, _, err := c.GetProfile(refreshCtx, asn, observed); err != nil {
+			log.Printf(`{"component":"asnintel","event":"async_refresh","asn":%d,"ok":false,"error":%q}`, asn, err.Error())
+		}
+	}()
 }
 
 func (c *Client) storeCache(p Profile) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.cache[p.ASN] = cacheEntry{profile: p, expires: time.Now().Add(c.ttl)}
+	now := time.Now()
+	c.cache[p.ASN] = cacheEntry{
+		profile:    p,
+		freshUntil: now.Add(c.freshTTL),
+		expiresAt:  now.Add(c.staleTTL),
+	}
 }
 
-func (c *Client) fetchJSON(ctx context.Context, url string) (map[string]interface{}, error) {
+func (c *Client) fetchProviderJSON(ctx context.Context, provider string, url string) (map[string]interface{}, ProviderStatus, error) {
 	var lastErr error
 	attempts := c.retries + 1
+	start := time.Now()
+	status := ProviderStatus{Provider: provider}
+	if c.isCircuitOpen(provider, start) {
+		status.CircuitOpen = true
+		status.Error = "circuit_open"
+		status.LatencyMS = time.Since(start).Milliseconds()
+		c.logProviderMetric(provider, status, 0)
+		return nil, status, fmt.Errorf("provider %s circuit open", provider)
+	}
+
 	for attempt := 0; attempt < attempts; attempt++ {
 		reqCtx, cancel := context.WithTimeout(ctx, c.timeout)
 		req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, url, nil)
 		if err != nil {
 			cancel()
-			return nil, err
+			status.Error = err.Error()
+			status.LatencyMS = time.Since(start).Milliseconds()
+			c.logProviderMetric(provider, status, attempt+1)
+			return nil, status, err
 		}
 		resp, err := c.httpClient.Do(req)
 		cancel()
 		if err != nil {
 			lastErr = err
+			if reqCtx.Err() == context.DeadlineExceeded {
+				status.Timeout = true
+			}
 			time.Sleep(time.Duration(attempt+1) * 120 * time.Millisecond)
 			continue
 		}
@@ -155,7 +256,11 @@ func (c *Client) fetchJSON(ctx context.Context, url string) (map[string]interfac
 		}
 		_ = resp.Body.Close()
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			return payload, nil
+			status.OK = true
+			status.LatencyMS = time.Since(start).Milliseconds()
+			c.markProviderSuccess(provider)
+			c.logProviderMetric(provider, status, attempt+1)
+			return payload, status, nil
 		}
 		lastErr = fmt.Errorf("status %d", resp.StatusCode)
 		if resp.StatusCode < 500 {
@@ -166,7 +271,51 @@ func (c *Client) fetchJSON(ctx context.Context, url string) (map[string]interfac
 	if lastErr == nil {
 		lastErr = fmt.Errorf("unknown fetch error")
 	}
-	return nil, lastErr
+	status.Error = lastErr.Error()
+	status.LatencyMS = time.Since(start).Milliseconds()
+	c.markProviderFailure(provider, time.Now())
+	c.logProviderMetric(provider, status, attempts)
+	return nil, status, lastErr
+}
+
+func (c *Client) isCircuitOpen(provider string, now time.Time) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	state, ok := c.breakers[provider]
+	return ok && now.Before(state.openUntil)
+}
+
+func (c *Client) markProviderSuccess(provider string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.breakers[provider] = &circuitState{}
+}
+
+func (c *Client) markProviderFailure(provider string, now time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	state, ok := c.breakers[provider]
+	if !ok {
+		state = &circuitState{}
+		c.breakers[provider] = state
+	}
+	state.consecutiveFailures++
+	if state.consecutiveFailures >= 3 {
+		state.openUntil = now.Add(c.openFor)
+	}
+}
+
+func (c *Client) logProviderMetric(provider string, status ProviderStatus, attempts int) {
+	log.Printf(
+		`{"component":"asnintel","event":"provider_call","provider":%q,"ok":%t,"latency_ms":%d,"attempts":%d,"timeout":%t,"circuit_open":%t,"error":%q}`,
+		provider,
+		status.OK,
+		status.LatencyMS,
+		attempts,
+		status.Timeout,
+		status.CircuitOpen,
+		status.Error,
+	)
 }
 
 func fillBaseFields(out *Profile, payload map[string]interface{}) {

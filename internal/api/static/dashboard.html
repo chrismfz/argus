@@ -6,6 +6,7 @@
 <title>argus — telemetry</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.4.3/echarts.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/alpinejs/3.13.3/cdn.min.js" defer></script>
+<script src="/static/nav-search.js" defer></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -106,6 +107,7 @@ header .logout:hover{opacity:1;background:rgba(243,139,168,.08);border-color:var
   <span class="sep"></span>
   <a href="/debug/flows" target="_blank" class="dbg">⚡ Live Flows</a>
   <a href="/debug/rawflows" target="_blank" class="dbg">🔬 Raw Fields</a>
+  <div id="nav-search" class="argus-nav-search-mount"></div>
 </nav>
 
 <!-- ── OVERVIEW ── -->
@@ -874,6 +876,9 @@ function fmtBytesS(b) {
 }
 // Alpine-accessible version
 function fmtBytes(b) { return fmtBytesS(b) }
+if (window.mountArgusNavSearch) {
+  window.mountArgusNavSearch(document.getElementById('nav-search'))
+}
 </script>
 
 <!-- ── UPSTREAMS ── -->

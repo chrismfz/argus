@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>argus · IP</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/alpinejs/3.13.3/cdn.min.js" defer></script>
+<script src="/static/nav-search.js" defer></script>
 <style>
 :root{--bg:#0f1117;--bg2:#161b27;--bg3:#1e2535;--border:#2a3147;--text:#cdd6f4;--muted:#6c7086;--accent:#89b4fa;--red:#f38ba8;--green:#a6e3a1;--yellow:#f9e2af}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -45,6 +46,7 @@ a.ext:hover{text-decoration:underline}
   <a href="/alerts">Alerts</a>
   <a href="/pathfinder">Pathfinder</a>
   <a class="active" href="#">IP</a>
+  <div id="nav-search" class="argus-nav-search-mount"></div>
 </nav>
 
 <div class="content">
@@ -258,6 +260,10 @@ function ipPage(){ return {
     return 'Traceroute not requested. Add ?traceroute=1 to the profile endpoint for live probe.'
   },
 }}
+
+if (window.mountArgusNavSearch) {
+  window.mountArgusNavSearch(document.getElementById('nav-search'))
+}
 </script>
 </body>
 </html>

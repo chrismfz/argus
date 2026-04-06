@@ -1,8 +1,12 @@
 package api
 
 import (
+	"argus/internal/enrich/asnintel"
 	"argus/internal/flowstore"
+	"argus/internal/pathfinder"
+	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -15,6 +19,8 @@ var asnProfileWindows = map[string]time.Duration{
 	"48h": 48 * time.Hour,
 	"7d":  7 * 24 * time.Hour,
 }
+
+var asnIntelClient = asnintel.NewClient()
 
 type asnProfileResponse struct {
 	ASN          uint32                 `json:"asn"`
@@ -47,11 +53,15 @@ type asnProfileBGPData struct {
 }
 
 type asnProfileExternalData struct {
-	ASN            uint32 `json:"asn"`
-	DisplayName    string `json:"display_name"`
-	NameSource     string `json:"name_source"`
-	Summary        string `json:"summary"`
-	FallbackActive bool   `json:"fallback_active"`
+	ASN            uint32            `json:"asn"`
+	DisplayName    string            `json:"display_name"`
+	NameSource     string            `json:"name_source"`
+	Summary        string            `json:"summary"`
+	FallbackActive bool              `json:"fallback_active"`
+	Intelligence   *asnintel.Profile `json:"intelligence,omitempty"`
+	IntelCacheHit  bool              `json:"intel_cache_hit"`
+	IntelError     string            `json:"intel_error,omitempty"`
+	LocalStale     bool              `json:"local_stale"`
 }
 
 type asnProfileLink struct {
@@ -143,17 +153,30 @@ func handleASNProfile(w http.ResponseWriter, r *http.Request) {
 	hasLocalData := meta != nil || len(local.Timeline) > 0 || len(local.Ifaces) > 0 ||
 		len(local.TopIPs) > 0 || len(local.Prefixes) > 0 || len(local.Proto) > 0 ||
 		len(local.Countries) > 0 || len(local.Ports) > 0
+	localStale := meta == nil || time.Since(time.Unix(meta.LastSeen, 0)) > 24*time.Hour
 
 	bgp := asnProfileBGPData{Available: PathfinderResolver != nil, Result: map[string]interface{}{}}
 	hasBGPData := false
+	observedPaths := make([][]uint32, 0)
 	if PathfinderResolver != nil {
 		result, resolveErr := PathfinderResolver.ResolveASN(asn, displayName)
 		if resolveErr != nil {
 			bgp.Error = resolveErr.Error()
 		} else {
 			bgp.Result = result
+			observedPaths = extractObservedASPaths(result)
 			hasBGPData = result != nil && len(result.Prefixes) > 0
 		}
+	}
+	intelCtx, intelCancel := context.WithTimeout(r.Context(), 8*time.Second)
+	defer intelCancel()
+	intelProfile, intelCacheHit, intelErr := asnIntelClient.GetProfile(intelCtx, asn, observedPaths)
+	if intelErr != nil {
+		log.Printf("[WARN] asn intel fetch failed asn=%d err=%v", asn, intelErr)
+	}
+	if intelProfile.Name.Present && intelProfile.Name.Value != "" {
+		displayName = intelProfile.Name.Value
+		nameSource = intelProfile.Name.Source
 	}
 
 	resp := asnProfileResponse{
@@ -170,15 +193,42 @@ func handleASNProfile(w http.ResponseWriter, r *http.Request) {
 			NameSource:     nameSource,
 			Summary:        fmt.Sprintf("ASN profile for AS%d", asn),
 			FallbackActive: !hasLocalData,
+			Intelligence:   &intelProfile,
+			IntelCacheHit:  intelCacheHit,
+			LocalStale:     localStale,
 		},
 		Links: []asnProfileLink{
 			{Label: "Pathfinder", URL: fmt.Sprintf("/pathfinder/asn?asn=%d", asn)},
 			{Label: "BGP HE", URL: fmt.Sprintf("https://bgp.he.net/AS%d", asn)},
-			{Label: "Hurricane Electric Toolkit", URL: fmt.Sprintf("https://bgp.he.net/AS%d#_prefixes", asn)},
+			{Label: "BGP.Tools", URL: fmt.Sprintf("https://bgp.tools/as/%d", asn)},
 		},
+	}
+	if intelErr != nil {
+		resp.External.IntelError = intelErr.Error()
 	}
 
 	jsonOK(w, resp)
+}
+
+func extractObservedASPaths(result interface{}) [][]uint32 {
+	if result == nil {
+		return nil
+	}
+	typed, ok := result.(*pathfinder.ASNResult)
+	if !ok || typed == nil {
+		return nil
+	}
+	out := make([][]uint32, 0, len(typed.Prefixes))
+	for _, p := range typed.Prefixes {
+		if p.BestPath == nil || len(p.BestPath.ASPath) == 0 {
+			continue
+		}
+		out = append(out, p.BestPath.ASPath)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func parseProfileASN(r *http.Request) (uint32, error) {

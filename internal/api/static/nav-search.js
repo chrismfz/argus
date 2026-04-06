@@ -52,7 +52,7 @@
     const style = document.createElement('style')
     style.id = 'argus-nav-search-style'
     style.textContent = `
-      .argus-nav-search-mount{margin-left:auto;display:flex;align-items:center}
+      .argus-nav-search-mount{display:flex;align-items:center}
       .argus-nav-search{display:flex;align-items:center;gap:6px}
       .argus-nav-search input{width:220px;max-width:32vw;background:var(--bg3,#1e2535);border:1px solid var(--border,#2a3147);color:var(--text,#cdd6f4);border-radius:6px;padding:6px 9px;font-size:12px;outline:none}
       .argus-nav-search input:focus{border-color:var(--accent,#89b4fa)}

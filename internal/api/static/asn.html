@@ -6,6 +6,7 @@
 <title>argus · ASN drill-down</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.4.3/echarts.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/alpinejs/3.13.3/cdn.min.js" defer></script>
+<script src="/static/nav-search.js" defer></script>
 <style>
 :root {
   --bg:     #0f1117;
@@ -142,6 +143,7 @@ tbody tr:hover{background:var(--bg3)}
   <a class="nav-link" href="/pathfinder">Pathfinder</a>
   <a class="nav-link" href="/bgp">BGP</a>
   <a class="nav-link" href="/routewatch">Routewatch</a>
+  <div id="nav-search" class="argus-nav-search-mount"></div>
 </nav>
 
 <!-- ── Page header ── -->
@@ -772,9 +774,9 @@ function asnPage() { return {
   },
 
   openIPPage() {
-    const ip = (this.ipSearch || '').trim()
-    if (!ip) return
-    window.location.href = `/ip/${encodeURIComponent(ip)}`
+    const parsed = window.argusParseSearchTarget ? window.argusParseSearchTarget(this.ipSearch) : null
+    if (!parsed || !parsed.ok || parsed.kind !== 'ip') return
+    window.location.href = parsed.path
   },
 
   ipFromPrefix(prefix) {
@@ -798,6 +800,10 @@ function fmtBytes(b) {
 }
 function fmtNum(n) {
   return n != null ? n.toLocaleString() : '—'
+}
+
+if (window.mountArgusNavSearch) {
+  window.mountArgusNavSearch(document.getElementById('nav-search'))
 }
 </script>
 </body>

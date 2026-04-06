@@ -29,3 +29,6 @@ var asnHTML []byte
 
 //go:embed static/ip.html
 var ipHTML []byte
+
+//go:embed static/nav-search.js
+var navSearchJS []byte

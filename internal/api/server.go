@@ -7,6 +7,7 @@ import (
 	"argus/internal/config"
 	"argus/internal/enrich"
 	"argus/internal/flowstore"
+	"argus/internal/pathfinder"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -284,6 +285,7 @@ func Start() {
 	mainMux.HandleFunc("/asn/{asn}/detail", WithMainIPOnly(flowstore.HandleASNDetail(DB)))
 	mainMux.HandleFunc("/asn/{asn}/summary", WithMainIPOnly(flowstore.HandleASNSummary(DB)))
 	mainMux.HandleFunc("/ip/{ip}", WithMainIPOnly(handleIPPage))
+	mainMux.HandleFunc("/ip/{ip}/profile", WithMainIPOnly(handleIPProfile))
 
 	// ── BGP cockpit ──────────────────────────────────────────────────────
 	mainMux.HandleFunc("/bgp", WithMainIPOnly(func(w http.ResponseWriter, r *http.Request) {
@@ -408,10 +410,32 @@ func Start() {
 
 func handleInfoIP(w http.ResponseWriter, r *http.Request) {
 	ipStr := r.URL.Query().Get("ip")
+	includeTrace := r.URL.Query().Get("traceroute") == "1"
+	res, status, err := buildIPProfileResponse(r.Context(), ipStr, includeTrace)
+	if err != nil {
+		http.Error(w, err.Error(), status)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(res)
+}
+
+func handleIPProfile(w http.ResponseWriter, r *http.Request) {
+	ipStr := strings.TrimSpace(r.PathValue("ip"))
+	includeTrace := r.URL.Query().Get("traceroute") == "1"
+	res, status, err := buildIPProfileResponse(r.Context(), ipStr, includeTrace)
+	if err != nil {
+		http.Error(w, err.Error(), status)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(res)
+}
+
+func buildIPProfileResponse(ctx context.Context, ipStr string, includeTrace bool) (map[string]interface{}, int, error) {
 	ip := net.ParseIP(ipStr)
 	if ip == nil {
-		http.Error(w, "Invalid IP", http.StatusBadRequest)
-		return
+		return nil, http.StatusBadRequest, fmt.Errorf("Invalid IP")
 	}
 	now := time.Now()
 	res := map[string]interface{}{"ip": ipStr}
@@ -504,8 +528,143 @@ func handleInfoIP(w http.ResponseWriter, r *http.Request) {
 	} else {
 		res["detections"] = history
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(res)
+	res["routing"] = buildRoutingContext(ctx, ip, res["prefix"], includeTrace)
+	res["external_links"] = buildASNExternalLinks(res["asn"])
+	return res, http.StatusOK, nil
+}
+
+func buildRoutingContext(ctx context.Context, ip net.IP, prefixVal interface{}, includeTrace bool) map[string]interface{} {
+	routing := map[string]interface{}{
+		"prefix":           "",
+		"best_as_path":     []map[string]string{},
+		"pathfinder":       map[string]interface{}{},
+		"traceroute":       map[string]interface{}{"available": PathfinderROSClient != nil, "requested": includeTrace},
+		"routeros_enabled": PathfinderROSClient != nil,
+	}
+	prefix, _ := prefixVal.(string)
+	if strings.TrimSpace(prefix) == "" {
+		return routing
+	}
+	routing["prefix"] = prefix
+
+	if asPath, ok := RangerBestASPath(ip); ok {
+		routing["best_as_path"] = asPath
+	}
+
+	if PathfinderResolver == nil {
+		return routing
+	}
+
+	resolved, err := PathfinderResolver.ResolvePrefix(prefix)
+	if err != nil || resolved == nil {
+		return routing
+	}
+	pf := map[string]interface{}{}
+	if resolved.BestPath != nil {
+		pf["best"] = map[string]interface{}{
+			"next_hop":   resolved.BestPath.NextHop,
+			"upstream":   resolved.BestPath.Upstream,
+			"hops":       len(resolved.BestPath.ASPath),
+			"as_path":    resolved.BestPath.ASPath,
+			"local_pref": resolved.BestPath.LocalPref,
+			"peer_asn":   resolved.BestPath.PeerASN,
+		}
+	}
+	if PathfinderROSClient != nil {
+		rosCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+		defer cancel()
+		routes, err := PathfinderROSClient.ListDetailedRoutesByPrefix(rosCtx, prefix)
+		if err == nil && len(routes) > 0 {
+			addrCtx, addrCancel := context.WithTimeout(ctx, 3*time.Second)
+			addrs, _ := PathfinderROSClient.ListIPAddresses(addrCtx)
+			addrCancel()
+			summaries := rosRoutesToSummary(routes, addrs)
+			pf["routes"] = summaries
+			if includeTrace {
+				trace := tracerouteSummaryForIP(ctx, ip.String(), summaries)
+				routing["traceroute"] = trace
+			}
+		}
+	}
+	routing["pathfinder"] = pf
+	return routing
+}
+
+func RangerBestASPath(ip net.IP) ([]map[string]string, bool) {
+	if Ranger == nil {
+		return nil, false
+	}
+	entries, err := Ranger.ContainingNetworks(ip)
+	if err != nil || len(entries) == 0 {
+		return nil, false
+	}
+	longest := entries[0]
+	for _, e := range entries {
+		if lenMask(e.Network().Mask) > lenMask(longest.Network().Mask) {
+			longest = e
+		}
+	}
+	bgpEntry, ok := longest.(bgp.BGPEnrichedEntry)
+	if !ok {
+		return nil, false
+	}
+	return buildASPathHops(bgpEntry.ASPath), true
+}
+
+func tracerouteSummaryForIP(ctx context.Context, ip string, routes []pathfinder.RouteSummary) map[string]interface{} {
+	out := map[string]interface{}{
+		"available": PathfinderROSClient != nil,
+		"requested": true,
+	}
+	if PathfinderROSClient == nil {
+		return out
+	}
+	var chosen *pathfinder.RouteSummary
+	for i := range routes {
+		if routes[i].Active {
+			chosen = &routes[i]
+			break
+		}
+	}
+	if chosen == nil && len(routes) > 0 {
+		chosen = &routes[0]
+	}
+	if chosen == nil {
+		out["error"] = "no route candidates available"
+		return out
+	}
+	out["source_ip"] = chosen.LocalIP
+	out["upstream"] = chosen.Upstream
+	out["next_hop"] = chosen.Gateway
+	traceCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
+	defer cancel()
+	hops, err := PathfinderROSClient.Traceroute(traceCtx, ip, chosen.LocalIP)
+	if err != nil {
+		out["error"] = err.Error()
+		return out
+	}
+	out["hop_count"] = len(hops)
+	if len(hops) > 0 {
+		out["first_hop"] = hops[0].Address
+		out["last_hop"] = hops[len(hops)-1].Address
+	}
+	out["hops"] = hops
+	return out
+}
+
+func buildASNExternalLinks(asnVal interface{}) []map[string]string {
+	asnNum, ok := asnVal.(uint32)
+	if !ok || asnNum == 0 {
+		return []map[string]string{}
+	}
+	asn := strconv.FormatUint(uint64(asnNum), 10)
+	return []map[string]string{
+		{"label": "BGP.HE", "url": "https://bgp.he.net/AS" + asn},
+		{"label": "BGP Tools", "url": "https://bgp.tools/as/" + asn},
+		{"label": "RIPEstat", "url": "https://stat.ripe.net/AS" + asn},
+		{"label": "PeeringDB", "url": "https://www.peeringdb.com/asn/" + asn},
+		{"label": "Cloudflare Radar", "url": "https://radar.cloudflare.com/as" + asn},
+	}
 }
 
 func buildASPathHops(path []string) []map[string]string {

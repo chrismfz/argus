@@ -279,6 +279,7 @@ func Start() {
 	mainMux.HandleFunc("/pathfinder/traceroute", WithMainIPOnly(handlePathfinderTraceroute))
 
 	mainMux.HandleFunc("/asn/{asn}", WithMainIPOnly(handleASNPage))
+	mainMux.HandleFunc("/asn/{asn}/profile", WithMainIPOnly(handleASNProfile))
 	mainMux.HandleFunc("/asn/{asn}/timeline", WithMainIPOnly(flowstore.HandleASNTimeline(DB)))
 	mainMux.HandleFunc("/asn/{asn}/detail", WithMainIPOnly(flowstore.HandleASNDetail(DB)))
 	mainMux.HandleFunc("/asn/{asn}/summary", WithMainIPOnly(flowstore.HandleASNSummary(DB)))

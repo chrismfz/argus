@@ -53,15 +53,17 @@ type asnProfileBGPData struct {
 }
 
 type asnProfileExternalData struct {
-	ASN            uint32            `json:"asn"`
-	DisplayName    string            `json:"display_name"`
-	NameSource     string            `json:"name_source"`
-	Summary        string            `json:"summary"`
-	FallbackActive bool              `json:"fallback_active"`
-	Intelligence   *asnintel.Profile `json:"intelligence,omitempty"`
-	IntelCacheHit  bool              `json:"intel_cache_hit"`
-	IntelError     string            `json:"intel_error,omitempty"`
-	LocalStale     bool              `json:"local_stale"`
+	ASN             uint32                             `json:"asn"`
+	DisplayName     string                             `json:"display_name"`
+	NameSource      string                             `json:"name_source"`
+	Summary         string                             `json:"summary"`
+	FallbackActive  bool                               `json:"fallback_active"`
+	Intelligence    *asnintel.Profile                  `json:"intelligence,omitempty"`
+	IntelCacheHit   bool                               `json:"intel_cache_hit"`
+	IntelCacheStale bool                               `json:"intel_cache_stale"`
+	SourceStatus    map[string]asnintel.ProviderStatus `json:"source_status,omitempty"`
+	IntelError      string                             `json:"intel_error,omitempty"`
+	LocalStale      bool                               `json:"local_stale"`
 }
 
 type asnProfileLink struct {
@@ -170,7 +172,7 @@ func handleASNProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	intelCtx, intelCancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer intelCancel()
-	intelProfile, intelCacheHit, intelErr := asnIntelClient.GetProfile(intelCtx, asn, observedPaths)
+	intelProfile, cacheState, sourceStatus, intelErr := asnIntelClient.GetProfile(intelCtx, asn, observedPaths)
 	if intelErr != nil {
 		log.Printf("[WARN] asn intel fetch failed asn=%d err=%v", asn, intelErr)
 	}
@@ -188,14 +190,16 @@ func handleASNProfile(w http.ResponseWriter, r *http.Request) {
 		Local:        local,
 		BGP:          bgp,
 		External: asnProfileExternalData{
-			ASN:            asn,
-			DisplayName:    displayName,
-			NameSource:     nameSource,
-			Summary:        fmt.Sprintf("ASN profile for AS%d", asn),
-			FallbackActive: !hasLocalData,
-			Intelligence:   &intelProfile,
-			IntelCacheHit:  intelCacheHit,
-			LocalStale:     localStale,
+			ASN:             asn,
+			DisplayName:     displayName,
+			NameSource:      nameSource,
+			Summary:         fmt.Sprintf("ASN profile for AS%d", asn),
+			FallbackActive:  !hasLocalData,
+			Intelligence:    &intelProfile,
+			IntelCacheHit:   cacheState.Hit,
+			IntelCacheStale: cacheState.Stale,
+			SourceStatus:    sourceStatus,
+			LocalStale:      localStale,
 		},
 		Links: []asnProfileLink{
 			{Label: "Pathfinder", URL: fmt.Sprintf("/pathfinder/asn?asn=%d", asn)},

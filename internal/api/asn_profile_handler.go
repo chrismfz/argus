@@ -202,7 +202,7 @@ func handleASNProfile(w http.ResponseWriter, r *http.Request) {
 			LocalStale:      localStale,
 		},
 		Links: []asnProfileLink{
-			{Label: "Pathfinder", URL: fmt.Sprintf("/pathfinder/asn?asn=%d", asn)},
+			{Label: "Pathfinder", URL: fmt.Sprintf("/pathfinder?asn=%d", asn)},
 			{Label: "BGP HE", URL: fmt.Sprintf("https://bgp.he.net/AS%d", asn)},
 			{Label: "BGP.Tools", URL: fmt.Sprintf("https://bgp.tools/as/%d", asn)},
 		},

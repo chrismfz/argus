@@ -26,11 +26,14 @@ nav a.active{color:var(--accent);border-color:var(--accent)}
 .chip.expired{color:var(--yellow);border-color:rgba(249,226,175,.4);background:rgba(249,226,175,.08)}
 .section{margin-top:18px}
 .section-title{font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.section-sub{font-size:11px;color:var(--muted);margin-bottom:8px}
 table{width:100%;border-collapse:collapse}
 th,td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top}
 th{text-align:left;font-size:11px;color:var(--muted);font-weight:600}
 td{font-size:12px}
 .empty-row td{color:var(--muted);font-style:italic}
+a.ext{color:var(--accent);text-decoration:none;margin-right:10px}
+a.ext:hover{text-decoration:underline}
 </style>
 </head>
 <body x-data="ipPage()" x-init="init()">
@@ -59,17 +62,64 @@ td{font-size:12px}
           <span class="badge" x-text="result.asn_name || '—'"></span>
         </div>
 
-        <div class="grid">
+        <div class="section">
+          <div class="section-title">Geo / ASN</div>
+          <div class="grid">
           <div class="muted">PTR</div><div class="mono" x-text="result.ptr || '—'"></div>
+          <div class="muted">ASN</div><div class="mono" x-text="result.asn ? ('AS' + result.asn) : '—'"></div>
+          <div class="muted">ASN Name</div><div class="mono" x-text="result.asn_name || '—'"></div>
+          <div class="muted">Country</div><div class="mono" x-text="result.country || '—'"></div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">BGP Visibility</div>
+          <div class="grid">
+          <div class="muted">Best prefix</div><div class="mono" x-text="result.routing?.prefix || result.prefix || '—'"></div>
+          <div class="muted">Best AS path</div><div class="mono" x-text="fmtASPath(result.routing?.best_as_path || result.as_path || [])"></div>
           <div class="muted">Communities</div><div class="mono" x-text="(result.communities || []).join(', ') || '—'"></div>
-          <div class="muted">AS path</div>
-          <div class="mono" x-text="(result.as_path || []).map(h => 'AS' + h.asn).join(' → ') || '—'"></div>
+          <div class="muted">Best next-hop</div><div class="mono" x-text="result.routing?.pathfinder?.best?.next_hop || '—'"></div>
+          <div class="muted">Best upstream</div><div class="mono" x-text="result.routing?.pathfinder?.best?.upstream || '—'"></div>
+          <div class="muted">Best hops</div><div class="mono" x-text="result.routing?.pathfinder?.best?.hops ?? '—'"></div>
           <div class="muted">Blackhole</div>
           <div>
             <span class="chip" :class="result.blackhole?.active ? 'active' : 'expired'">
               <span x-text="result.blackhole?.active ? 'active' : 'inactive'"></span>
             </span>
           </div>
+        </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Pathfinder route context</div>
+          <table>
+            <thead>
+              <tr>
+                <th>State</th>
+                <th>Upstream</th>
+                <th>Next-hop</th>
+                <th>Interface</th>
+                <th>Hops</th>
+                <th>Session</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-if="!(result.routing?.pathfinder?.routes || []).length">
+                <tr class="empty-row"><td colspan="6">no router path context available</td></tr>
+              </template>
+              <template x-for="(p, i) in (result.routing?.pathfinder?.routes || [])" :key="i">
+                <tr>
+                  <td><span class="chip" :class="p.active ? 'active' : ''" x-text="p.contribution || (p.active ? 'active' : 'candidate')"></span></td>
+                  <td class="mono" x-text="p.upstream || '—'"></td>
+                  <td class="mono" x-text="p.gateway || '—'"></td>
+                  <td class="mono" x-text="p.interface || '—'"></td>
+                  <td class="mono" x-text="p.hops ?? '—'"></td>
+                  <td class="mono" x-text="p.session_name || '—'"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+          <div class="section-sub" x-text="tracerouteSummary()"></div>
         </div>
 
         <div class="section">
@@ -141,6 +191,16 @@ td{font-size:12px}
             </tbody>
           </table>
         </div>
+
+        <div class="section">
+          <div class="section-title">External links</div>
+          <template x-if="!(result.external_links || []).length">
+            <div class="muted">no ASN links available</div>
+          </template>
+          <template x-for="(l, i) in (result.external_links || [])" :key="i">
+            <a class="ext mono" :href="l.url" target="_blank" rel="noopener noreferrer" x-text="l.label"></a>
+          </template>
+        </div>
       </div>
     </template>
   </div>
@@ -154,7 +214,9 @@ function ipPage(){ return {
   result: null,
 
   init() {
-    this.ip = decodeURIComponent(window.location.pathname.split('/').filter(Boolean).pop() || '')
+    const parts = window.location.pathname.split('/').filter(Boolean)
+    const ipIdx = parts.indexOf('ip')
+    this.ip = ipIdx >= 0 && parts.length > ipIdx + 1 ? decodeURIComponent(parts[ipIdx + 1]) : ''
     document.title = this.ip ? `argus · IP ${this.ip}` : 'argus · IP'
     this.load()
   },
@@ -165,7 +227,7 @@ function ipPage(){ return {
     this.error = ''
     this.result = null
     try {
-      const r = await fetch('/infoip?ip=' + encodeURIComponent(this.ip))
+      const r = await fetch('/ip/' + encodeURIComponent(this.ip) + '/profile')
       if (!r.ok) throw new Error('Lookup failed')
       this.result = await r.json()
     } catch (e) {
@@ -179,6 +241,21 @@ function ipPage(){ return {
     if (!ts) return '—'
     const d = new Date(ts)
     return Number.isNaN(d.getTime()) ? ts : d.toLocaleString()
+  },
+
+  fmtASPath(path) {
+    if (!path || !path.length) return '—'
+    return path.map(h => 'AS' + h.asn).join(' → ')
+  },
+
+  tracerouteSummary() {
+    const t = this.result?.routing?.traceroute
+    if (!t?.available) return 'Traceroute summary unavailable (RouterOS not connected).'
+    if (t?.requested && t?.error) return 'Traceroute failed: ' + t.error
+    if (t?.hop_count > 0) {
+      return `Traceroute: ${t.hop_count} hops via ${t.upstream || 'unknown upstream'} (${t.source_ip || 'auto source'}).`
+    }
+    return 'Traceroute not requested. Add ?traceroute=1 to the profile endpoint for live probe.'
   },
 }}
 </script>

@@ -433,11 +433,46 @@ tbody tr:hover{background:var(--bg3)}
           <span>Fallback active</span>
           <span class="mono" x-text="external?.fallback_active ? 'yes' : 'no'"></span>
         </div>
-        <div style="margin-top:10px">
-          <template x-for="lnk in links" :key="lnk.url">
-            <div><a class="ip-link" :href="lnk.url" target="_blank" rel="noopener" x-text="lnk.label"></a></div>
-          </template>
+        <div class="proto-row">
+          <span>Local stale</span>
+          <span class="mono" x-text="external?.local_stale ? 'yes' : 'no'"></span>
         </div>
+        <div class="proto-row">
+          <span>Intel cache</span>
+          <span class="mono" x-text="external?.intel_cache_hit ? 'hit' : 'miss'"></span>
+        </div>
+        <div class="proto-row" x-show="external?.intel_error">
+          <span>Intel status</span>
+          <span class="mono" style="color:var(--yellow)" x-text="external?.intel_error"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">External intelligence</div>
+    <div class="row-2">
+      <div class="card">
+        <div class="mini-label">Normalized intelligence fields</div>
+        <template x-if="!intel"><div class="empty">no external intelligence available</div></template>
+        <div x-show="intel">
+          <div class="proto-row"><span>Source</span><span class="mono" x-text="intel?.source || '—'"></span></div>
+          <div class="proto-row"><span>Fetched at</span><span class="mono" x-text="fmtTs(intel?.fetched_at)"></span></div>
+          <div class="proto-row"><span>ASN name</span><span class="mono" x-text="optField(intel?.name)"></span></div>
+          <div class="proto-row"><span>Country</span><span class="mono" x-text="optField(intel?.country)"></span></div>
+          <div class="proto-row"><span>Announced prefixes</span><span class="mono" x-text="optField(intel?.announced_prefixes_count)"></span></div>
+          <div class="proto-row"><span>Peers</span><span class="mono" x-text="optField(intel?.peers_count)"></span></div>
+          <div class="proto-row"><span>IX presence</span><span class="mono" x-text="listField(intel?.ix_presence)"></span></div>
+          <div class="proto-row"><span>Observed paths/hops</span><span class="mono" x-text="observedSummary()"></span></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="mini-label">Links</div>
+        <template x-for="lnk in links" :key="lnk.url">
+          <div style="margin-bottom:8px">
+            <a class="ip-link" :href="lnk.url" :target="lnk.url.startsWith('/') ? '_self' : '_blank'" rel="noopener" x-text="lnk.label"></a>
+          </div>
+        </template>
       </div>
     </div>
   </div>
@@ -468,6 +503,7 @@ function asnPage() { return {
   hasBGPData: false,
   bgpResult: null,
   external: null,
+  intel: null,
   links: [],
   ptrCache: {},
   ipSearch: '',
@@ -543,6 +579,7 @@ function asnPage() { return {
       this.hasBGPData     = !!d.has_bgp_data
       this.bgpResult      = d.bgp?.result ?? null
       this.external       = d.external ?? null
+      this.intel          = this.external?.intelligence ?? null
       this.links          = d.links ?? []
 
       // Annotate with percentages for bar rendering
@@ -558,6 +595,24 @@ function asnPage() { return {
       this.loadingTimeline = false
       this.loadingDetail = false
     }
+  },
+
+  optField(field) {
+    if (!field || !field.present) return '—'
+    if (field.value === undefined || field.value === null || field.value === '') return '—'
+    return String(field.value)
+  },
+
+  listField(field) {
+    if (!field || !field.present || !Array.isArray(field.value) || field.value.length === 0) return '—'
+    return field.value.slice(0, 6).join(', ')
+  },
+
+  observedSummary() {
+    const obs = this.intel?.observed_paths
+    if (!obs?.present || !obs.value) return '—'
+    const v = obs.value
+    return `${v.path_count || 0} paths, hops ${v.min_hops || 0}-${v.max_hops || 0}, unique ASNs ${v.unique_hops || 0}`
   },
 
   async loadBH() {

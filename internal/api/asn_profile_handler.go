@@ -73,11 +73,6 @@ type asnProfileLink struct {
 
 // GET /asn/{asn}/profile?window=24h&dir=both
 func handleASNProfile(w http.ResponseWriter, r *http.Request) {
-	if DB == nil {
-		jsonErr(w, http.StatusServiceUnavailable, "database not available")
-		return
-	}
-
 	asn, err := parseProfileASN(r)
 	if err != nil {
 		jsonErr(w, http.StatusBadRequest, err.Error())
@@ -87,50 +82,63 @@ func handleASNProfile(w http.ResponseWriter, r *http.Request) {
 	windowLabel, window := parseProfileWindow(r)
 	dir := parseProfileDir(r)
 
-	meta, err := flowstore.QueryMeta(DB, asn)
-	if err != nil {
-		jsonErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	timeline, err := flowstore.QueryTimeline(DB, asn, window)
-	if err != nil {
-		jsonErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	ifaces, err := flowstore.QueryIfaceSplit(DB, asn, window)
-	if err != nil {
-		jsonErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	topIPs, err := flowstore.QueryTopIPs(DB, asn, window, dir)
-	if err != nil {
-		jsonErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	prefixes, err := flowstore.QueryTopPrefixes(DB, asn, window)
-	if err != nil {
-		jsonErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	proto, err := flowstore.QueryProto(DB, asn, window)
-	if err != nil {
-		jsonErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	countries, err := flowstore.QueryCountry(DB, asn, window)
-	if err != nil {
-		jsonErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	ports, err := flowstore.QueryPorts(DB, asn, window)
-	if err != nil {
-		jsonErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	tcpFlags, err := flowstore.QueryTCPFlags(DB, asn, window)
-	if err != nil {
-		jsonErr(w, http.StatusInternalServerError, err.Error())
-		return
+	var (
+		meta      *flowstore.ASNMeta
+		timeline  []flowstore.TimelinePoint
+		ifaces    []flowstore.IfaceSplit
+		topIPs    []flowstore.IPPair
+		prefixes  []flowstore.PrefixStat
+		proto     []flowstore.ProtoStat
+		countries []flowstore.CountryStat
+		ports     []flowstore.PortStat
+		tcpFlags  *flowstore.TCPFlagsStat
+	)
+	if DB != nil {
+		meta, err = flowstore.QueryMeta(DB, asn)
+		if err != nil {
+			jsonErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		timeline, err = flowstore.QueryTimeline(DB, asn, window)
+		if err != nil {
+			jsonErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		ifaces, err = flowstore.QueryIfaceSplit(DB, asn, window)
+		if err != nil {
+			jsonErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		topIPs, err = flowstore.QueryTopIPs(DB, asn, window, dir)
+		if err != nil {
+			jsonErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		prefixes, err = flowstore.QueryTopPrefixes(DB, asn, window)
+		if err != nil {
+			jsonErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		proto, err = flowstore.QueryProto(DB, asn, window)
+		if err != nil {
+			jsonErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		countries, err = flowstore.QueryCountry(DB, asn, window)
+		if err != nil {
+			jsonErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		ports, err = flowstore.QueryPorts(DB, asn, window)
+		if err != nil {
+			jsonErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		tcpFlags, err = flowstore.QueryTCPFlags(DB, asn, window)
+		if err != nil {
+			jsonErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 	}
 
 	displayName := fmt.Sprintf("AS%d", asn)

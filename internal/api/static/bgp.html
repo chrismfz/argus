@@ -103,17 +103,15 @@ nav a.dbg:hover{background:rgba(249,226,175,.1);border-color:var(--yellow)}
 .notice.err{border-color:var(--red);color:var(--red)}
 .mono{font-family:monospace}
 [x-cloak]{display:none!important}
+.page-header{display:flex;align-items:center;gap:16px;padding:11px 20px;background:var(--bg2);border-bottom:1px solid var(--border);flex-wrap:wrap}
+.page-title{font-size:15px;font-weight:700;letter-spacing:.05em}
+.page-sub{font-size:11px;color:var(--muted)}
+.page-status{display:flex;align-items:center;gap:8px;margin-left:4px}
+.status-tag{font-size:11px;padding:2px 8px;border-radius:4px;background:var(--bg3);color:var(--muted);border:1px solid var(--border)}
+
 </style>
 </head>
 <body x-data="bgp()" x-init="init()" x-cloak>
-
-<header>
-  <h1>argus</h1>
-  <span class="tag">BGP cockpit</span>
-  <span class="tag" :style="reachable ? 'color:var(--green)' : 'color:var(--red)'"
-    x-text="reachable ? '● RouterOS reachable' : '○ RouterOS unreachable'"></span>
-  <span class="tag" x-show="lastPoll" x-text="'polled ' + pollAgo() + 's ago'"></span>
-</header>
 
 <nav>
   <a href="/dashboard">Overview</a>
@@ -126,6 +124,19 @@ nav a.dbg:hover{background:rgba(249,226,175,.1);border-color:var(--yellow)}
   <a href="/debug/flows" target="_blank" class="dbg">⚡ Live Flows</a>
   <a href="/debug/rawflows" target="_blank" class="dbg">🔬 Raw Fields</a>
 </nav>
+
+<div class="page-header">
+  <div>
+    <div class="page-title">BGP</div>
+    <div class="page-sub">Cockpit</div>
+  </div>
+  <div class="page-status">
+    <span class="status-tag"
+          :style="reachable ? 'color:var(--green)' : 'color:var(--red)'"
+          x-text="reachable ? '● RouterOS reachable' : '○ RouterOS unreachable'"></span>
+    <span class="status-tag" x-show="lastPoll" x-text="'polled ' + pollAgo() + 's ago'"></span>
+  </div>
+</div>
 
 <div class="tab-bar">
   <button class="tab-btn" :class="{active:tab==='monitor'}" @click="tab='monitor'">Monitor</button>

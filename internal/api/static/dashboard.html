@@ -3,63 +3,122 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>argus — telemetry</title>
+<title>argus · dashboard</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.4.3/echarts.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/alpinejs/3.13.3/cdn.min.js" defer></script>
-<script src="/static/nav-search.js" defer></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#0f1117;--bg2:#161b27;--bg3:#1e2535;
+  --bg:#0f1117;--bg2:#161b27;--bg3:#1e2535;--bg4:#242d3f;
   --border:#2a3147;--text:#cdd6f4;--muted:#6c7086;
-  --accent:#89b4fa;--green:#a6e3a1;--red:#f38ba8;--yellow:#f9e2af;
-  --purple:#cba6f7;--teal:#94e2d5;--orange:#fab387;
+  --accent:#89b4fa;--green:#a6e3a1;--red:#f38ba8;
+  --yellow:#f9e2af;--purple:#cba6f7;--teal:#94e2d5;--orange:#fab387;
 }
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;font-size:14px}
-header{display:flex;align-items:center;gap:16px;padding:12px 20px;background:var(--bg2);border-bottom:1px solid var(--border)}
-header h1{font-size:16px;font-weight:600;color:var(--accent)}
-header .tag{font-size:11px;padding:2px 8px;border-radius:4px;background:var(--bg3);color:var(--muted)}
-nav{display:flex;gap:2px;padding:0 20px;background:var(--bg2);border-bottom:1px solid var(--border);align-items:center}
-nav .sep{margin-left:auto;width:1px;height:20px;background:var(--border)}
-nav a.dbg{padding:6px 12px;font-size:12px;color:var(--yellow);text-decoration:none;border:1px solid rgba(249,226,175,.25);border-radius:4px;margin-left:8px;transition:.15s}
-nav a.dbg:hover{background:rgba(249,226,175,.1);border-color:var(--yellow)}
-nav a.page{padding:10px 18px;color:var(--muted);font-size:13px;text-decoration:none;border-bottom:2px solid transparent;display:inline-block;transition:.1s}
-nav a.page:hover{color:var(--text)}
-nav button{padding:10px 18px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;border-bottom:2px solid transparent;transition:.15s}
-nav button.active{color:var(--accent);border-color:var(--accent)}
-nav button:hover:not(.active){color:var(--text)}
+
+/* ── Global nav (shared across all pages) ── */
+.global-nav{
+  display:flex;align-items:center;gap:2px;
+  padding:0 16px;background:var(--bg2);
+  border-bottom:1px solid var(--border);height:42px;
+  overflow-x:auto;
+}
+.global-nav a{
+  padding:0 13px;height:42px;display:flex;align-items:center;
+  font-size:13px;color:var(--muted);text-decoration:none;
+  border-bottom:2px solid transparent;white-space:nowrap;transition:color .15s;
+}
+.global-nav a:hover{color:var(--text)}
+.global-nav a.active{color:var(--accent);border-bottom-color:var(--accent)}
+.global-nav .sep{flex:1}
+.global-nav a.dbg{font-size:11px;color:var(--muted);opacity:.6}
+.global-nav a.dbg:hover{opacity:1}
+
+/* ── Page header ── */
+.page-header{
+  display:flex;align-items:center;gap:16px;
+  padding:11px 20px;background:var(--bg2);
+  border-bottom:1px solid var(--border);flex-wrap:wrap;
+}
+.page-title{font-size:15px;font-weight:700;letter-spacing:.05em;color:var(--text)}
+.page-status{display:flex;align-items:center;gap:8px;margin-left:4px}
+.status-tag{font-size:11px;padding:2px 8px;border-radius:4px;background:var(--bg3);color:var(--muted)}
+.page-header-right{margin-left:auto;display:flex;align-items:center;gap:12px}
+.logout-link{font-size:12px;color:var(--red);text-decoration:none;opacity:.7;transition:.15s;padding:3px 8px;border:1px solid rgba(243,139,168,.2);border-radius:4px}
+.logout-link:hover{opacity:1;background:rgba(243,139,168,.08);border-color:var(--red)}
+
+/* ── Sub-tab bar ── */
+.tab-bar{
+  display:flex;align-items:center;gap:0;
+  padding:0 16px;background:var(--bg2);
+  border-bottom:1px solid var(--border);
+  overflow-x:auto;
+}
+.tab-bar button{
+  padding:10px 16px;font-size:13px;color:var(--muted);
+  background:none;border:none;border-bottom:2px solid transparent;
+  cursor:pointer;transition:color .15s;white-space:nowrap;
+}
+.tab-bar button:hover{color:var(--text)}
+.tab-bar button.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab-bar .tab-sep{flex:1}
+.tab-ip-search{display:flex;gap:5px;align-items:center;padding:0 4px}
+.tab-ip-search input{
+  width:170px;font-family:monospace;font-size:12px;
+  background:var(--bg3);border:1px solid var(--border);
+  color:var(--text);border-radius:5px;padding:4px 8px;outline:none;
+}
+.tab-ip-search input:focus{border-color:var(--accent)}
+.tab-ip-search button{
+  background:var(--bg3);border:1px solid var(--border);
+  color:var(--accent);border-radius:5px;padding:4px 10px;
+  font-size:12px;cursor:pointer;white-space:nowrap;
+}
+.tab-ip-search button:hover{border-color:var(--accent);background:var(--bg4)}
+
+/* ── Content & layout ── */
 .content{padding:20px;max-width:1600px;margin:0 auto}
 .grid{display:grid;gap:16px}
 .grid-2{grid-template-columns:1fr 1fr}
 .grid-3{grid-template-columns:1fr 1fr 1fr}
 .grid-4{grid-template-columns:repeat(4,1fr)}
 @media(max-width:900px){.grid-2,.grid-3,.grid-4{grid-template-columns:1fr}}
+
+/* ── Cards ── */
 .card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px}
 .card-title{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px}
 .stat{font-size:28px;font-weight:700;color:var(--text)}
 .stat-sub{font-size:12px;color:var(--muted);margin-top:2px}
 .chart{width:100%;height:280px}
 .chart-tall{width:100%;height:380px}
+
+/* ── Tables ── */
 table{width:100%;border-collapse:collapse}
 thead th{text-align:left;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;padding:6px 8px;border-bottom:1px solid var(--border)}
 tbody td{padding:7px 8px;border-bottom:1px solid var(--border);font-size:13px;white-space:nowrap}
 tbody tr:hover{background:var(--bg3)}
 tbody tr:last-child td{border:none}
+
+/* ── Typography helpers ── */
 .asn-num{color:var(--muted);font-size:12px}
-/* ── ASN drill-down links ── */
 .asn-link{color:var(--accent);text-decoration:none;font-family:monospace;font-size:12px}
 .asn-link:hover{text-decoration:underline}
 .ip-link{color:var(--accent);text-decoration:none;font-family:monospace}
 .ip-link:hover{text-decoration:underline}
 .bytes{font-family:monospace;color:var(--accent)}
+
+/* ── Bars ── */
 .bar-bg{height:6px;background:var(--bg3);border-radius:3px;overflow:hidden;min-width:60px}
 .bar-fill{height:100%;border-radius:3px;background:var(--accent);transition:width .3s}
 .bar-fill.out{background:var(--orange)}
+
+/* ── Misc ── */
 .tag-pill{display:inline-block;font-size:11px;padding:2px 8px;border-radius:10px;background:var(--bg3);color:var(--muted)}
 input,select{background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 10px;font-size:13px;outline:none}
 input:focus,select:focus{border-color:var(--accent)}
 button.btn{background:var(--accent);color:var(--bg);border:none;border-radius:6px;padding:7px 16px;font-size:13px;cursor:pointer;font-weight:600}
 button.btn:hover{opacity:.85}
+button.btn:disabled{opacity:.4;cursor:not-allowed}
 button.btn.secondary{background:var(--bg3);color:var(--text);border:1px solid var(--border)}
 .notice{padding:12px 16px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--muted);font-size:13px}
 .notice.warn{border-color:var(--yellow);color:var(--yellow)}
@@ -77,39 +136,60 @@ button.btn.secondary{background:var(--bg3);color:var(--text);border:1px solid va
 .note-input{display:flex;gap:8px;margin-top:12px}
 .note-input input{flex:1}
 .history-table tbody tr td:first-child{font-weight:600}
-header .logout{margin-left:auto;font-size:12px;color:var(--red);text-decoration:none;opacity:.7;transition:.15s;padding:3px 8px;border:1px solid rgba(243,139,168,.2);border-radius:4px}
-header .logout:hover{opacity:1;background:rgba(243,139,168,.08);border-color:var(--red)}
 </style>
 </head>
 <body x-data="app()" x-init="init()">
 
-<header>
-  <h1>argus telemetry</h1>
-  <span class="tag" x-text="'AS' + (overview.asn_out?.[0]?.asn ?? '—')"></span>
-  <span class="tag" x-text="lastUpdated ? 'updated ' + lastUpdated : 'loading…'"></span>
-  <span class="tag" :style="live ? 'color:var(--green)' : 'color:var(--red)'" x-text="live ? '● live' : '○ stale'"></span>
-  <a href="#" class="logout" @click.prevent="fetch('/logout',{method:'POST'}).then(()=>window.location.href='/login')">⏻ logout</a>
-</header>
+<!-- ══ Global nav ══════════════════════════════════════════════════════════ -->
+<nav class="global-nav">
+  <a href="/dashboard" class="active">Overview</a>
+  <a href="/bgp">BGP</a>
+  <a href="/routewatch">Routewatch</a>
+  <a href="/detection">Detection</a>
+  <a href="/alerts">Alerts</a>
+  <a href="/pathfinder">Pathfinder</a>
+  <span class="sep"></span>
+  <a href="/debug/flows"    target="_blank" class="dbg">⚡ Live Flows</a>
+  <a href="/debug/rawflows" target="_blank" class="dbg">🔬 Raw Fields</a>
+</nav>
 
-<nav>
+<!-- ══ Page header ══════════════════════════════════════════════════════════ -->
+<div class="page-header">
+  <div class="page-title">DASHBOARD</div>
+  <div class="page-status">
+    <span class="status-tag" x-text="'AS' + (overview.asn_out?.[0]?.asn ?? '—')"></span>
+    <span class="status-tag" x-text="lastUpdated ? 'updated ' + lastUpdated : 'loading…'"></span>
+    <span class="status-tag"
+          :style="live ? 'color:var(--green)' : 'color:var(--red)'"
+          x-text="live ? '● live' : '○ stale'"></span>
+  </div>
+  <div class="page-header-right">
+    <a href="#" class="logout-link"
+       @click.prevent="fetch('/logout',{method:'POST'}).then(()=>window.location.href='/login')">
+      ⏻ logout
+    </a>
+  </div>
+</div>
+
+<!-- ══ Sub-tab bar ══════════════════════════════════════════════════════════ -->
+<div class="tab-bar">
   <button :class="{active:tab==='overview'}"  @click="tab='overview'">Overview</button>
   <button :class="{active:tab==='asn'}"       @click="tab='asn';loadASN()">Traffic by AS</button>
   <button :class="{active:tab==='hosts'}"     @click="tab='hosts';loadHosts()">Hosts &amp; Ports</button>
   <button :class="{active:tab==='history'}"   @click="tab='history'">History</button>
   <button :class="{active:tab==='snapshots'}" @click="tab='snapshots';loadSnapshots()">Snapshots</button>
   <button :class="{active:tab==='upstreams'}" @click="tab='upstreams';loadUpstreams()">Upstreams</button>
-  <a href="/bgp" class="page">BGP</a>
-  <a href="/routewatch" class="page">Routewatch</a>
-  <a href="/detection" class="page">Detection</a>
-  <a href="/alerts" class="page">Alerts</a>
-  <a href="/pathfinder" class="page">Pathfinder</a>
-  <span class="sep"></span>
-  <div id="nav-search" class="argus-nav-search-mount"></div>
-  <a href="/debug/flows" target="_blank" class="dbg">⚡ Live Flows</a>
-  <a href="/debug/rawflows" target="_blank" class="dbg">🔬 Raw Fields</a>
-</nav>
+  <span class="tab-sep"></span>
+  <div class="tab-ip-search">
+    <input x-model="ipSearch"
+           placeholder="IP lookup…"
+           @keyup.enter="openIP()"
+           @keyup.escape="ipSearch=''">
+    <button @click="openIP()">→ IP</button>
+  </div>
+</div>
 
-<!-- ── OVERVIEW ── -->
+<!-- ══ OVERVIEW ══════════════════════════════════════════════════════════════ -->
 <div class="content" x-show="tab==='overview'">
   <div class="refresh-bar">
     <template x-if="loading"><span><span class="spinner"></span>fetching…</span></template>
@@ -144,7 +224,7 @@ header .logout:hover{opacity:1;background:rgba(243,139,168,.08);border-color:var
       <div class="stat" x-text="fmtBytes(overview.total_out ?? 0)"></div>
       <div class="stat-sub" x-text="(overview.flows_out ?? 0).toLocaleString() + ' flows'"></div>
     </div>
-    <!-- ↓ top inbound AS — name links to drill-down -->
+    <!-- top inbound AS — name links to drill-down -->
     <div class="card">
       <div class="card-title">top inbound AS</div>
       <a :href="overview.asn_in?.[0]?.asn ? '/asn/'+overview.asn_in[0].asn : '#'"
@@ -153,7 +233,7 @@ header .logout:hover{opacity:1;background:rgba(243,139,168,.08);border-color:var
       </a>
       <div class="stat-sub" x-text="fmtBytes(overview.asn_in?.[0]?.bytes_in ?? 0)"></div>
     </div>
-    <!-- ↓ top outbound AS — name links to drill-down -->
+    <!-- top outbound AS — name links to drill-down -->
     <div class="card">
       <div class="card-title">top outbound AS</div>
       <a :href="overview.asn_out?.[0]?.asn ? '/asn/'+overview.asn_out[0].asn : '#'"
@@ -169,7 +249,7 @@ header .logout:hover{opacity:1;background:rgba(243,139,168,.08);border-color:var
     <div id="chart-throughput" class="chart"></div>
   </div>
 
-  <!-- ↓ bar charts are clickable — see drawASNBar() -->
+  <!-- bar charts are clickable — see drawASNBar() -->
   <div class="grid grid-2">
     <div class="card">
       <div class="card-title">top 10 inbound AS (24h) <span style="font-size:10px;font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0">· click to drill down</span></div>
@@ -182,7 +262,7 @@ header .logout:hover{opacity:1;background:rgba(243,139,168,.08);border-color:var
   </div>
 </div>
 
-<!-- ── TRAFFIC BY AS ── -->
+<!-- ══ TRAFFIC BY AS ══════════════════════════════════════════════════════════ -->
 <div class="content" x-show="tab==='asn'">
   <div class="refresh-bar" style="margin-bottom:14px">
     <label>window <select x-model="asnMinutes" @change="loadASN()">
@@ -201,12 +281,11 @@ header .logout:hover{opacity:1;background:rgba(243,139,168,.08);border-color:var
         <tbody>
           <template x-for="a in (asnData.top_in ?? [])" :key="a.asn">
             <tr>
-              <!-- ↓ ASN number links to drill-down -->
-              <td><a class="asn-link" :href="'/asn/'+a.asn" x-text="a.asn" @click.stop></a></td>
+              <td><a class="asn-link" :href="'/asn/'+a.asn" x-text="'AS'+a.asn"></a></td>
               <td x-text="a.name || '—'"></td>
               <td class="bytes" x-text="fmtBytes(a.bytes_in)"></td>
-              <td><div class="bar-bg"><div class="bar-fill" :style="'width:'+pct(a.bytes_in, maxAsnIn)+'%'"></div></div></td>
-              <td><span class="tag-pill" x-show="a.via" x-text="a.via" style="color:var(--teal);font-size:11px"></span></td>
+              <td><div class="bar-bg"><div class="bar-fill" :style="'width:'+pct(a.bytes_in,maxAsnIn)+'%'"></div></div></td>
+              <td style="font-size:11px;color:var(--muted)" x-text="a.via || '—'"></td>
             </tr>
           </template>
         </tbody>
@@ -219,30 +298,30 @@ header .logout:hover{opacity:1;background:rgba(243,139,168,.08);border-color:var
         <tbody>
           <template x-for="a in (asnData.top_out ?? [])" :key="a.asn">
             <tr>
-              <!-- ↓ ASN number links to drill-down -->
-              <td><a class="asn-link" :href="'/asn/'+a.asn" x-text="a.asn" @click.stop></a></td>
+              <td><a class="asn-link" :href="'/asn/'+a.asn" x-text="'AS'+a.asn"></a></td>
               <td x-text="a.name || '—'"></td>
               <td class="bytes" x-text="fmtBytes(a.bytes_out)"></td>
-              <td><div class="bar-bg"><div class="bar-fill out" :style="'width:'+pct(a.bytes_out, maxAsnOut)+'%'"></div></div></td>
-              <td><span class="tag-pill" x-show="a.via" x-text="a.via" style="color:var(--orange);font-size:11px"></span></td>
+              <td><div class="bar-bg"><div class="bar-fill out" :style="'width:'+pct(a.bytes_out,maxAsnOut)+'%'"></div></div></td>
+              <td style="font-size:11px;color:var(--muted)" x-text="a.via || '—'"></td>
             </tr>
           </template>
         </tbody>
       </table>
     </div>
   </div>
-
-  <div class="card" style="margin-bottom:16px">
-    <div class="card-title">outgoing traffic — AS sankey</div>
-    <div id="chart-sankey-out" class="chart-tall"></div>
-  </div>
-  <div class="card">
-    <div class="card-title">incoming traffic — AS sankey</div>
-    <div id="chart-sankey-in" class="chart-tall"></div>
+  <div class="grid grid-2">
+    <div class="card">
+      <div class="card-title">outbound — upstream × AS sankey</div>
+      <div id="chart-sankey-out" class="chart-tall"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">inbound — upstream × AS sankey</div>
+      <div id="chart-sankey-in" class="chart-tall"></div>
+    </div>
   </div>
 </div>
 
-<!-- ── HOSTS & PORTS ── -->
+<!-- ══ HOSTS & PORTS ══════════════════════════════════════════════════════════ -->
 <div class="content" x-show="tab==='hosts'">
   <div class="grid grid-2" style="margin-bottom:16px">
     <div class="card">
@@ -280,12 +359,13 @@ header .logout:hover{opacity:1;background:rgba(243,139,168,.08);border-color:var
   </div>
 </div>
 
-<!-- ── HISTORY ── -->
+<!-- ══ HISTORY ══════════════════════════════════════════════════════════════ -->
 <div class="content" x-show="tab==='history'">
   <div class="card" style="margin-bottom:16px">
     <div class="card-title">ASN historical comparison</div>
     <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
-      <input x-model="historyASN" type="number" placeholder="ASN number e.g. 13335" style="width:220px" @keyup.enter="loadHistory()">
+      <input x-model="historyASN" type="number" placeholder="ASN number e.g. 13335"
+             style="width:220px" @keyup.enter="loadHistory()">
       <button class="btn" @click="loadHistory()" :disabled="historyLoading">
         <template x-if="historyLoading"><span><span class="spinner"></span>loading…</span></template>
         <template x-if="!historyLoading">Look up</template>
@@ -298,13 +378,8 @@ header .logout:hover{opacity:1;background:rgba(243,139,168,.08);border-color:var
         <table class="history-table">
           <thead>
             <tr>
-              <th>Period</th>
-              <th>Date</th>
-              <th>Inbound</th>
-              <th>Outbound</th>
-              <th>Flows in</th>
-              <th>Flows out</th>
-              <th>Note</th>
+              <th>Period</th><th>Date</th><th>Inbound</th><th>Outbound</th>
+              <th>Flows in</th><th>Flows out</th><th>Note</th>
             </tr>
           </thead>
           <tbody>
@@ -341,7 +416,7 @@ header .logout:hover{opacity:1;background:rgba(243,139,168,.08);border-color:var
   </div>
 </div>
 
-<!-- ── SNAPSHOTS ── -->
+<!-- ══ SNAPSHOTS ══════════════════════════════════════════════════════════════ -->
 <div class="content" x-show="tab==='snapshots'">
   <div class="card" style="margin-bottom:16px">
     <div class="card-title">manual snapshot</div>
@@ -362,9 +437,7 @@ header .logout:hover{opacity:1;background:rgba(243,139,168,.08);border-color:var
     <div class="card-title">snapshot history</div>
     <table>
       <thead>
-        <tr>
-          <th>ID</th><th>Period</th><th>Date range</th><th>Created</th><th>Note</th>
-        </tr>
+        <tr><th>ID</th><th>Period</th><th>Date range</th><th>Created</th><th>Note</th></tr>
       </thead>
       <tbody>
         <template x-for="s in snapshots" :key="s.id">
@@ -384,414 +457,7 @@ header .logout:hover{opacity:1;background:rgba(243,139,168,.08);border-color:var
   </div>
 </div>
 
-<script>
-// ── ECharts registry ───────────────────────────────────────────────────────────
-const charts = {}
-function ec(id) {
-  if (!charts[id]) charts[id] = echarts.init(document.getElementById(id), 'dark')
-  return charts[id]
-}
-
-// ── Alpine app ─────────────────────────────────────────────────────────────────
-function app() { return {
-  tab: 'overview',
-  loading: false,
-  live: false,
-  lastUpdated: '',
-  nextRefresh: 30,
-  overviewMinutes: 1440,
-
-  overview: {},
-  asnData: {},
-  hostsData: {},
-
-  historyASN: '',
-  historyLoading: false,
-  historyRows: [],
-  historyLive: null,
-  historyName: '',
-
-  snapshots: [],
-  upstreamsData: [],
-  ifaceSankeyIn: [],
-  bgpStatus: null,
-
-  ifaceSankeyOut: [],
-  upstreamMinutes: 1440,
-  asnMinutes: 1440,
-  snapNote: '',
-  snapLoading: false,
-  snapMsg: '',
-
-  // ── computed helpers ──
-  get filteredBlackholes() {
-    const { ip, asn, country } = this.bhFilter
-    return this.blackholes.filter(b => {
-      if (ip && !b.prefix.includes(ip) && !(b.ptr||'').toLowerCase().includes(ip.toLowerCase())) return false
-      if (asn && !String(b.asn).includes(asn) && !(b.asn_name||'').toLowerCase().includes(asn.toLowerCase())) return false
-      if (country && (b.country||'').toUpperCase() !== country.toUpperCase()) return false
-      return true
-    })
-  },
-
-  get maxAsnIn()  { return Math.max(...(this.asnData.top_in  ?? []).map(a=>a.bytes_in),  1) },
-  get maxAsnOut() { return Math.max(...(this.asnData.top_out ?? []).map(a=>a.bytes_out), 1) },
-
-  // ── lifecycle ──
-  init() {
-    this.loadOverview()
-    setInterval(()=>{
-      this.nextRefresh--
-      if (this.nextRefresh <= 0) {
-        this.nextRefresh = 30
-        if (this.tab === 'overview') this.loadOverview()
-      }
-    }, 1000)
-    window.addEventListener('resize', ()=>Object.values(charts).forEach(c=>c.resize()))
-  },
-
-  // ── data fetchers ──
-  async loadOverview() {
-    this.loading = true
-    try {
-      const r = await fetch(`/tel/overview?minutes=${this.overviewMinutes}`)
-      if (!r.ok) throw new Error(r.status)
-      const d = await r.json()
-      const ts = d.timeseries ?? []
-      if (ts.length >= 2) {
-        const b = ts[ts.length - 2]  // last fully-closed 1-min bucket
-        d.rateMbpsIn  = ((b.bytes_in  * 8) / 60 / 1_000_000).toFixed(1)
-        d.rateMbpsOut = ((b.bytes_out * 8) / 60 / 1_000_000).toFixed(1)
-      }
-      this.overview = d
-      this.live = true
-      this.lastUpdated = new Date().toLocaleTimeString()
-      this.$nextTick(()=>{
-        this.drawThroughput(this.overview.timeseries ?? [])
-        this.drawASNBar('chart-asn-in',  this.overview.asn_in  ?? [], 'bytes_in',  '#89b4fa')
-        this.drawASNBar('chart-asn-out', this.overview.asn_out ?? [], 'bytes_out', '#fab387')
-      })
-    } catch(e) {
-      this.live = false
-    } finally { this.loading = false }
-  },
-
-  async loadASN() {
-    const r = await fetch(`/tel/asn?n=20&minutes=${this.asnMinutes}`)
-    if (!r.ok) return
-    this.asnData = await r.json()
-    const sankey = await fetch('/tel/sankey?limit=25').then(r=>r.json()).catch(()=>({incoming:[],outgoing:[]}))
-    this.$nextTick(()=>{
-      this.drawSankey('chart-sankey-out', sankey.outgoing ?? [])
-      this.drawSankey('chart-sankey-in',  sankey.incoming ?? [])
-    })
-  },
-
-  async loadHosts() {
-    const r = await fetch('/tel/hosts?n=20')
-    if (!r.ok) return
-    this.hostsData = await r.json()
-    const ports = await fetch('/tel/ports?n=30').then(r=>r.json()).catch(()=>[])
-    this.$nextTick(()=>this.drawPorts(ports))
-  },
-
-  async loadHistory() {
-    if (!this.historyASN) return
-    this.historyLoading = true
-    this.historyRows = []
-    this.historyName = ''
-    this.historyLive = null
-    try {
-      const r = await fetch(`/tel/history?asn=${this.historyASN}`)
-      if (!r.ok) throw new Error(r.status)
-      const d = await r.json()
-      this.historyName = d.asn_name || ''
-      this.historyLive = d.live
-      this.historyRows = d.history ?? []
-      this.$nextTick(()=>this.drawHistoryChart(d))
-    } catch(e) {}
-    finally { this.historyLoading = false }
-  },
-
-  authHeaders() {
-    return { 'Content-Type': 'application/json' }
-  },
-
-  async apiCall(url, opts={}) {
-    opts.headers = { ...this.authHeaders(), ...(opts.headers||{}) }
-    const r = await fetch(url, opts)
-    if (!r.ok) throw new Error(`HTTP ${r.status}`)
-    return r.json()
-  },
-
-  async loadBGPStatus() {
-    try { this.bgpStatus = await this.apiCall('/bgpstatus') } catch(e) { this.bgpStatus = null }
-  },
-
-
-
-  countryFlag(cc) {
-    if (!cc || cc.length !== 2) return ''
-    return [...cc.toUpperCase()].map(c => String.fromCodePoint(0x1F1E6 + c.charCodeAt(0) - 65)).join('')
-  },
-
-
-  async loadUpstreams() {
-    this.loading = true
-    try {
-      const [r1, r2] = await Promise.all([
-        fetch(`/tel/interfaces?minutes=${this.upstreamMinutes}`),
-        fetch(`/tel/iface-sankey?limit=30`),
-      ])
-      this.upstreamsData = r1.ok ? (await r1.json() ?? []) : []
-      const sk = r2.ok ? await r2.json() : {}
-      this.ifaceSankeyIn  = sk.incoming ?? []
-      this.ifaceSankeyOut = sk.outgoing ?? []
-      this.$nextTick(() => {
-        this.drawIfaceSankeyChart('chart-iface-sankey-out', this.ifaceSankeyOut, false)
-        this.drawIfaceSankeyChart('chart-iface-sankey-in',  this.ifaceSankeyIn,  true)
-      })
-    } catch(e) { console.error(e) }
-    finally { this.loading = false }
-  },
-
-  drawIfaceSankeyChart(id, pairs, inbound) {
-    const el = document.getElementById(id)
-    if (!el || !pairs.length) return
-
-    const uniqueASNs = new Set(pairs.map(p => p.asn)).size
-    const h = Math.max(380, uniqueASNs * 26 + 80)
-    el.style.height = h + 'px'
-
-    if (!charts[id]) charts[id] = echarts.init(el, 'dark')
-
-    const ifLabel  = p => p.iface_name
-      ? `${p.iface_name} (idx ${p.iface_idx})`
-      : `if${p.iface_idx}`
-
-    const asnLabel = p => p.asn_name
-      ? `AS${p.asn} · ${p.asn_name}`
-      : `AS${p.asn}`
-
-    const nodeSet = new Set()
-    pairs.forEach(p => { nodeSet.add(ifLabel(p)); nodeSet.add(asnLabel(p)) })
-    const nodes = [...nodeSet].map(name => ({name}))
-    const links = pairs.map(p => ({
-      source: ifLabel(p),
-      target: asnLabel(p),
-      value:  p.bytes,
-    }))
-
-    charts[id].setOption({
-      backgroundColor:'transparent',
-      tooltip:{trigger:'item',formatter:p=>{
-        if(p.dataType==='edge') return `${p.data.source} → ${p.data.target}: ${fmtBytesS(p.data.value)}`
-        return p.name
-      }},
-      series:[{
-        type:'sankey', layout:'none', emphasis:{focus:'adjacency'},
-        left: '5%', right: '35%', top: '5%', bottom: '5%',
-        data:nodes, links,
-        lineStyle:{color:'gradient',opacity:.4},
-        label:{color:'#cdd6f4',fontSize:11},
-        nodeWidth:12, nodeGap:8,
-      }]
-    })
-
-    setTimeout(() => { if (charts[id]) charts[id].resize() }, 60)
-  },
-
-  drawIfaceChart(iface) {
-    const id = 'chart-iface-' + iface.index
-    const el = document.getElementById(id)
-    if (!el) return
-    if (!charts[id]) charts[id] = echarts.init(el, 'dark')
-    const c = charts[id]
-    const inSeries  = (iface.series||[]).map(b=>[b.ts*1000, b.bytes_in])
-    const outSeries = (iface.series||[]).map(b=>[b.ts*1000, b.bytes_out])
-    c.setOption({
-      backgroundColor:'transparent',
-      tooltip:{trigger:'axis',formatter:p=>{
-        const t=new Date(p[0].value[0]).toLocaleTimeString()
-        return `${t}<br>${p.map(s=>`${s.seriesName}: ${fmtBytesS(s.value[1])}/min`).join('<br>')}`
-      }},
-      legend:{data:['in','out'],top:0,textStyle:{color:'#cdd6f4'}},
-      grid:{top:30,right:20,bottom:30,left:70},
-      xAxis:{type:'time',axisLabel:{color:'#6c7086'},splitLine:{lineStyle:{color:'#2a3147'}}},
-      yAxis:{type:'value',axisLabel:{color:'#6c7086',formatter:v=>fmtBytesS(v)},splitLine:{lineStyle:{color:'#2a3147'}}},
-      series:[
-        {name:'in', type:'line',data:inSeries, showSymbol:false,lineStyle:{width:2},areaStyle:{opacity:.15},color:'#89b4fa'},
-        {name:'out',type:'line',data:outSeries,showSymbol:false,lineStyle:{width:2},areaStyle:{opacity:.15},color:'#fab387'}
-      ]
-    })
-  },
-
-  async loadSnapshots() {
-    const r = await fetch('/tel/snapshots')
-    if (!r.ok) return
-    this.snapshots = await r.json() ?? []
-  },
-
-  async takeSnap() {
-    this.snapLoading = true
-    this.snapMsg = ''
-    try {
-      const r = await fetch('/tel/snapshots', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({note: this.snapNote})
-      })
-      const d = await r.json()
-      this.snapMsg = `Saved snapshot #${d.id} — "${d.note || '(no note)'}"`
-      this.snapNote = ''
-      this.loadSnapshots()
-    } catch(e) { this.snapMsg = 'Error saving snapshot.' }
-    finally { this.snapLoading = false }
-  },
-
-  // ── chart builders ──
-  drawThroughput(ts) {
-    const c = ec('chart-throughput')
-    const inSeries  = ts.map(b=>[b.ts*1000, b.bytes_in])
-    const outSeries = ts.map(b=>[b.ts*1000, b.bytes_out])
-    c.setOption({
-      backgroundColor:'transparent',
-      tooltip:{trigger:'axis',formatter:p=>{
-        const t=new Date(p[0].value[0]).toLocaleTimeString()
-        return `${t}<br>${p.map(s=>`${s.seriesName}: ${fmtBytesS(s.value[1])}/min`).join('<br>')}`
-      }},
-      legend:{data:['inbound','outbound'],top:0,textStyle:{color:'#cdd6f4'}},
-      grid:{top:30,right:20,bottom:30,left:70},
-      xAxis:{type:'time',axisLabel:{color:'#6c7086'},splitLine:{lineStyle:{color:'#2a3147'}}},
-      yAxis:{type:'value',axisLabel:{color:'#6c7086',formatter:v=>fmtBytesS(v)},splitLine:{lineStyle:{color:'#2a3147'}}},
-      series:[
-        {name:'inbound', type:'line',data:inSeries, showSymbol:false, lineStyle:{width:2}, areaStyle:{opacity:.15}, color:'#89b4fa'},
-        {name:'outbound',type:'line',data:outSeries,showSymbol:false, lineStyle:{width:2}, areaStyle:{opacity:.15}, color:'#fab387'}
-      ]
-    })
-  },
-
-  // ↓ bar charts are clickable — navigates to /asn/{asn} drill-down
-  drawASNBar(id, data, field, color) {
-    const c = ec(id)
-    const top = data.slice(0,10)
-    c.setOption({
-      backgroundColor:'transparent',
-      tooltip:{trigger:'axis',formatter:p=>`${p[0].name}: ${fmtBytesS(p[0].value)}`},
-      grid:{top:10,right:20,bottom:40,left:10,containLabel:true},
-      xAxis:{type:'value',axisLabel:{color:'#6c7086',formatter:v=>fmtBytesS(v)},splitLine:{lineStyle:{color:'#2a3147'}}},
-      yAxis:{type:'category',data:top.map(a=>a.name||`AS${a.asn}`),axisLabel:{color:'#cdd6f4',width:150,overflow:'truncate'}},
-      series:[{type:'bar',data:top.map(a=>a[field]),itemStyle:{color,borderRadius:[0,4,4,0]},barMaxWidth:22,cursor:'pointer'}]
-    })
-    c.off('click')
-    c.on('click', params => {
-      const a = top[params.dataIndex]
-      if (a?.asn) window.location.href = '/asn/' + a.asn
-    })
-  },
-
-  drawSankey(id, pairs) {
-    if (!pairs.length) return
-    const nodeSet = new Set()
-    pairs.forEach(p=>{
-      nodeSet.add(p.src_name || `AS${p.src_asn}`)
-      nodeSet.add(p.dst_name || `AS${p.dst_asn}`)
-    })
-    const nodes = [...nodeSet].map(name=>({name}))
-    const links = pairs.map(p=>({
-      source: p.src_name || `AS${p.src_asn}`,
-      target: p.dst_name || `AS${p.dst_asn}`,
-      value:  p.bytes
-    }))
-    const c = ec(id)
-    c.setOption({
-      backgroundColor:'transparent',
-      tooltip:{trigger:'item',formatter:p=>{
-        if(p.dataType==='edge') return `${p.data.source} → ${p.data.target}: ${fmtBytesS(p.data.value)}`
-        return p.name
-      }},
-      series:[{
-        type:'sankey', layout:'none',
-        emphasis:{focus:'adjacency'},
-        data:nodes, links,
-        lineStyle:{color:'gradient',opacity:.4},
-        label:{color:'#cdd6f4',fontSize:12},
-        nodeWidth:12, nodeGap:8
-      }]
-    })
-  },
-
-  drawPorts(ports) {
-    const c = ec('chart-ports')
-    const data = ports.slice(0,30)
-    c.setOption({
-      backgroundColor:'transparent',
-      tooltip:{trigger:'axis',formatter:p=>`Port ${p[0].name}: ${p[0].value.toLocaleString()} flows`},
-      grid:{top:10,right:20,bottom:40,left:60},
-      xAxis:{type:'category',data:data.map(p=>p.port),axisLabel:{color:'#6c7086',rotate:45}},
-      yAxis:{type:'value',axisLabel:{color:'#6c7086'},splitLine:{lineStyle:{color:'#2a3147'}}},
-      series:[{type:'bar',data:data.map(p=>p.count),itemStyle:{color:'#cba6f7',borderRadius:[4,4,0,0]},barMaxWidth:30}]
-    })
-  },
-
-  drawHistoryChart(d) {
-    const c = ec('chart-history')
-    const rows = [
-      {label:'live (24h)', bytes_in: d.live?.bytes_in??0, bytes_out: d.live?.bytes_out??0},
-      ...(d.history??[]).map(r=>({label:r.label, bytes_in:r.bytes_in, bytes_out:r.bytes_out}))
-    ]
-    c.setOption({
-      backgroundColor:'transparent',
-      tooltip:{trigger:'axis'},
-      legend:{data:['inbound','outbound'],top:0,textStyle:{color:'#cdd6f4'}},
-      grid:{top:30,right:20,bottom:60,left:80},
-      xAxis:{type:'category',data:rows.map(r=>r.label),axisLabel:{color:'#cdd6f4',rotate:20}},
-      yAxis:{type:'value',axisLabel:{color:'#6c7086',formatter:v=>fmtBytesS(v)},splitLine:{lineStyle:{color:'#2a3147'}}},
-      series:[
-        {name:'inbound', type:'bar',data:rows.map(r=>r.bytes_in), itemStyle:{color:'#89b4fa',borderRadius:[4,4,0,0]},barMaxWidth:40},
-        {name:'outbound',type:'bar',data:rows.map(r=>r.bytes_out),itemStyle:{color:'#fab387',borderRadius:[4,4,0,0]},barMaxWidth:40}
-      ]
-    })
-  },
-
-  // ── util ──
-  pct(v, max) { return max > 0 ? Math.round(v/max*100) : 0 },
-  fmtDate(ts) { return new Date(ts*1000).toLocaleString() },
-  fmtWindow(minutes) {
-    if (minutes <= 60)   return 'last hour'
-    if (minutes <= 360)  return 'last 6 h'
-    if (minutes <= 1440) return 'last 24 h'
-    if (minutes <= 2880) return 'last 48 h'
-    return 'last week'
-  },
-  ipFromPrefix(prefix) {
-    if (!prefix) return ''
-    if (!prefix.includes('/')) return prefix
-    const [ip, mask] = prefix.split('/')
-    const m = Number(mask)
-    if (!Number.isFinite(m)) return ''
-    if (ip.includes(':') && m === 128) return ip
-    if (ip.includes('.') && m === 32) return ip
-    return ''
-  },
-}}
-
-// Standalone byte formatters (used inside chart tooltip formatters outside Alpine context)
-function fmtBytesS(b) {
-  if (b >= 1e12) return (b/1e12).toFixed(2)+' TB'
-  if (b >= 1e9)  return (b/1e9).toFixed(2)+' GB'
-  if (b >= 1e6)  return (b/1e6).toFixed(2)+' MB'
-  if (b >= 1e3)  return (b/1e3).toFixed(1)+' KB'
-  return b+' B'
-}
-// Alpine-accessible version
-function fmtBytes(b) { return fmtBytesS(b) }
-if (window.mountArgusNavSearch) {
-  window.mountArgusNavSearch(document.getElementById('nav-search'))
-}
-</script>
-
-<!-- ── UPSTREAMS ── -->
+<!-- ══ UPSTREAMS ══════════════════════════════════════════════════════════════ -->
 <div class="content" x-show="tab==='upstreams'">
   <div class="refresh-bar">
     <template x-if="loading"><span><span class="spinner"></span>fetching…</span></template>
@@ -809,7 +475,8 @@ if (window.mountArgusNavSearch) {
       <div class="card">
         <div class="card-title" style="display:flex;flex-direction:column;align-items:flex-start;gap:2px">
           <span x-text="iface.name || ('if'+iface.index)"></span>
-          <span style="font-size:10px;color:var(--muted);font-weight:400;letter-spacing:0;text-transform:none" x-text="'idx '+iface.index"></span>
+          <span style="font-size:10px;color:var(--muted);font-weight:400;letter-spacing:0;text-transform:none"
+                x-text="'idx '+iface.index"></span>
         </div>
         <div style="display:flex;gap:12px;margin-top:4px">
           <div>
@@ -831,14 +498,16 @@ if (window.mountArgusNavSearch) {
     <div class="card" style="margin-bottom:16px">
       <div class="card-title" style="display:flex;align-items:center">
         <span x-text="(iface.name || ('if'+iface.index)) + ' — throughput (bytes/min)'"></span>
-        <span class="tag-pill" style="margin-left:8px;font-size:10px;font-weight:400;text-transform:none;letter-spacing:0" x-text="'idx '+iface.index"></span>
+        <span class="tag-pill" style="margin-left:8px;font-size:10px;font-weight:400;text-transform:none;letter-spacing:0"
+              x-text="'idx '+iface.index"></span>
       </div>
       <div :id="'chart-iface-'+iface.index" class="chart" x-init="$nextTick(()=>drawIfaceChart(iface))"></div>
     </div>
   </template>
 
   <template x-if="upstreamsData.length === 0">
-    <p class="notice">No interface data yet — traffic accumulates per minute. Check that upstream_interfaces is set in config.yaml.</p>
+    <p class="notice">No interface data yet — traffic accumulates per minute.
+      Check that upstream_interfaces is set in config.yaml.</p>
   </template>
 
   <div class="card" style="margin-bottom:16px" x-show="ifaceSankeyOut.length > 0">
@@ -851,7 +520,304 @@ if (window.mountArgusNavSearch) {
   </div>
 </div>
 
+<script>
+// ── ECharts registry ──────────────────────────────────────────────────────────
+const charts = {}
+function ec(id) {
+  if (!charts[id]) charts[id] = echarts.init(document.getElementById(id), 'dark')
+  return charts[id]
+}
 
+// ── Alpine app ────────────────────────────────────────────────────────────────
+function app() { return {
+  tab: 'overview',
+  loading: false,
+  live: false,
+  lastUpdated: '',
+  nextRefresh: 30,
+  overviewMinutes: 1440,
 
+  // IP lookup (sub-tab bar)
+  ipSearch: '',
+
+  overview:     {},
+  asnData:      {},
+  hostsData:    {},
+  snapshots:    [],
+  upstreamsData:[],
+  ifaceSankeyIn: [],
+  ifaceSankeyOut:[],
+  bgpStatus:    null,
+
+  historyASN:     '',
+  historyLoading: false,
+  historyRows:    [],
+  historyLive:    null,
+  historyName:    '',
+
+  upstreamMinutes: 1440,
+  asnMinutes:      1440,
+  snapNote:    '',
+  snapLoading: false,
+  snapMsg:     '',
+
+  // ── computed ──
+  get maxAsnIn()  { return Math.max(...(this.asnData.top_in  ?? []).map(a=>a.bytes_in),  1) },
+  get maxAsnOut() { return Math.max(...(this.asnData.top_out ?? []).map(a=>a.bytes_out), 1) },
+
+  // ── lifecycle ──
+  init() {
+    this.loadOverview()
+    setInterval(() => {
+      this.nextRefresh--
+      if (this.nextRefresh <= 0) {
+        this.nextRefresh = 30
+        if (this.tab === 'overview') this.loadOverview()
+      }
+    }, 1000)
+    window.addEventListener('resize', () => Object.values(charts).forEach(c => c.resize()))
+  },
+
+  // ── IP lookup ──
+  openIP() {
+    const ip = this.ipSearch.trim()
+    if (!ip) return
+    window.open('/ip/' + encodeURIComponent(ip), '_blank')
+  },
+
+  // ── data fetchers ──
+  async loadOverview() {
+    this.loading = true
+    try {
+      const r = await fetch(`/tel/overview?minutes=${this.overviewMinutes}`)
+      if (!r.ok) throw new Error(r.status)
+      const d = await r.json()
+      const ts = d.timeseries ?? []
+      if (ts.length >= 2) {
+        const b = ts[ts.length - 2]  // last fully-closed 1-min bucket
+        d.rateMbpsIn  = ((b.bytes_in  * 8) / 60 / 1_000_000).toFixed(1)
+        d.rateMbpsOut = ((b.bytes_out * 8) / 60 / 1_000_000).toFixed(1)
+      }
+      this.overview = d
+      this.live = true
+      this.lastUpdated = new Date().toLocaleTimeString()
+      this.$nextTick(() => {
+        this.drawThroughput(this.overview.timeseries ?? [])
+        this.drawASNBar('chart-asn-in',  this.overview.asn_in  ?? [], 'bytes_in',  '#89b4fa')
+        this.drawASNBar('chart-asn-out', this.overview.asn_out ?? [], 'bytes_out', '#fab387')
+      })
+    } catch(e) {
+      this.live = false
+    } finally { this.loading = false }
+  },
+
+  async loadASN() {
+    const r = await fetch(`/tel/asn?n=20&minutes=${this.asnMinutes}`)
+    if (!r.ok) return
+    this.asnData = await r.json()
+    const sankey = await fetch('/tel/sankey?limit=25').then(r=>r.json()).catch(()=>({incoming:[],outgoing:[]}))
+    this.$nextTick(() => {
+      this.drawSankey('chart-sankey-out', sankey.outgoing ?? [])
+      this.drawSankey('chart-sankey-in',  sankey.incoming ?? [])
+    })
+  },
+
+  async loadHosts() {
+    const r = await fetch('/tel/hosts?n=20')
+    if (!r.ok) return
+    this.hostsData = await r.json()
+    const ports = await fetch('/tel/ports?n=30').then(r=>r.json()).catch(()=>[])
+    this.$nextTick(() => this.drawPorts(ports))
+  },
+
+  async loadHistory() {
+    if (!this.historyASN) return
+    this.historyLoading = true
+    this.historyRows = []
+    this.historyName = ''
+    this.historyLive = null
+    try {
+      const r = await fetch(`/tel/history?asn=${this.historyASN}`)
+      if (!r.ok) throw new Error(r.status)
+      const d = await r.json()
+      this.historyName = d.asn_name || ''
+      this.historyLive = d.live
+      this.historyRows = d.history ?? []
+      this.$nextTick(() => this.drawHistoryChart(d))
+    } catch(e) {
+      console.warn('history:', e)
+    } finally { this.historyLoading = false }
+  },
+
+  async loadSnapshots() {
+    const r = await fetch('/tel/snapshots')
+    if (!r.ok) return
+    this.snapshots = await r.json()
+  },
+
+  async takeSnap() {
+    this.snapLoading = true
+    this.snapMsg = ''
+    try {
+      const r = await fetch('/tel/snapshot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note: this.snapNote })
+      })
+      if (!r.ok) throw new Error(r.status)
+      this.snapMsg = '✅ Snapshot saved'
+      this.snapNote = ''
+      await this.loadSnapshots()
+    } catch(e) {
+      this.snapMsg = '❌ Failed: ' + e.message
+    } finally { this.snapLoading = false }
+  },
+
+  async loadUpstreams() {
+    this.loading = true
+    try {
+      const [r1, r2] = await Promise.all([
+        fetch(`/tel/interfaces?minutes=${this.upstreamMinutes}`),
+        fetch(`/tel/iface-sankey?limit=30`),
+      ])
+      this.upstreamsData = r1.ok ? (await r1.json() ?? []) : []
+      const sk = r2.ok ? await r2.json() : {}
+      this.ifaceSankeyIn  = sk.incoming ?? []
+      this.ifaceSankeyOut = sk.outgoing ?? []
+      this.$nextTick(() => {
+        if (this.ifaceSankeyOut.length) this.drawSankey('chart-iface-sankey-out', this.ifaceSankeyOut)
+        if (this.ifaceSankeyIn.length)  this.drawSankey('chart-iface-sankey-in',  this.ifaceSankeyIn)
+      })
+    } finally { this.loading = false }
+  },
+
+  // ── charts ──
+  drawThroughput(ts) {
+    const c = ec('chart-throughput')
+    c.setOption({
+      backgroundColor: 'transparent',
+      tooltip: { trigger:'axis', formatter: p => `${p[0].name}<br>in: ${fmtBytesS(p[0].value)}<br>out: ${fmtBytesS(p[1].value)}` },
+      legend: { data:['inbound','outbound'], top:0, textStyle:{color:'#cdd6f4'} },
+      grid: { top:30, right:20, bottom:40, left:80 },
+      xAxis: { type:'category', data:ts.map(b=>new Date(b.ts*1000).toLocaleTimeString()), axisLabel:{color:'#6c7086',rotate:30} },
+      yAxis: { type:'value', axisLabel:{color:'#6c7086', formatter:v=>fmtBytesS(v)}, splitLine:{lineStyle:{color:'#2a3147'}} },
+      series: [
+        { name:'inbound',  type:'line', data:ts.map(b=>b.bytes_in),  smooth:true, areaStyle:{opacity:.15}, lineStyle:{width:2}, itemStyle:{color:'#89b4fa'} },
+        { name:'outbound', type:'line', data:ts.map(b=>b.bytes_out), smooth:true, areaStyle:{opacity:.15}, lineStyle:{width:2}, itemStyle:{color:'#fab387'} }
+      ]
+    })
+  },
+
+  drawASNBar(id, data, field, color) {
+    const c = ec(id)
+    const top = data.slice(0,10)
+    c.setOption({
+      backgroundColor: 'transparent',
+      tooltip: { trigger:'axis', formatter:p=>`${p[0].name}: ${fmtBytesS(p[0].value)}` },
+      grid: { top:10, right:20, bottom:40, left:10, containLabel:true },
+      xAxis: { type:'value', axisLabel:{color:'#6c7086', formatter:v=>fmtBytesS(v)}, splitLine:{lineStyle:{color:'#2a3147'}} },
+      yAxis: { type:'category', data:top.map(a=>a.name||`AS${a.asn}`), axisLabel:{color:'#cdd6f4',width:150,overflow:'truncate'} },
+      series: [{ type:'bar', data:top.map(a=>a[field]), itemStyle:{color,borderRadius:[0,4,4,0]}, barMaxWidth:22, cursor:'pointer' }]
+    })
+    c.off('click')
+    c.on('click', params => {
+      const a = top[params.dataIndex]
+      if (a?.asn) window.location.href = '/asn/' + a.asn
+    })
+  },
+
+  drawSankey(id, pairs) {
+    if (!pairs.length) return
+    const nodeSet = new Set()
+    pairs.forEach(p => {
+      nodeSet.add(p.src_name || `AS${p.src_asn}`)
+      nodeSet.add(p.dst_name || `AS${p.dst_asn}`)
+    })
+    const nodes = [...nodeSet].map(name => ({ name }))
+    const links = pairs.map(p => ({
+      source: p.src_name || `AS${p.src_asn}`,
+      target: p.dst_name || `AS${p.dst_asn}`,
+      value:  p.bytes
+    }))
+    ec(id).setOption({
+      backgroundColor: 'transparent',
+      tooltip: { trigger:'item', formatter:p => {
+        if (p.dataType==='edge') return `${p.data.source} → ${p.data.target}: ${fmtBytesS(p.data.value)}`
+        return p.name
+      }},
+      series: [{ type:'sankey', layout:'none', emphasis:{focus:'adjacency'}, data:nodes, links,
+        lineStyle:{color:'gradient',opacity:.4}, label:{color:'#cdd6f4',fontSize:12}, nodeWidth:12, nodeGap:8 }]
+    })
+  },
+
+  drawPorts(ports) {
+    const data = ports.slice(0,30)
+    ec('chart-ports').setOption({
+      backgroundColor: 'transparent',
+      tooltip: { trigger:'axis', formatter:p=>`Port ${p[0].name}: ${p[0].value.toLocaleString()} flows` },
+      grid: { top:10, right:20, bottom:40, left:60 },
+      xAxis: { type:'category', data:data.map(p=>p.port), axisLabel:{color:'#6c7086',rotate:45} },
+      yAxis: { type:'value', axisLabel:{color:'#6c7086'}, splitLine:{lineStyle:{color:'#2a3147'}} },
+      series: [{ type:'bar', data:data.map(p=>p.count), itemStyle:{color:'#cba6f7',borderRadius:[4,4,0,0]}, barMaxWidth:30 }]
+    })
+  },
+
+  drawHistoryChart(d) {
+    const rows = [
+      { label:'live (24h)', bytes_in:d.live?.bytes_in??0, bytes_out:d.live?.bytes_out??0 },
+      ...(d.history??[]).map(r=>({ label:r.label, bytes_in:r.bytes_in, bytes_out:r.bytes_out }))
+    ]
+    ec('chart-history').setOption({
+      backgroundColor: 'transparent',
+      tooltip: { trigger:'axis' },
+      legend: { data:['inbound','outbound'], top:0, textStyle:{color:'#cdd6f4'} },
+      grid: { top:30, right:20, bottom:60, left:80 },
+      xAxis: { type:'category', data:rows.map(r=>r.label), axisLabel:{color:'#cdd6f4',rotate:20} },
+      yAxis: { type:'value', axisLabel:{color:'#6c7086',formatter:v=>fmtBytesS(v)}, splitLine:{lineStyle:{color:'#2a3147'}} },
+      series: [
+        { name:'inbound',  type:'bar', data:rows.map(r=>r.bytes_in),  itemStyle:{color:'#89b4fa',borderRadius:[4,4,0,0]}, barMaxWidth:40 },
+        { name:'outbound', type:'bar', data:rows.map(r=>r.bytes_out), itemStyle:{color:'#fab387',borderRadius:[4,4,0,0]}, barMaxWidth:40 }
+      ]
+    })
+  },
+
+  drawIfaceChart(iface) {
+    const id = 'chart-iface-' + iface.index
+    const ts  = iface.timeseries ?? []
+    ec(id).setOption({
+      backgroundColor: 'transparent',
+      tooltip: { trigger:'axis', formatter:p=>`${p[0].name}<br>in: ${fmtBytesS(p[0].value)}<br>out: ${fmtBytesS(p[1].value)}` },
+      legend: { data:['in','out'], top:0, textStyle:{color:'#cdd6f4'} },
+      grid: { top:30, right:20, bottom:40, left:80 },
+      xAxis: { type:'category', data:ts.map(b=>new Date(b.ts*1000).toLocaleTimeString()), axisLabel:{color:'#6c7086',rotate:30} },
+      yAxis: { type:'value', axisLabel:{color:'#6c7086',formatter:v=>fmtBytesS(v)}, splitLine:{lineStyle:{color:'#2a3147'}} },
+      series: [
+        { name:'in',  type:'line', data:ts.map(b=>b.bytes_in),  smooth:true, areaStyle:{opacity:.15}, itemStyle:{color:'#89b4fa'} },
+        { name:'out', type:'line', data:ts.map(b=>b.bytes_out), smooth:true, areaStyle:{opacity:.15}, itemStyle:{color:'#fab387'} }
+      ]
+    })
+  },
+
+  // ── utils ──
+  pct(v, max) { return max > 0 ? Math.round(v/max*100) : 0 },
+  fmtDate(ts) { return new Date(ts*1000).toLocaleString() },
+  fmtWindow(minutes) {
+    if (minutes <= 60)   return 'last hour'
+    if (minutes <= 360)  return 'last 6 h'
+    if (minutes <= 1440) return 'last 24 h'
+    if (minutes <= 2880) return 'last 48 h'
+    return 'last week'
+  },
+}}
+
+function fmtBytesS(b) {
+  if (b >= 1e12) return (b/1e12).toFixed(2)+' TB'
+  if (b >= 1e9)  return (b/1e9).toFixed(2)+' GB'
+  if (b >= 1e6)  return (b/1e6).toFixed(2)+' MB'
+  if (b >= 1e3)  return (b/1e3).toFixed(1)+' KB'
+  return b+' B'
+}
+function fmtBytes(b) { return fmtBytesS(b) }
+</script>
 </body>
 </html>

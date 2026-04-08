@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 	"argus/internal/enrich"
+	"strings"
+	"database/sql"
 )
 
 type AnomalyConfig struct {
@@ -58,6 +60,9 @@ type Anomaly struct {
 	engine    *Engine
 
 	memory    *MemoryLayer
+
+ // SQLite handle for risk_events persistence (optional, nil = log-only)
+    db        *sql.DB
 
 	baseline [][]float64
 	lastTrain time.Time
@@ -138,7 +143,7 @@ func (a *Anomaly) RebuildDetector(trees, sample int, contamination float64) {
 
 // Wire in the EWMA/debt risk logger
 func (a *Anomaly) SetMemory(m *MemoryLayer) { a.memory = m }
-
+func (a *Anomaly) SetDB(db *sql.DB) { a.db = db }
 
 func NewAnomaly(cfg AnomalyConfig, det Detector, store DetectionStore) *Anomaly {
 	if cfg.Window <= 0 { cfg.Window = 60 * time.Second }
@@ -577,10 +582,26 @@ func (a *Anomaly) afterTickPrintInteresting(now time.Time) {
                         break
                 }
                 // NOTE: rely on Go logger timestamp; no inner timestamp here.
-                logRiskLine("[%s] RISK fused=%.4f if=%.4f hbos_norm=%.4f ehbos_norm=%.4f hbos_raw=%.2f mu=%.4f thr=%.4f src=%s PTR=%s ASN=AS%d (%s) CC=%s example_dst=%s:%d/%s x%d shape=%v feats=%v",
-                        nowRFC3339(), c.fused, c.ifs, c.hnorm, c.ehn, c.hraw, mu, thr, c.src, c.ptr, c.asn, c.asnName, c.cc,
-                        c.exIP, c.exPort, c.exProto, c.exCnt, c.shape, c.feat)
-                printed++
+logRiskLine("[%s] RISK fused=%.4f if=%.4f hbos_norm=%.4f ehbos_norm=%.4f hbos_raw=%.2f mu=%.4f thr=%.4f src=%s PTR=%s ASN=AS%d (%s) CC=%s example_dst=%s:%d/%s x%d shape=%v feats=%v",
+                nowRFC3339(), c.fused, c.ifs, c.hnorm, c.ehn, c.hraw, mu, thr, c.src, c.ptr, c.asn, c.asnName, c.cc,
+                c.exIP, c.exPort, c.exProto, c.exCnt, c.shape, c.feat)
+
+            // Persist to SQLite alongside risk.log.
+            // Type-assert: Anomaly.db is only set when a *SQLiteStore is wired.
+            if a.db != nil {
+                shapeStr := strings.Join(c.shape, ",")
+                exDst    := fmt.Sprintf("%s:%d/%s", c.exIP, c.exPort, c.exProto)
+                sqlStore := &SQLiteStore{db: a.db}
+                sqlStore.InsertRiskEvent(
+                    time.Now().Unix(),
+                    c.src,
+                    c.fused, c.ifs, c.hnorm, c.ehn,
+                    mu, thr,
+                    shapeStr, exDst, c.exCnt,
+                    c.asn, c.asnName, c.cc, c.ptr,
+                )
+            }
+            printed++
         }
         // clear for next tick
         candidates = candidates[:0]

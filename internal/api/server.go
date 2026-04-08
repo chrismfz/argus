@@ -224,6 +224,9 @@ func Start() {
 	mainMux.HandleFunc("/tel/interfaces", WithMainIPOnly(handleTelInterfaces))
 	mainMux.HandleFunc("/tel/iface-sankey", WithMainIPOnly(handleTelIfaceSankey))
 
+	mainMux.HandleFunc("/api/risk",       WithMainIPOnly(handleRiskList))
+	mainMux.HandleFunc("/risk",           WithMainIPOnly(handleRiskPage)) 
+
 	// ── Alerter page ──────────────────────────────────────────────────────
 	mainMux.HandleFunc("/alerts", WithMainIPOnly(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -556,6 +559,16 @@ func buildIPProfileResponse(ctx context.Context, ipStr string, includeTrace bool
 	} else {
 		res["detections"] = history
 	}
+
+if riskEvents, err := fetchIPRiskEvents(ipStr, 50); err != nil {
+		log.Printf("[WARN] risk_events lookup failed ip=%s err=%v", ipStr, err)
+	} else {
+		res["risk_events"] = riskEvents
+	}
+
+	res["routing"] = buildRoutingContext(ctx, ip, res["prefix"], includeTrace)
+
+
 	res["routing"] = buildRoutingContext(ctx, ip, res["prefix"], includeTrace)
 	res["external_links"] = buildASNExternalLinks(res["asn"])
 	res["source_status"] = sourceStatus
@@ -901,4 +914,102 @@ func handleASNPage(w http.ResponseWriter, r *http.Request) {
 func handleIPPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write(ipHTML)
+}
+
+
+// handleRiskList serves GET /api/risk.
+// Returns one row per unique source IP, aggregated over the last 7 days,
+// sorted by peak fused score descending.
+func handleRiskList(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if DB == nil {
+		http.Error(w, "DB not initialized", http.StatusInternalServerError)
+		return
+	}
+
+	cutoff := time.Now().Add(-7 * 24 * time.Hour).Unix()
+
+	rows, err := DB.Query(`
+		SELECT
+			src,
+			COUNT(*)        AS event_count,
+			MAX(fused)      AS peak_fused,
+			MAX(ts)         AS last_seen,
+			MIN(ts)         AS first_seen,
+			asn,
+			asn_name,
+			cc,
+			ptr,
+			(SELECT shape       FROM risk_events r2
+			 WHERE r2.src = r1.src ORDER BY ts DESC LIMIT 1) AS latest_shape,
+			(SELECT example_dst FROM risk_events r2
+			 WHERE r2.src = r1.src ORDER BY ts DESC LIMIT 1) AS latest_dst,
+			(SELECT ex_count    FROM risk_events r2
+			 WHERE r2.src = r1.src ORDER BY ts DESC LIMIT 1) AS latest_ex_count
+		FROM risk_events r1
+		WHERE ts > ?
+		GROUP BY src
+		ORDER BY peak_fused DESC
+		LIMIT 200
+	`, cutoff)
+	if err != nil {
+		log.Printf("[WARN] handleRiskList query failed: %v", err)
+		http.Error(w, "DB error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	type riskRow struct {
+		Src          string  `json:"src"`
+		EventCount   int64   `json:"event_count"`
+		PeakFused    float64 `json:"peak_fused"`
+		LastSeen     int64   `json:"last_seen"`
+		FirstSeen    int64   `json:"first_seen"`
+		ASN          int64   `json:"asn"`
+		ASNName      string  `json:"asn_name"`
+		CC           string  `json:"cc"`
+		PTR          string  `json:"ptr"`
+		LatestShape  string  `json:"latest_shape"`
+		LatestDst    string  `json:"latest_dst"`
+		LatestExCount int64  `json:"latest_ex_count"`
+	}
+
+	out := make([]riskRow, 0)
+	for rows.Next() {
+		var row riskRow
+		var asn, eventCount, lastSeen, firstSeen, latestExCount sql.NullInt64
+		var peakFused sql.NullFloat64
+		var asnName, cc, ptr, latestShape, latestDst sql.NullString
+
+		if err := rows.Scan(
+			&row.Src, &eventCount, &peakFused, &lastSeen, &firstSeen,
+			&asn, &asnName, &cc, &ptr,
+			&latestShape, &latestDst, &latestExCount,
+		); err != nil {
+			log.Printf("[WARN] handleRiskList scan failed: %v", err)
+			continue
+		}
+		row.EventCount   = eventCount.Int64
+		row.PeakFused    = peakFused.Float64
+		row.LastSeen     = lastSeen.Int64
+		row.FirstSeen    = firstSeen.Int64
+		row.ASN          = asn.Int64
+		row.ASNName      = asnName.String
+		row.CC           = cc.String
+		row.PTR          = ptr.String
+		row.LatestShape  = latestShape.String
+		row.LatestDst    = latestDst.String
+		row.LatestExCount = latestExCount.Int64
+		out = append(out, row)
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("[WARN] handleRiskList rows.Err: %v", err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"risk_ips":    out,
+		"count":       len(out),
+		"window_days": 7,
+	})
 }

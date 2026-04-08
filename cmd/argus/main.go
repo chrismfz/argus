@@ -209,6 +209,11 @@ func main() {
 				if err := detection.CleanupExpiredBlackholes(db); err != nil {
 					log.Printf("[WARN] Periodic blackhole cleanup error: %v", err)
 				}
+    // Purge risk_events older than 7 days
+    if err := detection.PurgeOldRiskEvents(db, 7*24*time.Hour); err != nil {
+        log.Printf("[WARN] Periodic risk_events purge error: %v", err)
+    }
+
 			}
 		}
 	}()
@@ -568,7 +573,8 @@ telemetry.RawTap.Publish("mikrotik", func() map[uint16]string {
 		}
 
 		if cfg.Detection.Anomaly.Enabled {
-			_, _ = detection.StartAnomalyStack(ctx, cfg, engine, store, configPath)
+   anom, _ := detection.StartAnomalyStack(ctx, cfg, engine, store, configPath)
+    anom.SetDB(db)
 		}
 
 		go engine.Run(ctx)

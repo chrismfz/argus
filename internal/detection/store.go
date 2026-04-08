@@ -142,3 +142,44 @@ func (s *SQLiteStore) InsertBlackhole(
 	`, prefix, timestamp, expires, rule, reason, asn, asnName, country, ptr)
 	return err
 }
+
+
+// InsertRiskEvent persists one risk.log line to SQLite.
+// Called from afterTickPrintInteresting right after logRiskLine.
+// Non-fatal on error — risk.log is always the authoritative record.
+func (s *SQLiteStore) InsertRiskEvent(
+	ts int64,
+	src string,
+	fused, ifScore, hbosNorm, ehbosNorm float64,
+	mu, thr float64,
+	shape, exampleDst string,
+	exCount int,
+	asn uint32,
+	asnName, cc, ptr string,
+) {
+	_, err := s.db.Exec(`
+		INSERT INTO risk_events
+			(ts, src, fused, if_score, hbos_norm, ehbos_norm, mu, thr,
+			 shape, example_dst, ex_count, asn, asn_name, cc, ptr)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		ts, src, fused, ifScore, hbosNorm, ehbosNorm, mu, thr,
+		shape, exampleDst, exCount, asn, asnName, cc, ptr,
+	)
+	if err != nil {
+		log.Printf("[WARN] risk_events insert failed src=%s: %v", src, err)
+	}
+}
+
+// PurgeOldRiskEvents deletes risk_events older than maxAge.
+// Wire into the same cleanup ticker as CleanupExpiredBlackholes in main.go.
+func PurgeOldRiskEvents(db *sql.DB, maxAge time.Duration) error {
+	cutoff := time.Now().Add(-maxAge).Unix()
+	res, err := db.Exec(`DELETE FROM risk_events WHERE ts < ?`, cutoff)
+	if err != nil {
+		return fmt.Errorf("purge risk_events: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		log.Printf("[risk_events] purged %d rows older than %s", n, maxAge)
+	}
+	return nil
+}

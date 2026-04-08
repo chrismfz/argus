@@ -153,6 +153,48 @@ func fetchIPDetectionsHistory(ip string, limit int) ([]map[string]interface{}, e
 	return out, rows.Err()
 }
 
+// fetchIPRiskEvents returns the most recent risk_events rows for a single IP.
+// Called from buildIPProfileResponse — same pattern as fetchIPDetectionsHistory.
+func fetchIPRiskEvents(ip string, limit int) ([]map[string]interface{}, error) {
+	if DB == nil {
+		return nil, nil
+	}
+	rows, err := DB.Query(`
+		SELECT ts, fused, if_score, hbos_norm, ehbos_norm, shape, example_dst, ex_count
+		FROM risk_events
+		WHERE src = ?
+		ORDER BY ts DESC
+		LIMIT ?
+	`, ip, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		var ts, exCount sql.NullInt64
+		var fused, ifScore, hbosNorm, ehbosNorm sql.NullFloat64
+		var shape, exampleDst sql.NullString
+
+		if err := rows.Scan(&ts, &fused, &ifScore, &hbosNorm, &ehbosNorm,
+			&shape, &exampleDst, &exCount); err != nil {
+			return nil, err
+		}
+		out = append(out, map[string]interface{}{
+			"ts":          ts.Int64,
+			"fused":       fused.Float64,
+			"if_score":    ifScore.Float64,
+			"hbos_norm":   hbosNorm.Float64,
+			"ehbos_norm":  ehbosNorm.Float64,
+			"shape":       shape.String,
+			"example_dst": exampleDst.String,
+			"ex_count":    exCount.Int64,
+		})
+	}
+	return out, rows.Err()
+}
+
 func fetchLatestBlackholeEvent(ip string) (map[string]interface{}, error) {
 	if DB == nil {
 		return nil, nil

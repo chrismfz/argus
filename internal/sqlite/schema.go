@@ -58,6 +58,28 @@ CREATE TABLE IF NOT EXISTS ip_profile (
 
 CREATE INDEX IF NOT EXISTS idx_ip_profile_updated_at ON ip_profile(updated_at);
 CREATE INDEX IF NOT EXISTS idx_ip_profile_last_seen ON ip_profile(last_seen);
+
+CREATE TABLE IF NOT EXISTS risk_events (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts         INTEGER NOT NULL,
+  src        TEXT    NOT NULL,
+  fused      REAL,
+  if_score   REAL,
+  hbos_norm  REAL,
+  ehbos_norm REAL,
+  mu         REAL,
+  thr        REAL,
+  shape      TEXT,
+  example_dst TEXT,
+  ex_count   INTEGER,
+  asn        INTEGER,
+  asn_name   TEXT,
+  cc         TEXT,
+  ptr        TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_risk_events_src ON risk_events(src);
+CREATE INDEX IF NOT EXISTS idx_risk_events_ts  ON risk_events(ts DESC);
 `
 
 func InitSQLiteSchema(db *sql.DB) error {

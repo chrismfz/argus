@@ -2,80 +2,141 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>argus — detection settings</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/alpinejs/3.13.3/cdn.min.js" defer></script>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>argus · detection</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/alpinejs/3.13.5/cdn.min.js" defer></script>
 <style>
+/* ── Reset & base ── */
 *{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;font-size:14px;min-height:100vh}
 :root{
-  --bg:#0f1117;--bg2:#161b27;--bg3:#1e2535;
-  --border:#2a3147;--text:#cdd6f4;--muted:#6c7086;
-  --accent:#89b4fa;--green:#a6e3a1;--red:#f38ba8;--yellow:#f9e2af;
-  --purple:#cba6f7;--teal:#94e2d5;--orange:#fab387;
+  --bg:#0f1117;--bg2:#161b27;--bg3:#1c2333;--bg4:#242d3f;
+  --border:#2a3347;--text:#cdd6f4;--muted:#6c7a96;
+  --accent:#5b9cf6;--green:#a6e3a1;--yellow:#f9e2af;
+  --red:#f38ba8;--teal:#94e2d5;--purple:#cba6f7;--orange:#fab387;
 }
-html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;font-size:14px}
-header{display:flex;align-items:center;gap:16px;padding:12px 20px;background:var(--bg2);border-bottom:1px solid var(--border)}
-header h1{font-size:16px;font-weight:600;color:var(--accent)}
-header .tag{font-size:11px;padding:2px 8px;border-radius:4px;background:var(--bg3);color:var(--muted)}
-nav{display:flex;gap:2px;padding:0 20px;background:var(--bg2);border-bottom:1px solid var(--border);align-items:center}
-nav a{padding:10px 18px;color:var(--muted);font-size:13px;text-decoration:none;border-bottom:2px solid transparent;display:inline-block;transition:.1s}
+
+/* ── Nav ── */
+nav{display:flex;align-items:center;gap:2px;padding:0 16px;background:var(--bg2);border-bottom:1px solid var(--border);height:42px;overflow-x:auto}
+nav a{padding:0 12px;height:42px;display:flex;align-items:center;font-size:13px;color:var(--muted);text-decoration:none;border-bottom:2px solid transparent;white-space:nowrap;transition:color .15s}
 nav a:hover{color:var(--text)}
-nav a.active{color:var(--accent);border-color:var(--accent)}
-nav .sep{margin-left:auto;width:1px;height:20px;background:var(--border)}
-nav a.dbg{padding:6px 12px;font-size:12px;color:var(--yellow);text-decoration:none;border:1px solid rgba(249,226,175,.25);border-radius:4px;margin-left:8px;transition:.15s}
-nav a.dbg:hover{background:rgba(249,226,175,.1);border-color:var(--yellow)}
-.content{padding:20px;max-width:1400px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
-.card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px}
-.card-title{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:14px;display:flex;align-items:center;gap:10px}
-.card-title .count{font-size:11px;padding:1px 7px;border-radius:10px;background:var(--bg3);color:var(--accent);font-weight:700;letter-spacing:0}
-table{width:100%;border-collapse:collapse}
-thead th{text-align:left;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap}
-tbody td{padding:8px 8px;border-bottom:1px solid var(--border);font-size:13px;vertical-align:middle}
-tbody tr:last-child td{border:none}
-tbody tr:hover td{background:var(--bg3)}
-.mono{font-family:monospace;color:var(--accent)}
-.label-text{color:var(--muted);font-size:12px}
-.actions{display:flex;gap:6px;white-space:nowrap}
-input,select{background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 10px;font-size:13px;outline:none;font-family:monospace}
+nav a.active{color:var(--accent);border-bottom-color:var(--accent)}
+nav .sep{flex:1}
+nav a.dbg{font-size:11px;color:var(--muted);opacity:.6}
+nav a.dbg:hover{opacity:1}
+
+/* ── Page header ── */
+.page-header{display:flex;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid var(--border);background:var(--bg2);flex-wrap:wrap}
+.page-title{font-size:16px;font-weight:700;letter-spacing:.04em;color:var(--text)}
+.page-sub{font-size:12px;color:var(--muted);margin-top:2px}
+.ip-search{display:flex;gap:6px;align-items:center;margin-left:auto}
+.ip-search input{width:190px;font-family:monospace;font-size:13px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px 10px;outline:none}
+.ip-search input:focus{border-color:var(--accent)}
+.ip-search button{background:var(--bg3);border:1px solid var(--border);color:var(--accent);border-radius:6px;padding:5px 12px;font-size:12px;cursor:pointer;white-space:nowrap}
+.ip-search button:hover{border-color:var(--accent);background:var(--bg4)}
+
+/* ── Tab bar ── */
+.tab-bar{display:flex;gap:0;padding:0 20px;background:var(--bg2);border-bottom:1px solid var(--border)}
+.tab-bar button{padding:10px 18px;font-size:13px;color:var(--muted);background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;transition:color .15s;white-space:nowrap}
+.tab-bar button:hover{color:var(--text)}
+.tab-bar button.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab-bar .tab-badge{display:inline-block;font-size:10px;background:var(--bg4);border:1px solid var(--border);border-radius:10px;padding:0 6px;margin-left:5px;color:var(--muted);vertical-align:middle}
+.tab-bar .tab-badge.red{background:rgba(243,139,168,.12);border-color:rgba(243,139,168,.3);color:var(--red)}
+
+/* ── Content ── */
+.content{padding:20px;max-width:1200px;margin:0 auto}
+
+/* ── Cards ── */
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px 20px;margin-bottom:16px}
+.card-title{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.card-title .count{font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:1px 8px;color:var(--accent);letter-spacing:0;text-transform:none;font-weight:400}
+
+/* ── Tables ── */
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead th{text-align:left;padding:7px 10px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border)}
+tbody tr{border-bottom:1px solid rgba(42,51,71,.5);transition:background .1s}
+tbody tr:hover{background:var(--bg3)}
+tbody td{padding:8px 10px;color:var(--text);vertical-align:middle}
+tbody tr:last-child{border-bottom:none}
+.mono{font-family:monospace;font-size:12px}
+.empty-row td{text-align:center;padding:24px;color:var(--muted);font-size:12px}
+
+/* ── Chips / tags ── */
+.chip{display:inline-block;font-size:11px;padding:2px 8px;border-radius:4px;background:var(--bg3);border:1px solid var(--border);color:var(--muted);font-family:monospace;white-space:nowrap}
+.chip.red{background:rgba(243,139,168,.1);border-color:rgba(243,139,168,.3);color:var(--red)}
+.chip.green{background:rgba(166,227,161,.1);border-color:rgba(166,227,161,.3);color:var(--green)}
+.chip.yellow{background:rgba(249,226,175,.1);border-color:rgba(249,226,175,.3);color:var(--yellow)}
+.chip.orange{background:rgba(250,179,135,.1);border-color:rgba(250,179,135,.3);color:var(--orange)}
+.tag-pill{display:inline-block;font-size:11px;padding:2px 8px;border-radius:10px;background:var(--bg3);border:1px solid var(--border);color:var(--muted);white-space:nowrap}
+
+/* ── Buttons ── */
+.btn{background:var(--accent);color:var(--bg);border:none;border-radius:6px;padding:7px 16px;font-size:13px;cursor:pointer;font-weight:600}
+.btn:hover{opacity:.85}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn.secondary{background:var(--bg3);color:var(--text);border:1px solid var(--border)}
+.btn.secondary:hover{border-color:var(--accent);color:var(--accent)}
+.btn.sm{padding:4px 10px;font-size:12px}
+.btn.danger{background:rgba(243,139,168,.15);color:var(--red);border:1px solid rgba(243,139,168,.3)}
+.btn.danger:hover{background:rgba(243,139,168,.25)}
+
+/* ── Form inputs ── */
+input,select{background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 10px;font-size:13px;outline:none;font-family:inherit}
 input:focus,select:focus{border-color:var(--accent)}
-input.label-input{font-family:system-ui,sans-serif}
-button.btn{background:var(--accent);color:var(--bg);border:none;border-radius:6px;padding:6px 14px;font-size:13px;cursor:pointer;font-weight:600;white-space:nowrap}
-button.btn:hover{opacity:.85}
-button.btn.secondary{background:var(--bg3);color:var(--text);border:1px solid var(--border)}
-button.btn.secondary:hover{border-color:var(--accent);color:var(--accent)}
-button.btn.danger{background:transparent;color:var(--red);border:1px solid rgba(243,139,168,.3)}
-button.btn.danger:hover{background:rgba(243,139,168,.1);border-color:var(--red)}
-button.btn.sm{padding:4px 10px;font-size:12px}
-.add-row{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;align-items:center}
-.add-row input.cidr-in{width:200px}
-.add-row input.lbl-in{flex:1;min-width:180px}
-.toast{position:fixed;bottom:24px;right:24px;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:600;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none}
-.toast.show{opacity:1;pointer-events:auto}
-.toast.ok{background:var(--green);color:#1e2535}
-.toast.err{background:var(--red);color:#1e2535}
-.edit-cell{display:flex;gap:6px;align-items:center}
-.edit-cell input{padding:4px 8px;font-size:12px}
-.placeholder{padding:20px;text-align:center;color:var(--muted);font-size:13px;border:1px dashed var(--border);border-radius:6px}
-.section-hint{font-size:12px;color:var(--muted);margin-bottom:12px}
-.spinner{display:inline-block;width:13px;height:13px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle}
-.spinner-sm{display:inline-block;width:10px;height:10px;border:1.5px solid var(--border);border-top-color:var(--muted);border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle}
+
+/* ── Spinner ── */
+.spinner{display:inline-block;width:13px;height:13px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-right:4px}
+.spinner-sm{display:inline-block;width:10px;height:10px;border:1.5px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle}
 @keyframes spin{to{transform:rotate(360deg)}}
-/* enrichment */
-.asn-num{color:var(--muted);font-size:11px;margin-right:3px}
-.asn-name{color:var(--text);font-size:12px}
-.enrich-country{font-size:12px;color:var(--muted);white-space:nowrap}
-.flag{font-size:14px;margin-right:3px}
-.enrich-ptr{font-size:11px;font-family:monospace;color:var(--teal);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ── Control tab specifics ── */
+.form-row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.form-group{display:flex;flex-direction:column;gap:4px}
+.form-group label{font-size:11px;color:var(--muted)}
+.form-group input{min-width:120px}
+.bh-search-result{margin-top:12px;font-size:12px;display:flex;flex-direction:column;gap:6px}
+
+/* ── Blackhole table ── */
+.bh-filter-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center}
+.bh-filter-row input{width:130px;font-size:12px;padding:4px 8px}
+.withdraw-btn{background:none;border:1px solid var(--red);color:var(--red);border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer}
+.withdraw-btn:hover{background:rgba(243,139,168,.1)}
+
+/* ── Risk IPs ── */
+.risk-score{font-weight:700;font-family:monospace;font-size:12px}
+.risk-high{color:var(--red)}
+.risk-mid{color:var(--yellow)}
+.risk-low{color:var(--green)}
+.risk-meta{font-size:11px;color:var(--muted)}
+.ip-link{color:var(--accent);text-decoration:none;font-family:monospace;font-size:12px}
+.ip-link:hover{text-decoration:underline}
+
+/* ── Exclusions ── */
+.edit-cell{display:flex;gap:6px;align-items:center}
+.label-input{width:200px}
+.cidr-in{width:175px;font-family:monospace}
+.lbl-in{width:200px}
+.enrich-country{display:flex;align-items:center;gap:4px;font-size:12px}
+.flag{font-size:14px}
+.asn-num{font-size:12px;color:var(--accent);font-family:monospace;margin-right:4px}
+.asn-name{font-size:11px;color:var(--muted)}
+.search-ptr{font-size:11px;font-family:monospace;color:var(--teal);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .private-badge{font-size:10px;padding:1px 6px;border-radius:4px;background:var(--bg3);color:var(--muted);border:1px solid var(--border)}
+.placeholder{text-align:center;padding:32px;color:var(--muted);font-size:13px}
+
+/* ── Toast ── */
+.toast{position:fixed;bottom:20px;right:20px;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:600;opacity:0;transition:opacity .25s;pointer-events:none;z-index:999;border:1px solid var(--border);background:var(--bg3)}
+.toast.show{opacity:1}
+.toast.ok{border-color:var(--green);color:var(--green)}
+.toast.err{border-color:var(--red);color:var(--red)}
+
+/* ── Emergency flush ── */
+.flush-card{border-color:rgba(243,139,168,.25)}
+.flush-card .card-title{color:var(--red)}
 </style>
 </head>
-<body x-data="app()" x-init="init()">
+<body x-data="detection()" x-init="init()">
 
-<header>
-  <h1>argus panoptes</h1>
-  <span class="tag">detection settings</span>
-</header>
-
+<!-- ── Nav ── -->
 <nav>
   <a href="/dashboard">Overview</a>
   <a href="/bgp">BGP</a>
@@ -88,15 +149,280 @@ button.btn.sm{padding:4px 10px;font-size:12px}
   <a href="/debug/rawflows" target="_blank" class="dbg">🔬 Raw Fields</a>
 </nav>
 
-<div class="content">
+<!-- ── Page header ── -->
+<div class="page-header">
+  <div>
+    <div class="page-title">DETECTION</div>
+    <div class="page-sub">Threat control · Active blackholes · ML risk scoring · Exclusions</div>
+  </div>
+  <div class="ip-search">
+    <input x-model="ipSearch"
+           placeholder="IP address…"
+           @keyup.enter="openIP()"
+           @keyup.escape="ipSearch=''">
+    <button @click="openIP()">→ Open IP</button>
+  </div>
+</div>
 
-  <!-- ── Exclusions ──────────────────────────────────────────────────────── -->
+<!-- ── Tab bar ── -->
+<div class="tab-bar">
+  <button :class="{active:tab==='control'}"    @click="tab='control'">Control</button>
+  <button :class="{active:tab==='blackholes'}" @click="tab='blackholes';loadBlackholes()">
+    Blackholes
+    <span class="tab-badge" :class="blackholes.length ? 'red' : ''" x-text="blackholes.length || ''"></span>
+  </button>
+  <button :class="{active:tab==='risk'}"       @click="tab='risk';loadRisk()">
+    Risk IPs
+    <span class="tab-badge" :class="riskData?.risk_ips?.length ? 'red' : ''" x-text="riskData?.risk_ips?.length || ''"></span>
+  </button>
+  <button :class="{active:tab==='exclusions'}" @click="tab='exclusions';loadExclusions()">
+    Exclusions
+    <span class="tab-badge" x-text="excludes.length || ''"></span>
+  </button>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ CONTROL ══ -->
+<div class="content" x-show="tab==='control'">
+
+  <!-- Blackhole search -->
+  <div class="card">
+    <div class="card-title">Blackhole search</div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input x-model="bhSearch.ip"
+             placeholder="1.2.3.4"
+             style="width:200px;font-family:monospace"
+             @keyup.enter="doBHSearch()">
+      <button class="btn" @click="doBHSearch()" :disabled="bhSearch.loading">
+        <span x-show="bhSearch.loading" class="spinner"></span>
+        <span x-show="!bhSearch.loading">Search</span>
+      </button>
+    </div>
+    <div class="bh-search-result" x-show="bhSearch.result">
+      <template x-if="bhSearch.result?.prefix">
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <span class="chip red" x-text="bhSearch.result.prefix"></span>
+            <span class="tag-pill" x-text="bhSearch.result.asn_name || '—'"></span>
+            <span class="tag-pill" x-text="bhSearch.result.country || '—'"></span>
+          </div>
+          <div style="font-size:12px;color:var(--muted)">
+            rule: <span style="color:var(--yellow)" x-text="bhSearch.result.rule || '—'"></span>
+            &nbsp;·&nbsp; expires: <span x-text="fmtExpiry(bhSearch.result.expires_at)"></span>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:4px">
+            <a class="btn secondary sm"
+               style="text-decoration:none"
+               :href="'/ip/' + encodeURIComponent(ipFromPrefix(bhSearch.result.prefix) || bhSearch.ip)">
+              Open IP page
+            </a>
+            <button class="btn sm danger" @click="doWithdraw(bhSearch.result.prefix)">Withdraw</button>
+          </div>
+        </div>
+      </template>
+      <template x-if="bhSearch.result && !bhSearch.result.prefix">
+        <span style="color:var(--green);font-size:12px">✓ not blackholed</span>
+      </template>
+    </div>
+  </div>
+
+  <!-- Manual announce -->
+  <div class="card">
+    <div class="card-title">Announce prefix / blackhole</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>prefix</label>
+        <input x-model="announceForm.prefix" placeholder="1.2.3.4/32" style="width:160px;font-family:monospace">
+      </div>
+      <div class="form-group">
+        <label>next-hop</label>
+        <input x-model="announceForm.next_hop" style="width:140px;font-family:monospace">
+      </div>
+      <div class="form-group">
+        <label>communities</label>
+        <input x-model="announceForm.communities" placeholder="65001:666" style="width:120px;font-family:monospace">
+      </div>
+      <div class="form-group">
+        <label>TTL seconds (0 = permanent)</label>
+        <input x-model="announceForm.ttl" type="number" style="width:120px">
+      </div>
+      <div class="form-group" style="justify-content:flex-end">
+        <button class="btn" @click="doAnnounce()" :disabled="!announceForm.prefix">Announce</button>
+      </div>
+    </div>
+    <p x-show="announceMsg"
+       x-text="announceMsg"
+       :style="announceMsg.startsWith('✅') ? 'color:var(--green)' : 'color:var(--red)'"
+       style="margin-top:10px;font-size:13px"></p>
+  </div>
+
+  <!-- Emergency flush -->
+  <div class="card flush-card">
+    <div class="card-title">⚠ Emergency flush</div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
+      Withdraws ALL BGP announcements and clears the detection + blackhole database. Use only in emergencies.
+    </p>
+    <template x-if="!flushConfirm && !flushResult">
+      <button class="btn danger" @click="flushConfirm=true">Flush everything</button>
+    </template>
+    <template x-if="flushConfirm">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <span style="color:var(--red);font-size:13px">Are you sure? This withdraws all blackholes immediately.</span>
+        <button class="btn" style="background:var(--red);border-color:var(--red)" @click="doFlush()">Yes, flush</button>
+        <button class="btn secondary" @click="flushConfirm=false">Cancel</button>
+      </div>
+    </template>
+    <template x-if="flushResult">
+      <div style="font-size:13px;color:var(--green)"
+           x-text="'Done — withdrew ' + (flushResult.rib_announcements_cleared||0) + ' prefixes, cleared ' + (flushResult.db_blackholes_cleared||0) + ' blackholes'">
+      </div>
+    </template>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ BLACKHOLES ══ -->
+<div class="content" x-show="tab==='blackholes'">
+  <div class="card">
+    <div class="card-title">
+      Active blackholes
+      <span class="count" x-text="filteredBlackholes.length + ' / ' + blackholes.length"></span>
+      <span x-show="bhLoading" class="spinner" style="margin-left:4px"></span>
+      <button class="btn secondary sm" style="margin-left:auto" @click="loadBlackholes()">↻ refresh</button>
+    </div>
+
+    <div class="bh-filter-row">
+      <input x-model="bhFilter.ip"      placeholder="🔍 IP / prefix / PTR">
+      <input x-model="bhFilter.asn"     placeholder="🔍 ASN / name">
+      <input x-model="bhFilter.country" placeholder="🔍 CC" style="width:80px">
+    </div>
+
+    <template x-if="!bhLoading && filteredBlackholes.length === 0">
+      <div class="placeholder">No active blackholes</div>
+    </template>
+
+    <template x-if="filteredBlackholes.length > 0">
+      <table>
+        <thead>
+          <tr>
+            <th>Prefix</th>
+            <th>ASN</th>
+            <th>CC</th>
+            <th>Rule</th>
+            <th>Expires</th>
+            <th>PTR</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="b in filteredBlackholes" :key="b.prefix">
+            <tr>
+              <td>
+                <a class="ip-link" :href="'/ip/' + encodeURIComponent(ipFromPrefix(b.prefix) || b.prefix)"
+                   x-text="b.prefix"></a>
+              </td>
+              <td>
+                <span class="asn-num" x-text="b.asn ? 'AS'+b.asn : '—'"></span>
+                <span class="asn-name" x-text="b.asn_name || ''"></span>
+              </td>
+              <td>
+                <span x-text="countryFlag(b.country)"></span>
+                <span style="font-size:12px" x-text="b.country || '—'"></span>
+              </td>
+              <td><span class="chip yellow" x-text="b.rule || '—'"></span></td>
+              <td style="font-size:12px;color:var(--muted)" x-text="fmtExpiry(b.expires_at)"></td>
+              <td style="font-size:11px;color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis"
+                  x-text="b.ptr || '—'"></td>
+              <td>
+                <button class="withdraw-btn" @click="doWithdraw(b.prefix)">✕</button>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </template>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ RISK IPs ══ -->
+<div class="content" x-show="tab==='risk'">
+  <div class="card">
+    <div class="card-title">
+      ML Risk IPs
+      <span class="count" x-text="(riskData?.risk_ips?.length || 0) + ' sources'"></span>
+      <span x-show="riskLoading" class="spinner" style="margin-left:4px"></span>
+      <span style="margin-left:auto;font-size:11px;color:var(--muted);font-weight:400;letter-spacing:0">
+        Last 7 days · sorted by peak fused score
+      </span>
+      <button class="btn secondary sm" style="margin-left:8px" @click="loadRisk()">↻ refresh</button>
+    </div>
+
+    <template x-if="!riskLoading && !(riskData?.risk_ips?.length)">
+      <div class="placeholder">No risk events in the last 7 days</div>
+    </template>
+
+    <template x-if="riskData?.risk_ips?.length">
+      <table>
+        <thead>
+          <tr>
+            <th>Source IP</th>
+            <th>Peak score</th>
+            <th>Events</th>
+            <th>Shape</th>
+            <th>Last target</th>
+            <th>ASN</th>
+            <th>CC</th>
+            <th>Last seen</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="r in riskData.risk_ips" :key="r.src">
+            <tr>
+              <td>
+                <a class="ip-link" :href="'/ip/' + encodeURIComponent(r.src)" x-text="r.src"></a>
+                <div class="risk-meta" x-text="r.ptr && r.ptr !== '-' ? r.ptr : ''"></div>
+              </td>
+              <td>
+                <span class="risk-score"
+                      :class="r.peak_fused >= 0.85 ? 'risk-high' : r.peak_fused >= 0.70 ? 'risk-mid' : 'risk-low'"
+                      x-text="r.peak_fused.toFixed(3)"></span>
+              </td>
+              <td class="mono" x-text="r.event_count"></td>
+              <td>
+                <template x-for="tag in (r.latest_shape || '').split(',').filter(Boolean)" :key="tag">
+                  <span class="chip" x-text="tag" style="margin-right:3px;margin-bottom:2px"></span>
+                </template>
+                <span x-show="!r.latest_shape" style="color:var(--muted)">—</span>
+              </td>
+              <td class="mono" style="font-size:11px">
+                <span x-text="r.latest_dst || '—'"></span>
+                <span x-show="r.latest_ex_count" style="color:var(--muted)" x-text="' x' + r.latest_ex_count"></span>
+              </td>
+              <td>
+                <span class="asn-num" x-text="r.asn ? 'AS'+r.asn : '—'"></span>
+                <span class="asn-name" x-text="r.asn_name || ''"></span>
+              </td>
+              <td>
+                <span x-text="countryFlag(r.cc)"></span>
+                <span style="font-size:12px" x-text="r.cc || '—'"></span>
+              </td>
+              <td style="font-size:11px;color:var(--muted)" x-text="fmtTs(r.last_seen)"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </template>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ EXCLUSIONS ══ -->
+<div class="content" x-show="tab==='exclusions'">
   <div class="card">
     <div class="card-title">
       Detection exclusions
       <span class="count" x-text="excludes.length"></span>
-      <span x-show="loading" class="spinner" style="margin-left:4px"></span>
-      <span x-show="enrichLoading && !loading" style="font-size:11px;color:var(--muted);font-weight:400;letter-spacing:0">
+      <span x-show="exLoading" class="spinner" style="margin-left:4px"></span>
+      <span x-show="enrichLoading && !exLoading"
+            style="font-size:11px;color:var(--muted);font-weight:400;letter-spacing:0">
         <span class="spinner-sm"></span> enriching…
       </span>
       <span style="margin-left:auto;font-size:11px;color:var(--muted);font-weight:400;letter-spacing:0">
@@ -104,8 +430,61 @@ button.btn.sm{padding:4px 10px;font-size:12px}
       </span>
     </div>
 
-    <template x-if="excludes.length === 0 && !loading">
-      <div class="placeholder">No exclusions configured yet. Add one below.</div>
+    <!-- Add row -->
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center">
+      <input class="cidr-in" x-model="newCIDR"  placeholder="1.2.3.4 or 10.0.0.0/8" @keydown.enter="addEntry()">
+      <input class="lbl-in"  x-model="newLabel" placeholder="label (optional)"        @keydown.enter="addEntry()">
+      <button class="btn" @click="addEntry()" :disabled="!newCIDR.trim()">Add</button>
+      <div style="margin-left:auto;display:flex;gap:8px">
+        <button class="btn secondary" @click="exportJSON()" title="Download JSON">⬇ Export</button>
+        <label class="btn secondary" style="cursor:pointer;margin:0" title="Import JSON or flat .conf">
+          ⬆ Import
+          <input type="file" accept=".json,.conf,.txt" style="display:none" @change="importFile($event)">
+        </label>
+      </div>
+    </div>
+
+    <!-- Import preview -->
+    <template x-if="importPreview.length > 0">
+      <div style="margin-bottom:16px;border:1px solid var(--border);border-radius:6px;overflow:hidden">
+        <div style="padding:10px 14px;background:var(--bg3);display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted)">
+          <span style="font-weight:600;color:var(--text)">Import preview</span>
+          <span x-text="importPreview.length + ' entries'"></span>
+          <span x-show="importSkipped > 0" style="color:var(--yellow)"
+                x-text="importSkipped + ' skipped'"></span>
+          <div style="margin-left:auto;display:flex;gap:8px">
+            <button class="btn sm" @click="confirmImport()" :disabled="importLoading">
+              <span x-show="importLoading" class="spinner-sm" style="margin-right:4px"></span>
+              <span x-text="importLoading ? 'Importing…' : 'Import all'"></span>
+            </button>
+            <button class="btn secondary sm" @click="cancelImport()">Cancel</button>
+          </div>
+        </div>
+        <div style="max-height:220px;overflow-y:auto">
+          <table>
+            <thead><tr><th>CIDR / IP</th><th>Label</th><th style="width:90px">Status</th></tr></thead>
+            <tbody>
+              <template x-for="(row,idx) in importPreview" :key="idx">
+                <tr>
+                  <td class="mono" x-text="row.cidr"></td>
+                  <td x-text="row.label || '—'"></td>
+                  <td>
+                    <span x-show="row.status==='pending'" style="color:var(--muted);font-size:11px">pending</span>
+                    <span x-show="row.status==='ok'"      style="color:var(--green);font-size:11px">✓ added</span>
+                    <span x-show="row.status==='dup'"     style="color:var(--muted);font-size:11px">duplicate</span>
+                    <span x-show="row.status==='err'"     style="color:var(--red);font-size:11px"
+                          x-text="'✗ ' + (row.err||'error')"></span>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </template>
+
+    <template x-if="excludes.length === 0 && !exLoading">
+      <div class="placeholder">No exclusions configured yet. Add one above.</div>
     </template>
 
     <template x-if="excludes.length > 0">
@@ -127,11 +506,10 @@ button.btn.sm{padding:4px 10px;font-size:12px}
             <tr>
               <td style="color:var(--muted);font-size:12px" x-text="e.id"></td>
 
-              <!-- CIDR — view -->
+              <!-- CIDR -->
               <template x-if="editID !== e.id">
                 <td class="mono" x-text="e.cidr"></td>
               </template>
-              <!-- CIDR — edit -->
               <template x-if="editID === e.id">
                 <td><div class="edit-cell">
                   <input x-model="editCIDR" style="width:150px" @keydown.enter="saveEdit(e.id)" @keydown.escape="cancelEdit()">
@@ -146,7 +524,7 @@ button.btn.sm{padding:4px 10px;font-size:12px}
                     <span x-show="!enrichLoading">—</span>
                   </span>
                 </template>
-                <template x-if="enrichment[baseIP(e.cidr)] && enrichment[baseIP(e.cidr)].private">
+                <template x-if="enrichment[baseIP(e.cidr)]?.private">
                   <span class="private-badge">private / RFC1918</span>
                 </template>
                 <template x-if="enrichment[baseIP(e.cidr)] && !enrichment[baseIP(e.cidr)].private">
@@ -172,200 +550,223 @@ button.btn.sm{padding:4px 10px;font-size:12px}
 
               <!-- PTR -->
               <td>
-                <template x-if="enrichment[baseIP(e.cidr)] && enrichment[baseIP(e.cidr)].ptr">
-                  <div class="enrich-ptr" :title="enrichment[baseIP(e.cidr)].ptr" x-text="enrichment[baseIP(e.cidr)].ptr"></div>
+                <template x-if="enrichment[baseIP(e.cidr)]?.ptr">
+                  <span class="search-ptr" :title="enrichment[baseIP(e.cidr)].ptr"
+                        x-text="enrichment[baseIP(e.cidr)].ptr"></span>
                 </template>
-                <template x-if="!enrichment[baseIP(e.cidr)] || !enrichment[baseIP(e.cidr)].ptr">
+                <template x-if="!enrichment[baseIP(e.cidr)]?.ptr">
                   <span style="color:var(--muted)">—</span>
                 </template>
               </td>
 
-              <!-- Label — view -->
+              <!-- Label -->
               <template x-if="editID !== e.id">
-                <td class="label-text" x-text="e.label || '—'"></td>
+                <td style="font-size:12px;color:var(--muted)" x-text="e.label || '—'"></td>
               </template>
-              <!-- Label — edit -->
               <template x-if="editID === e.id">
-                <td><div class="edit-cell">
-                  <input x-model="editLabel" class="label-input" style="width:150px" @keydown.enter="saveEdit(e.id)" @keydown.escape="cancelEdit()" placeholder="label (optional)">
-                </div></td>
+                <td><input x-model="editLabel" style="width:130px" @keydown.enter="saveEdit(e.id)" @keydown.escape="cancelEdit()"></td>
               </template>
 
-              <td style="color:var(--muted);font-size:12px;white-space:nowrap" x-text="fmtDate(e.created_at)"></td>
+              <!-- Added -->
+              <td style="font-size:11px;color:var(--muted)" x-text="fmtDate(e.created_at)"></td>
 
-              <!-- Actions — view -->
-              <template x-if="editID !== e.id">
-                <td><div class="actions">
-                  <button class="btn secondary sm" @click="startEdit(e)">Edit</button>
-                  <button class="btn danger sm" @click="deleteEntry(e.id, e.cidr)">Delete</button>
-                </div></td>
-              </template>
-              <!-- Actions — edit -->
-              <template x-if="editID === e.id">
-                <td><div class="actions">
-                  <button class="btn sm" @click="saveEdit(e.id)">Save</button>
-                  <button class="btn secondary sm" @click="cancelEdit()">Cancel</button>
-                </div></td>
-              </template>
-
+              <!-- Actions -->
+              <td>
+                <div style="display:flex;gap:6px">
+                  <template x-if="editID !== e.id">
+                    <button class="btn secondary sm" @click="startEdit(e)">Edit</button>
+                  </template>
+                  <template x-if="editID === e.id">
+                    <button class="btn sm" @click="saveEdit(e.id)">Save</button>
+                    <button class="btn secondary sm" @click="cancelEdit()">Cancel</button>
+                  </template>
+                  <template x-if="editID !== e.id">
+                    <button class="btn sm danger" @click="deleteEntry(e.id, e.cidr)">Remove</button>
+                  </template>
+                </div>
+              </td>
             </tr>
           </template>
         </tbody>
       </table>
     </template>
-
-    <!-- Add new -->
-    <div class="add-row">
-      <input class="cidr-in" x-model="newCIDR" placeholder="e.g. 1.2.3.4 or 10.0.0.0/8" @keydown.enter="addEntry()">
-      <input class="lbl-in label-input" x-model="newLabel" placeholder="label (optional, e.g. Public DNS)" @keydown.enter="addEntry()">
-      <button class="btn" @click="addEntry()" :disabled="!newCIDR.trim()">Add</button>
-      <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
-        <button class="btn secondary" @click="exportJSON()" title="Download all exclusions as JSON">⬇ Export</button>
-        <label class="btn secondary" style="cursor:pointer;margin:0" title="Import from JSON or flat .conf file">
-          ⬆ Import
-          <input type="file" accept=".json,.conf,.txt" style="display:none" @change="importFile($event)">
-        </label>
-      </div>
-    </div>
-
-    <!-- Import preview modal -->
-    <template x-if="importPreview.length > 0">
-      <div style="margin-top:16px;border:1px solid var(--border);border-radius:6px;overflow:hidden">
-        <div style="padding:10px 14px;background:var(--bg3);display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted)">
-          <span style="font-weight:600;color:var(--text)">Import preview</span>
-          <span x-text="importPreview.length + ' entries'"></span>
-          <span x-show="importSkipped > 0" style="color:var(--yellow)" x-text="importSkipped + ' skipped (invalid or duplicate)'"></span>
-          <div style="margin-left:auto;display:flex;gap:8px">
-            <button class="btn sm" @click="confirmImport()" :disabled="importLoading">
-              <span x-show="importLoading" class="spinner-sm" style="margin-right:4px"></span>
-              <span x-text="importLoading ? 'Importing…' : 'Import all'"></span>
-            </button>
-            <button class="btn secondary sm" @click="cancelImport()">Cancel</button>
-          </div>
-        </div>
-        <div style="max-height:220px;overflow-y:auto">
-          <table>
-            <thead><tr>
-              <th>CIDR / IP</th>
-              <th>Label</th>
-              <th style="width:90px">Status</th>
-            </tr></thead>
-            <tbody>
-              <template x-for="(row, idx) in importPreview" :key="idx">
-                <tr>
-                  <td class="mono" x-text="row.cidr"></td>
-                  <td class="label-text" x-text="row.label || '—'"></td>
-                  <td>
-                    <span x-show="row.status === 'pending'" style="color:var(--muted);font-size:11px">pending</span>
-                    <span x-show="row.status === 'ok'"      style="color:var(--green);font-size:11px">✓ added</span>
-                    <span x-show="row.status === 'dup'"     style="color:var(--muted);font-size:11px">already exists</span>
-                    <span x-show="row.status === 'err'"     style="color:var(--red);font-size:11px"   x-text="'✗ ' + (row.err||'error')"></span>
-                  </td>
-                </tr>
-              </template>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </template>
-
   </div>
-
-  <!-- ── Upcoming: Recent Detections ────────────────────────────────────── -->
-  <div class="card">
-    <div class="card-title">
-      Recent detections
-      <span style="color:var(--yellow);font-size:11px;margin-left:6px;letter-spacing:0;text-transform:none;font-weight:400">coming soon</span>
-    </div>
-    <p class="section-hint">This section will display a live tail of <code>detections.log</code> — rule hits, source enrichment, and detection counts — directly in the UI.</p>
-    <div class="placeholder">Live detection log viewer — not yet implemented.</div>
-  </div>
-
 </div>
 
+<!-- ── Toast ── -->
 <div class="toast" :class="[toast.type, toast.show ? 'show' : '']" x-text="toast.msg"></div>
 
 <script>
-function app() { return {
-  excludes:      [],
-  enrichment:    {},    // keyed by base IP string
-  loading:       false,
+function detection() { return {
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  tab: 'control',
+
+  // IP search (header)
+  ipSearch: '',
+
+  // Control
+  announceForm: { prefix:'', next_hop:'192.0.2.1', communities:'65001:666', ttl:14400 },
+  announceMsg: '',
+  flushConfirm: false,
+  flushResult: null,
+  bhSearch: { ip:'', result:null, loading:false },
+
+  // Blackholes
+  blackholes: [],
+  bhLoading: false,
+  bhFilter: { ip:'', asn:'', country:'' },
+
+  // Risk IPs
+  riskData: null,
+  riskLoading: false,
+
+  // Exclusions
+  excludes: [],
+  enrichment: {},
+  exLoading: false,
   enrichLoading: false,
-  newCIDR:  '',
+  newCIDR: '',
   newLabel: '',
-  editID:    null,
-  editCIDR:  '',
+  editID: null,
+  editCIDR: '',
   editLabel: '',
   importPreview: [],
   importSkipped: 0,
   importLoading: false,
+
   toast: { msg:'', type:'ok', show:false },
   _toastTimer: null,
 
-  init() { this.load() },
+  // ── Computed ───────────────────────────────────────────────────────────────
+  get filteredBlackholes() {
+    const { ip, asn, country } = this.bhFilter
+    return this.blackholes.filter(b => {
+      if (ip && !b.prefix.includes(ip) && !(b.ptr||'').toLowerCase().includes(ip.toLowerCase())) return false
+      if (asn && !String(b.asn||'').includes(asn) && !(b.asn_name||'').toLowerCase().includes(asn.toLowerCase())) return false
+      if (country && (b.country||'').toUpperCase() !== country.toUpperCase()) return false
+      return true
+    })
+  },
 
-  async load() {
-    this.loading = true
+  // ── Lifecycle ──────────────────────────────────────────────────────────────
+  init() {
+    this.loadBlackholes()   // pre-load so badge count is ready
+  },
+
+  // ── IP header search ───────────────────────────────────────────────────────
+  openIP() {
+    const ip = this.ipSearch.trim()
+    if (!ip) return
+    window.open('/ip/' + encodeURIComponent(ip), '_blank')
+  },
+
+  // ── Auth helper ───────────────────────────────────────────────────────────
+  authHeaders() {
+    const meta = document.querySelector('meta[name="argus-token"]')
+    return meta ? { 'Authorization': 'Bearer ' + meta.content } : {}
+  },
+
+  // ── Control actions ───────────────────────────────────────────────────────
+  async doBHSearch() {
+    if (!this.bhSearch.ip) return
+    this.bhSearch.loading = true
+    this.bhSearch.result = null
+    try {
+      const r = await fetch('/blackhole-search?ip=' + encodeURIComponent(this.bhSearch.ip),
+        { headers: this.authHeaders() })
+      if (!r.ok && r.status !== 404) throw new Error('HTTP ' + r.status)
+      this.bhSearch.result = r.ok ? await r.json() : { found: false }
+    } catch(e) {
+      this.bhSearch.result = { found: false }
+    } finally { this.bhSearch.loading = false }
+  },
+
+  async doAnnounce() {
+    const comms = this.announceForm.communities
+      ? this.announceForm.communities.split(',').map(s => s.trim()).filter(Boolean)
+      : []
+    const body = {
+      prefix:           this.announceForm.prefix,
+      next_hop:         this.announceForm.next_hop,
+      communities:      comms,
+      duration_seconds: parseInt(this.announceForm.ttl) || 0,
+    }
+    this.announceMsg = ''
+    try {
+      const r = await fetch('/announce', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...this.authHeaders() },
+        body: JSON.stringify(body)
+      })
+      if (!r.ok) throw new Error('HTTP ' + r.status)
+      this.announceMsg = '✅ Announced ' + body.prefix
+      this.announceForm.prefix = ''
+      await this.loadBlackholes()
+    } catch(e) { this.announceMsg = '❌ ' + e.message }
+  },
+
+  async doWithdraw(prefix) {
+    if (!prefix) return
+    try {
+      const r = await fetch('/withdraw', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...this.authHeaders() },
+        body: JSON.stringify({ prefix })
+      })
+      if (!r.ok) throw new Error('HTTP ' + r.status)
+      await this.loadBlackholes()
+      // clear search result if it matched
+      if (this.bhSearch.result?.prefix === prefix) this.bhSearch.result = null
+    } catch(e) { alert('Withdraw failed: ' + e.message) }
+  },
+
+  async doFlush() {
+    try {
+      const r = await fetch('/flush', { method: 'POST', headers: this.authHeaders() })
+      if (!r.ok) throw new Error('HTTP ' + r.status)
+      this.flushResult = await r.json()
+      this.flushConfirm = false
+      await this.loadBlackholes()
+    } catch(e) { this.flushResult = { error: e.message } }
+  },
+
+  // ── Blackholes ────────────────────────────────────────────────────────────
+  async loadBlackholes() {
+    this.bhLoading = true
+    try {
+      const r = await fetch('/blackhole-list', { headers: this.authHeaders() })
+      if (!r.ok) throw new Error('HTTP ' + r.status)
+      const data = await r.json()
+      this.blackholes = Array.isArray(data) ? data : Object.values(data)
+    } catch(e) { console.warn('blackhole-list:', e) }
+    finally { this.bhLoading = false }
+  },
+
+  // ── Risk IPs ──────────────────────────────────────────────────────────────
+  async loadRisk() {
+    if (this.riskLoading) return
+    this.riskLoading = true
+    try {
+      const r = await fetch('/api/risk', { headers: this.authHeaders() })
+      if (!r.ok) throw new Error('HTTP ' + r.status)
+      this.riskData = await r.json()
+    } catch(e) { console.warn('api/risk:', e) }
+    finally { this.riskLoading = false }
+  },
+
+  // ── Exclusions ────────────────────────────────────────────────────────────
+  async loadExclusions() {
+    if (this.excludes.length) return   // already loaded; rely on explicit refresh
+    this.exLoading = true
     try {
       const r = await fetch('/detection/excludes', { headers: this.authHeaders() })
       if (!r.ok) throw new Error('HTTP ' + r.status)
       this.excludes = await r.json()
       this.enrichAll()
-    } catch(e) {
-      this.showToast('Failed to load: ' + e.message, 'err')
-    } finally { this.loading = false }
+    } catch(e) { this.showToast('Failed to load exclusions: ' + e.message, 'err') }
+    finally { this.exLoading = false }
   },
-
-  // ── Enrichment ─────────────────────────────────────────────────────────────
-
-  baseIP(cidr) {
-    return cidr ? cidr.split('/')[0] : ''
-  },
-
-  isPrivate(ip) {
-    return /^10\./.test(ip)
-        || /^172\.(1[6-9]|2\d|3[01])\./.test(ip)
-        || /^192\.168\./.test(ip)
-        || /^127\./.test(ip)
-        || /^::1$/.test(ip)
-        || /^f[cd]/i.test(ip)
-        || /^169\.254\./.test(ip)
-  },
-
-  countryFlag(cc) {
-    if (!cc || cc.length !== 2) return ''
-    return [...cc.toUpperCase()].map(c =>
-      String.fromCodePoint(c.charCodeAt(0) - 65 + 0x1F1E6)
-    ).join('')
-  },
-
-  async enrichAll() {
-    const ips = [...new Set(this.excludes.map(e => this.baseIP(e.cidr)))]
-      .filter(ip => ip && !this.enrichment[ip])
-    if (!ips.length) return
-
-    this.enrichLoading = true
-    // Batches of 5 — parallel within batch, sequential between
-    for (let i = 0; i < ips.length; i += 5) {
-      await Promise.all(ips.slice(i, i + 5).map(ip => this.enrichOne(ip)))
-    }
-    this.enrichLoading = false
-  },
-
-  async enrichOne(ip) {
-    if (this.isPrivate(ip)) {
-      this.enrichment = { ...this.enrichment, [ip]: { private: true } }
-      return
-    }
-    try {
-      const r = await fetch(`/infoip?ip=${encodeURIComponent(ip)}`, { headers: this.authHeaders() })
-      if (!r.ok) return
-      const d = await r.json()
-      this.enrichment = { ...this.enrichment, [ip]: d }
-    } catch(_) { /* best-effort */ }
-  },
-
-  // ── CRUD ───────────────────────────────────────────────────────────────────
 
   async addEntry() {
     const cidr = this.newCIDR.trim()
@@ -380,7 +781,8 @@ function app() { return {
       if (!r.ok) throw new Error(data.error || 'HTTP ' + r.status)
       this.newCIDR = ''; this.newLabel = ''
       this.showToast('Added ' + cidr, 'ok')
-      await this.load()
+      this.excludes = []   // force reload
+      await this.loadExclusions()
     } catch(e) { this.showToast(e.message, 'err') }
   },
 
@@ -393,11 +795,12 @@ function app() { return {
       const data = await r.json()
       if (!r.ok) throw new Error(data.error || 'HTTP ' + r.status)
       this.showToast('Removed ' + cidr, 'ok')
-      await this.load()
+      this.excludes = []
+      await this.loadExclusions()
     } catch(e) { this.showToast(e.message, 'err') }
   },
 
-  startEdit(e) { this.editID = e.id; this.editCIDR = e.cidr; this.editLabel = e.label },
+  startEdit(e)  { this.editID = e.id; this.editCIDR = e.cidr; this.editLabel = e.label },
   cancelEdit()  { this.editID = null; this.editCIDR = ''; this.editLabel = '' },
 
   async saveEdit(id) {
@@ -413,92 +816,84 @@ function app() { return {
       if (!r.ok) throw new Error(data.error || 'HTTP ' + r.status)
       this.cancelEdit()
       this.showToast('Updated', 'ok')
-      await this.load()
+      this.excludes = []
+      await this.loadExclusions()
     } catch(e) { this.showToast(e.message, 'err') }
   },
 
-  // ── Export ─────────────────────────────────────────────────────────────────
+  // ── Enrichment (exclusions) ───────────────────────────────────────────────
+  baseIP(cidr) {
+    return cidr ? cidr.split('/')[0] : ''
+  },
 
+  async enrichAll() {
+    const ips = [...new Set(this.excludes.map(e => this.baseIP(e.cidr)).filter(Boolean))]
+    if (!ips.length) return
+    this.enrichLoading = true
+    const BATCH = 10
+    for (let i = 0; i < ips.length; i += BATCH) {
+      const slice = ips.slice(i, i + BATCH)
+      await Promise.all(slice.map(ip => this.enrichOne(ip)))
+    }
+    this.enrichLoading = false
+  },
+
+  async enrichOne(ip) {
+    if (this.enrichment[ip]) return
+    const private4 = /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|127\.|0\.0\.0\.0)/.test(ip)
+    const private6 = /^(::1$|fc|fd)/i.test(ip)
+    if (private4 || private6) { this.enrichment = { ...this.enrichment, [ip]: { private: true } }; return }
+    try {
+      const r = await fetch('/infoip?ip=' + encodeURIComponent(ip), { headers: this.authHeaders() })
+      if (!r.ok) return
+      const d = await r.json()
+      this.enrichment = { ...this.enrichment, [ip]: { asn: d.asn, asn_name: d.asn_name, country: d.country, ptr: d.ptr } }
+    } catch {}
+  },
+
+  // ── Import / Export (exclusions) ─────────────────────────────────────────
   exportJSON() {
     const data = this.excludes.map(e => ({ cidr: e.cidr, label: e.label || '' }))
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
     const url  = URL.createObjectURL(blob)
-    const a    = document.createElement('a')
-    a.href     = url
-    a.download = `argus-excludes-${new Date().toISOString().slice(0,10)}.json`
-    a.click()
+    Object.assign(document.createElement('a'), { href: url, download: 'exclusions.json' }).click()
     URL.revokeObjectURL(url)
-    this.showToast('Exported ' + data.length + ' entries', 'ok')
   },
 
-  // ── Import ─────────────────────────────────────────────────────────────────
-
-  importFile(evt) {
-    const file = evt.target.files[0]
+  async importFile(evt) {
+    const file = evt.target.files?.[0]
     if (!file) return
-    evt.target.value = ''   // reset so the same file can be re-imported if needed
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const text = e.target.result
-      this.parseImport(text, file.name)
-    }
-    reader.readAsText(file)
-  },
-
-  parseImport(text, filename) {
-    let rows = []
-    let skipped = 0
-
-    // Detect format: JSON array vs flat file
-    const trimmed = text.trim()
-    if (trimmed.startsWith('[')) {
-      // JSON format — our export format: [{cidr, label}, ...]
-      try {
-        const parsed = JSON.parse(trimmed)
-        for (const item of parsed) {
-          const cidr = (item.cidr || item.ip || '').trim()
-          if (!cidr) { skipped++; continue }
-          rows.push({ cidr, label: item.label || '', status: 'pending' })
-        }
-      } catch(err) {
-        this.showToast('Invalid JSON: ' + err.message, 'err')
-        return
+    evt.target.value = ''
+    const text = await file.text()
+    const filename = file.name.toLowerCase()
+    const rows = []
+    let skipped = 0, currentLabel = ''
+    if (filename.endsWith('.json')) {
+      let parsed
+      try { parsed = JSON.parse(text) } catch { this.showToast('Invalid JSON', 'err'); return }
+      for (const item of (Array.isArray(parsed) ? parsed : [])) {
+        if (item?.cidr) rows.push({ cidr: item.cidr, label: item.label || '', status: 'pending' })
+        else skipped++
       }
     } else {
-      // Flat file format — one IP/CIDR per line, # comments
-      let currentLabel = ''
-      for (const raw of trimmed.split('\n')) {
-        let line = raw.trim()
-        if (line.startsWith('#')) {
-          currentLabel = line.replace(/^#+\s*/, '').trim()
-          continue
-        }
-        if (!line) { currentLabel = ''; continue }
-        // Strip inline comment
+      for (let line of text.split('\n')) {
+        line = line.trim()
+        if (!line) continue
+        if (line.startsWith('#')) { currentLabel = line.slice(1).trim(); continue }
         const ci = line.indexOf('#')
         if (ci !== -1) line = line.slice(0, ci).trim()
-        // First token only
         line = line.split(/\s+/)[0]
         if (!line) continue
         rows.push({ cidr: line, label: currentLabel, status: 'pending' })
       }
     }
-
-    // Deduplicate against existing entries
     const existing = new Set(this.excludes.map(e => e.cidr))
     const deduped  = []
     for (const row of rows) {
-      if (existing.has(row.cidr)) {
-        row.status = 'dup'
-        skipped++
-      }
+      if (existing.has(row.cidr)) { row.status = 'dup'; skipped++ }
       deduped.push(row)
     }
-
-    if (!deduped.length) {
-      this.showToast('Nothing to import from ' + filename, 'err')
-      return
-    }
+    if (!deduped.length) { this.showToast('Nothing to import', 'err'); return }
     this.importPreview = deduped
     this.importSkipped = skipped
   },
@@ -506,7 +901,6 @@ function app() { return {
   async confirmImport() {
     this.importLoading = true
     let added = 0, failed = 0
-
     for (const row of this.importPreview) {
       if (row.status === 'dup') continue
       try {
@@ -516,54 +910,59 @@ function app() { return {
           body: JSON.stringify({ cidr: row.cidr, label: row.label })
         })
         const data = await r.json()
-        if (!r.ok) {
-          row.status = 'err'
-          row.err    = data.error || ('HTTP ' + r.status)
-          failed++
-        } else {
-          row.status = 'ok'
-          added++
-        }
-      } catch(e) {
-        row.status = 'err'
-        row.err    = e.message
-        failed++
-      }
-      // Force Alpine to re-render the preview table row by row
+        if (!r.ok) { row.status = 'err'; row.err = data.error || 'HTTP ' + r.status; failed++ }
+        else        { row.status = 'ok'; added++ }
+      } catch(e)  { row.status = 'err'; row.err = e.message; failed++ }
       this.importPreview = [...this.importPreview]
     }
-
     this.importLoading = false
-    const msg = added + ' imported' + (failed ? ', ' + failed + ' failed' : '')
-    this.showToast(msg, failed ? 'err' : 'ok')
-    await this.load()   // refresh main list + trigger enrichment for new entries
-
-    // Auto-close preview after a moment if everything went fine
+    this.showToast(added + ' imported' + (failed ? ', ' + failed + ' failed' : ''), failed ? 'err' : 'ok')
+    this.excludes = []
+    await this.loadExclusions()
     if (!failed) setTimeout(() => { this.importPreview = [] }, 1800)
   },
 
-  cancelImport() {
-    this.importPreview = []
-    this.importSkipped = 0
+  cancelImport() { this.importPreview = []; this.importSkipped = 0 },
+
+  // ── Formatters ────────────────────────────────────────────────────────────
+  fmtExpiry(exp) {
+    if (!exp || exp.startsWith('9999')) return '∞ permanent'
+    const d = new Date(exp)
+    const diff = d - Date.now()
+    if (diff < 0) return 'expired'
+    const h = Math.floor(diff / 3600000)
+    const m = Math.floor((diff % 3600000) / 60000)
+    return `${h}h ${m}m`
   },
 
-  authHeaders() {
-    const meta = document.querySelector('meta[name="argus-token"]')
-    return meta ? { 'Authorization': 'Bearer ' + meta.content } : {}
+  fmtTs(unix) {
+    if (!unix) return '—'
+    const d = new Date(unix * 1000)
+    return isNaN(d) ? '—' : d.toLocaleString()
   },
 
   fmtDate(ts) {
     if (!ts) return '—'
     const d = new Date(ts)
-    if (isNaN(d)) return ts
-    return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})
+    return isNaN(d) ? ts : d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })
   },
 
+  countryFlag(cc) {
+    if (!cc || cc.length !== 2) return ''
+    return [...cc.toUpperCase()].map(c => String.fromCodePoint(0x1F1E6 + c.charCodeAt(0) - 65)).join('')
+  },
+
+  ipFromPrefix(prefix) {
+    return prefix ? prefix.split('/')[0] : ''
+  },
+
+  // ── Toast ─────────────────────────────────────────────────────────────────
   showToast(msg, type = 'ok') {
     clearTimeout(this._toastTimer)
     this.toast = { msg, type, show: true }
     this._toastTimer = setTimeout(() => { this.toast.show = false }, 3500)
-  }
+  },
+
 }}
 </script>
 </body>

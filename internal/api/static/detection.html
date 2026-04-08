@@ -46,6 +46,12 @@ nav a.dbg:hover{opacity:1}
 /* ── Content ── */
 .content{padding:20px;max-width:1200px;margin:0 auto}
 
+/* -- sort helper -- */
+.th-sort{cursor:pointer;user-select:none;white-space:nowrap}
+.th-sort:hover{color:var(--text)}
+.sort-arrow{font-size:10px;margin-left:3px;opacity:.5}
+.sort-arrow.active{opacity:1;color:var(--accent)}
+
 /* ── Cards ── */
 .card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px 20px;margin-bottom:16px}
 .card-title{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:14px;display:flex;align-items:center;gap:8px}
@@ -302,17 +308,23 @@ input:focus,select:focus{border-color:var(--accent)}
 
     <template x-if="filteredBlackholes.length > 0">
       <table>
-        <thead>
+
+	<thead>
           <tr>
             <th>Prefix</th>
             <th>ASN</th>
             <th>CC</th>
             <th>Rule</th>
-            <th>Expires</th>
+            <th class="th-sort" @click="bhSort = { key:'expires_at', dir: bhSort.key==='expires_at' && bhSort.dir==='asc' ? 'desc' : 'asc' }">
+              Expires
+              <span class="sort-arrow" :class="{active:bhSort.key==='expires_at'}"
+                    x-text="bhSort.key==='expires_at' ? (bhSort.dir==='asc' ? '▲' : '▼') : '▲'"></span>
+            </th>
             <th>PTR</th>
             <th></th>
           </tr>
         </thead>
+
         <tbody>
           <template x-for="b in filteredBlackholes" :key="b.prefix">
             <tr>
@@ -346,36 +358,55 @@ input:focus,select:focus{border-color:var(--accent)}
 <!-- ═══════════════════════════════════════════════════════════ RISK IPs ══ -->
 <div class="content" x-show="tab==='risk'">
   <div class="card">
-    <div class="card-title">
+
+<div class="card-title">
       ML Risk IPs
-      <span class="count" x-text="(riskData?.risk_ips?.length || 0) + ' sources'"></span>
+      <span class="count" x-text="filteredRiskIPs.length + ' / ' + (riskData?.risk_ips?.length || 0) + ' sources'"></span>
       <span x-show="riskLoading" class="spinner" style="margin-left:4px"></span>
       <span style="margin-left:auto;font-size:11px;color:var(--muted);font-weight:400;letter-spacing:0">
-        Last 7 days · sorted by peak fused score
+        Last 7 days
       </span>
       <button class="btn secondary sm" style="margin-left:8px" @click="loadRisk()">↻ refresh</button>
     </div>
 
-    <template x-if="!riskLoading && !(riskData?.risk_ips?.length)">
-      <div class="placeholder">No risk events in the last 7 days</div>
+    <div class="bh-filter-row">
+      <input x-model="riskFilter.ip"      placeholder="🔍 IP / PTR">
+      <input x-model="riskFilter.asn"     placeholder="🔍 ASN / name">
+      <input x-model="riskFilter.country" placeholder="🔍 CC" style="width:80px">
+    </div>
+
+    <template x-if="!riskLoading && !filteredRiskIPs.length">
+      <div class="placeholder" x-text="riskData?.risk_ips?.length ? 'No matches' : 'No risk events in the last 7 days'"></div>
     </template>
 
-    <template x-if="riskData?.risk_ips?.length">
+    <template x-if="filteredRiskIPs.length">
       <table>
         <thead>
           <tr>
             <th>Source IP</th>
-            <th>Peak score</th>
-            <th>Events</th>
+            <th class="th-sort" @click="riskSort = { key:'peak_fused', dir: riskSort.key==='peak_fused' && riskSort.dir==='desc' ? 'asc' : 'desc' }">
+              Peak score
+              <span class="sort-arrow" :class="{active:riskSort.key==='peak_fused'}"
+                    x-text="riskSort.key==='peak_fused' ? (riskSort.dir==='asc' ? '▲' : '▼') : '▼'"></span>
+            </th>
+            <th class="th-sort" @click="riskSort = { key:'event_count', dir: riskSort.key==='event_count' && riskSort.dir==='desc' ? 'asc' : 'desc' }">
+              Events
+              <span class="sort-arrow" :class="{active:riskSort.key==='event_count'}"
+                    x-text="riskSort.key==='event_count' ? (riskSort.dir==='asc' ? '▲' : '▼') : '▼'"></span>
+            </th>
             <th>Shape</th>
             <th>Last target</th>
             <th>ASN</th>
             <th>CC</th>
-            <th>Last seen</th>
+            <th class="th-sort" @click="riskSort = { key:'last_seen', dir: riskSort.key==='last_seen' && riskSort.dir==='desc' ? 'asc' : 'desc' }">
+              Last seen
+              <span class="sort-arrow" :class="{active:riskSort.key==='last_seen'}"
+                    x-text="riskSort.key==='last_seen' ? (riskSort.dir==='asc' ? '▲' : '▼') : '▼'"></span>
+            </th>
           </tr>
         </thead>
         <tbody>
-          <template x-for="r in riskData.risk_ips" :key="r.src">
+          <template x-for="r in filteredRiskIPs" :key="r.src">
             <tr>
               <td>
                 <a class="ip-link" :href="'/ip/' + encodeURIComponent(r.src)" x-text="r.src"></a>
@@ -411,6 +442,7 @@ input:focus,select:focus{border-color:var(--accent)}
         </tbody>
       </table>
     </template>
+
   </div>
 </div>
 
@@ -616,10 +648,13 @@ function detection() { return {
   blackholes: [],
   bhLoading: false,
   bhFilter: { ip:'', asn:'', country:'' },
+  bhSort: { key:'expires_at', dir:'asc' },
 
   // Risk IPs
   riskData: null,
   riskLoading: false,
+  riskFilter: { ip:'', asn:'', country:'' },
+  riskSort: { key:'peak_fused', dir:'desc' },
 
   // Exclusions
   excludes: [],
@@ -639,13 +674,43 @@ function detection() { return {
   _toastTimer: null,
 
   // ── Computed ───────────────────────────────────────────────────────────────
-  get filteredBlackholes() {
+get filteredBlackholes() {
     const { ip, asn, country } = this.bhFilter
-    return this.blackholes.filter(b => {
+    const filtered = this.blackholes.filter(b => {
       if (ip && !b.prefix.includes(ip) && !(b.ptr||'').toLowerCase().includes(ip.toLowerCase())) return false
       if (asn && !String(b.asn||'').includes(asn) && !(b.asn_name||'').toLowerCase().includes(asn.toLowerCase())) return false
       if (country && (b.country||'').toUpperCase() !== country.toUpperCase()) return false
       return true
+    })
+    const { key, dir } = this.bhSort
+    return filtered.sort((a, b) => {
+      let av = a[key] ?? '', bv = b[key] ?? ''
+      // expires_at: sort by remaining time (ms diff from now), permanent last
+      if (key === 'expires_at') {
+        const parse = s => (!s || s.startsWith('9999')) ? Infinity : new Date(s).getTime()
+        av = parse(a.expires_at); bv = parse(b.expires_at)
+      }
+      if (av < bv) return dir === 'asc' ? -1 : 1
+      if (av > bv) return dir === 'asc' ?  1 : -1
+      return 0
+    })
+  },
+
+  get filteredRiskIPs() {
+    const { ip, asn, country } = this.riskFilter
+    const list = this.riskData?.risk_ips ?? []
+    const filtered = list.filter(r => {
+      if (ip && !r.src.includes(ip) && !(r.ptr||'').toLowerCase().includes(ip.toLowerCase())) return false
+      if (asn && !String(r.asn||'').includes(asn) && !(r.asn_name||'').toLowerCase().includes(asn.toLowerCase())) return false
+      if (country && (r.cc||'').toUpperCase() !== country.toUpperCase()) return false
+      return true
+    })
+    const { key, dir } = this.riskSort
+    return filtered.sort((a, b) => {
+      const av = a[key] ?? 0, bv = b[key] ?? 0
+      if (av < bv) return dir === 'asc' ? -1 : 1
+      if (av > bv) return dir === 'asc' ?  1 : -1
+      return 0
     })
   },
 

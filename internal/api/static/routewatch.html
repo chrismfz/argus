@@ -91,9 +91,13 @@ nav a.dbg:hover { background: rgba(249,226,175,.1); border-color: var(--yellow) 
 .pf-btn:hover { color: var(--accent); border-color: var(--accent); }
 .pf-btn.drill { color: var(--accent); border-color: rgba(91,156,246,.3); }
 .pf-btn.drill:hover { border-color: var(--accent); }
+.tab-bar{display:flex;align-items:center;gap:0;padding:0 16px;background:var(--bg2);border-bottom:1px solid var(--border)}
+.tab-bar button{padding:10px 16px;font-size:13px;color:var(--muted);background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;transition:color .15s}
+.tab-bar button:hover{color:var(--text)}
+.tab-bar button.active{color:var(--accent);border-bottom-color:var(--accent)}
 </style>
 </head>
-<body>
+<body x-data="routewatch()" x-init="load()">
 
 <nav>
   <a href="/dashboard">Overview</a>
@@ -107,27 +111,31 @@ nav a.dbg:hover { background: rgba(249,226,175,.1); border-color: var(--yellow) 
   <a href="/debug/rawflows" target="_blank" class="dbg">🔬 Raw Fields</a>
 </nav>
 
-<div class="content" x-data="routewatch()" x-init="load()">
-
-  <div class="page-header">
-    <div>
-      <div class="page-title">ROUTEWATCH <span style="font-weight:400;color:var(--muted);font-size:13px">— Path Intelligence</span></div>
-      <div class="page-sub">
-        Passive BGP path analysis · GoBGP best-path RIB · adj-in refreshes every 5 min ·
-        <span x-show="data?.computed_at" x-text="'data ' + dataAge() + ' old'"></span>
-        <span x-show="!data?.computed_at && !loading">waiting for first load…</span>
-        · next refresh in <span x-text="countdown + 's'"></span>
-      </div>
+<div class="page-header">
+  <div>
+    <div class="page-title">ROUTEWATCH</div>
+    <div class="page-sub">
+      Passive BGP path analysis · GoBGP best-path RIB ·
+      <span x-show="data?.computed_at" x-text="'data ' + dataAge() + ' old'"></span>
+      <span x-show="!data?.computed_at && !loading">warming up…</span>
+      · next refresh in <span x-text="countdown + 's'"></span>
     </div>
-    <div class="ip-search">
-      <input x-model="ipSearch" placeholder="Lookup IP" @keyup.enter="openIPPage()">
-      <button class="refresh-btn" @click="openIPPage()">Open IP page</button>
-    </div>
-    <button class="refresh-btn" @click="load()">
-      <span x-show="loading"><span class="spinner"></span>loading…</span>
-      <span x-show="!loading">↻ refresh</span>
-    </button>
   </div>
+  <div class="ip-search">
+    <input x-model="ipSearch" placeholder="Lookup IP" @keyup.enter="openIPPage()">
+    <button class="refresh-btn" @click="openIPPage()">Open IP page</button>
+  </div>
+  <button class="refresh-btn" @click="load()">
+    <span x-show="loading"><span class="spinner"></span>loading…</span>
+    <span x-show="!loading">↻ refresh</span>
+  </button>
+</div>
+
+<div class="tab-bar">
+  <button class="active">Path Intelligence</button>
+</div>
+
+<div class="content">
 
   <!-- Stats -->
   <div class="stat-row">

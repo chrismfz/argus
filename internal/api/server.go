@@ -916,6 +916,10 @@ func handleIPPage(w http.ResponseWriter, r *http.Request) {
 	w.Write(ipHTML)
 }
 
+func handleRiskPage(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write(detectionHTML)
+}
 
 // handleRiskList serves GET /api/risk.
 // Returns one row per unique source IP, aggregated over the last 7 days,

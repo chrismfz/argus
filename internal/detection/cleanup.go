@@ -11,7 +11,7 @@ import (
 // Κάνει withdraw και διαγράφει expired blackholes
 func CleanupExpiredBlackholes(db *sql.DB) error {
 	rows, err := db.Query(`
-		SELECT prefix FROM blackholes
+		SELECT prefix, rule FROM blackholes
 		WHERE expires_at <= datetime('now')
 	`)
 	if err != nil {
@@ -19,15 +19,24 @@ func CleanupExpiredBlackholes(db *sql.DB) error {
 	}
 	defer rows.Close()
 
-	var expired []string
+	type expiredRow struct {
+		prefix string
+		rule   string
+	}
+	var expired []expiredRow
 	for rows.Next() {
-		var prefix string
-		if err := rows.Scan(&prefix); err == nil {
-			expired = append(expired, prefix)
+		var r expiredRow
+		var rule sql.NullString
+		if err := rows.Scan(&r.prefix, &rule); err == nil {
+			if rule.Valid {
+				r.rule = rule.String
+			}
+			expired = append(expired, r)
 		}
 	}
 
-	for _, prefix := range expired {
+	for _, r := range expired {
+		prefix := r.prefix
 		err := bgp.WithdrawPrefix(prefix)
 		if err != nil {
 			log.Printf("[WARN] Failed to withdraw expired prefix %s: %v", prefix, err)
@@ -40,6 +49,14 @@ func CleanupExpiredBlackholes(db *sql.DB) error {
 		if err != nil {
 			log.Printf("[ERROR] Failed to delete expired prefix %s from DB: %v", prefix, err)
 		}
+
+		RecordBlackholeEvent(db, BlackholeEvent{
+			Prefix: prefix,
+			Event:  BHEventExpired,
+			Source: BHSourceCleanup,
+			Rule:   r.rule,
+			Reason: "TTL expired (cleanup)",
+		})
 	}
 
 	if len(expired) > 0 {

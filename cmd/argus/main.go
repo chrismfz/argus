@@ -213,6 +213,10 @@ func main() {
     if err := detection.PurgeOldRiskEvents(db, 7*24*time.Hour); err != nil {
         log.Printf("[WARN] Periodic risk_events purge error: %v", err)
     }
+    // Prune blackhole_events: 90 days retention, hard cap 10k rows
+    if err := detection.PruneBlackholeEvents(db, 90*24*time.Hour, 10000); err != nil {
+        log.Printf("[WARN] Periodic blackhole_events prune error: %v", err)
+    }
 
 			}
 		}

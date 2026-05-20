@@ -62,6 +62,10 @@ func NewSQLiteStore(db *sql.DB) *SQLiteStore {
 	return &SQLiteStore{db: db}
 }
 
+// DB exposes the underlying handle for callers that need raw SQL access
+// (e.g. the blackhole history audit log).
+func (s *SQLiteStore) DB() *sql.DB { return s.db }
+
 func (s *SQLiteStore) IncrementCount(rule, ip string) (int, error) {
 
 	now := time.Now().Format(time.RFC3339)

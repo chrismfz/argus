@@ -9,7 +9,7 @@ import (
 	"strings"
 	"argus/internal/bgp"
 	"argus/internal/config"
-//	"argus/internal/detection"
+	"argus/internal/detection"
 	"context"
 	apipb "github.com/osrg/gobgp/v3/api"
 	"github.com/osrg/gobgp/v3/pkg/apiutil"
@@ -130,6 +130,21 @@ if DB != nil {
 	if err != nil {
 		log.Printf("[WARN] Failed to insert into blackholes DB: %v", err)
 	}
+
+	detection.RecordBlackholeEvent(DB, detection.BlackholeEvent{
+		Timestamp:  now,
+		IP:         ip,
+		Prefix:     req.Prefix,
+		Event:      detection.BHEventAnnounced,
+		Source:     detection.BHSourceAPI,
+		Rule:       "(api)",
+		Reason:     "(manual)",
+		TTLSeconds: req.DurationSeconds,
+		ASN:        fmt.Sprintf("AS%d", asn),
+		ASNName:    asnName,
+		Country:    country,
+		PTR:        ptr,
+	})
 }
 
 
@@ -176,6 +191,12 @@ if DB != nil {
 	if err != nil {
 		log.Printf("[WARN] Failed to delete from blackholes DB: %v", err)
 	}
+	detection.RecordBlackholeEvent(DB, detection.BlackholeEvent{
+		Prefix: req.Prefix,
+		Event:  detection.BHEventWithdrawn,
+		Source: detection.BHSourceAPI,
+		Reason: "withdraw via API",
+	})
 }
 
 
@@ -579,6 +600,12 @@ func handleFlush(w http.ResponseWriter, r *http.Request) {
 		if err := bgp.WithdrawPrefix(prefix); err != nil {
 			log.Printf("[WARN] Failed to withdraw BGP prefix %s: %v", prefix, err)
 		}
+		detection.RecordBlackholeEvent(DB, detection.BlackholeEvent{
+			Prefix: prefix,
+			Event:  detection.BHEventWithdrawn,
+			Source: detection.BHSourceFlush,
+			Reason: "flush all",
+		})
 	}
 	log.Printf("[INFO] Withdrawn all %d prefixes from BGP.", announcedCount)
 

@@ -181,6 +181,10 @@ input:focus,select:focus{border-color:var(--accent)}
     Risk IPs
     <span class="tab-badge" :class="riskData?.risk_ips?.length ? 'red' : ''" x-text="riskData?.risk_ips?.length || ''"></span>
   </button>
+  <button :class="{active:tab==='history'}"    @click="tab='history';loadHistory()">
+    History
+    <span class="tab-badge" x-text="historyTotal || ''"></span>
+  </button>
   <button :class="{active:tab==='exclusions'}" @click="tab='exclusions';loadExclusions()">
     Exclusions
     <span class="tab-badge" x-text="excludes.length || ''"></span>
@@ -446,6 +450,228 @@ input:focus,select:focus{border-color:var(--accent)}
   </div>
 </div>
 
+<!-- ═════════════════════════════════════════════════════════════ HISTORY ══ -->
+<div class="content" x-show="tab==='history'">
+  <div class="card">
+    <div class="card-title">
+      Blackhole history
+      <span class="count" x-text="filteredHistory.length + ' / ' + historyTotal + ' IPs'"></span>
+      <span x-show="historyLoading" class="spinner" style="margin-left:4px"></span>
+      <button class="btn secondary sm" style="margin-left:auto" @click="loadHistory()">↻ refresh</button>
+    </div>
+
+    <div class="bh-filter-row">
+      <input x-model="historyQ"
+             placeholder="🔍 IP / PTR / ASN name / country / rule"
+             @keyup.enter="loadHistory()"
+             @keyup.escape="historyQ=''; loadHistory()">
+      <select x-model="historySort" @change="loadHistory()"
+              style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px 8px;font-size:12px">
+        <option value="last_seen">Sort: most recent</option>
+        <option value="count">Sort: most events</option>
+        <option value="first_seen">Sort: first seen</option>
+        <option value="ip">Sort: IP</option>
+      </select>
+    </div>
+
+    <template x-if="!historyLoading && filteredHistory.length === 0">
+      <div class="placeholder">No history entries</div>
+    </template>
+
+    <template x-if="filteredHistory.length > 0">
+      <table>
+        <thead>
+          <tr>
+            <th>IP</th>
+            <th>ASN</th>
+            <th>CC</th>
+            <th>Events</th>
+            <th>Last rule / reason</th>
+            <th>Last seen</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <template x-for="h in filteredHistory" :key="h.ip">
+          <tbody>
+              <tr @click="toggleHistoryDetail(h.ip)" style="cursor:pointer">
+                <td>
+                  <a class="ip-link" :href="'/ip/' + encodeURIComponent(h.ip)" @click.stop x-text="h.ip"></a>
+                  <div style="font-size:11px;color:var(--muted);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                       x-text="h.ptr || ''"></div>
+                </td>
+                <td>
+                  <span class="asn-num" x-text="h.asn || '—'"></span>
+                  <span class="asn-name" x-text="h.asn_name || ''"></span>
+                </td>
+                <td>
+                  <span x-text="countryFlag(h.country)"></span>
+                  <span style="font-size:12px" x-text="h.country || '—'"></span>
+                </td>
+                <td class="mono">
+                  <span x-text="h.events"></span>
+                  <span style="color:var(--muted);font-size:11px"
+                        x-text="' (' + h.announcements + 'a/' + h.withdrawals + 'w/' + h.expirations + 'e' + (h.skips ? '/' + h.skips + 's' : '') + ')'"></span>
+                </td>
+                <td>
+                  <span class="chip yellow" x-text="h.last_rule || '—'"></span>
+                  <div style="font-size:11px;color:var(--muted);margin-top:2px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                       x-text="h.last_reason || ''"></div>
+                </td>
+                <td style="font-size:12px;color:var(--muted)" x-text="fmtDate(h.last_seen)"></td>
+                <td>
+                  <template x-if="h.currently_active">
+                    <span class="chip red">● active</span>
+                  </template>
+                  <template x-if="!h.currently_active">
+                    <span class="chip" style="color:var(--muted)">inactive</span>
+                  </template>
+                </td>
+                <td style="text-align:right;font-size:11px;color:var(--muted)">
+                  <span x-text="historyExpanded === h.ip ? '▲' : '▼'"></span>
+                </td>
+              </tr>
+              <tr x-show="historyExpanded === h.ip" x-cloak>
+                <td colspan="8" style="padding:0;background:var(--bg3)">
+                  <div style="padding:16px 18px">
+                    <template x-if="historyDetailLoading">
+                      <div style="color:var(--muted);font-size:12px"><span class="spinner"></span> loading…</div>
+                    </template>
+                    <template x-if="!historyDetailLoading && historyDetail">
+                      <div>
+
+                        <!-- Summary stats + actions -->
+                        <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start;margin-bottom:14px">
+                          <div style="flex:1;min-width:240px">
+                            <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Summary</div>
+                            <div style="font-size:13px;line-height:1.7">
+                              <div>
+                                <span style="color:var(--muted)">events:</span>
+                                <span class="mono" x-text="historyDetail.summary.events"></span>
+                                <span style="color:var(--muted)">
+                                  (<span class="mono" style="color:var(--red)" x-text="historyDetail.summary.announcements"></span> announced,
+                                  <span class="mono" style="color:var(--green)" x-text="historyDetail.summary.withdrawals"></span> withdrawn,
+                                  <span class="mono" style="color:var(--yellow)" x-text="historyDetail.summary.expirations"></span> expired,
+                                  <span class="mono" x-text="historyDetail.summary.skips"></span> skipped)
+                                </span>
+                              </div>
+                              <div>
+                                <span style="color:var(--muted)">first seen:</span>
+                                <span class="mono" x-text="fmtDate(historyDetail.summary.first_seen)"></span>
+                              </div>
+                              <div>
+                                <span style="color:var(--muted)">last seen:</span>
+                                <span class="mono" x-text="fmtDate(historyDetail.summary.last_seen)"></span>
+                              </div>
+                              <div x-show="historyDetail.summary.currently_active">
+                                <span style="color:var(--red)">● currently active</span>
+                                <span class="mono" style="color:var(--muted);margin-left:6px"
+                                      x-text="historyDetail.summary.active_prefix"></span>
+                                <span style="color:var(--muted);margin-left:6px">expires:</span>
+                                <span x-text="fmtExpiry(historyDetail.summary.active_expires_at)"></span>
+                              </div>
+                            </div>
+                          </div>
+                          <div style="display:flex;gap:6px;flex-wrap:wrap">
+                            <template x-if="!historyDetail.summary.currently_active">
+                              <button class="btn sm" @click="quickAnnounce(h.ip)">Blackhole now</button>
+                            </template>
+                            <template x-if="historyDetail.summary.currently_active">
+                              <button class="btn sm danger" @click="doWithdraw(historyDetail.summary.active_prefix)">Withdraw</button>
+                            </template>
+                            <button class="btn secondary sm" @click="deleteHistoryForIP(h.ip)">Delete history</button>
+                          </div>
+                        </div>
+
+                        <!-- Timeline -->
+                        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Timeline</div>
+                        <div style="max-height:360px;overflow-y:auto">
+                          <table style="font-size:12px">
+                            <thead>
+                              <tr>
+                                <th>When</th>
+                                <th>Event</th>
+                                <th>Rule</th>
+                                <th>Reason</th>
+                                <th>Source</th>
+                                <th>TTL</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <template x-for="ev in (historyDetail.events || [])" :key="ev.id">
+                                <tr>
+                                  <td class="mono" style="color:var(--muted)" x-text="fmtDate(ev.ts)"></td>
+                                  <td>
+                                    <span class="chip"
+                                          :class="ev.event==='announced' ? 'red' :
+                                                   ev.event==='withdrawn' ? 'green' :
+                                                   ev.event==='expired'   ? 'yellow' : 'orange'"
+                                          x-text="ev.event"></span>
+                                  </td>
+                                  <td><span class="chip yellow" x-text="ev.rule || '—'"></span></td>
+                                  <td style="color:var(--muted);font-size:11px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                                      x-text="ev.reason || '—'"></td>
+                                  <td><span class="tag-pill" x-text="ev.source || '—'"></span></td>
+                                  <td class="mono" style="color:var(--muted)" x-text="ev.ttl_seconds ? ev.ttl_seconds + 's' : '—'"></td>
+                                </tr>
+                              </template>
+                              <template x-if="!historyDetail.events?.length">
+                                <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:14px">No events</td></tr>
+                              </template>
+                            </tbody>
+                          </table>
+                        </div>
+
+                      </div>
+                    </template>
+                  </div>
+                </td>
+              </tr>
+          </tbody>
+        </template>
+      </table>
+    </template>
+
+    <!-- Pagination -->
+    <div style="display:flex;gap:10px;align-items:center;justify-content:flex-end;margin-top:12px;font-size:12px;color:var(--muted)"
+         x-show="historyTotal > historyLimit">
+      <button class="btn secondary sm" :disabled="historyOffset === 0"
+              @click="historyOffset = Math.max(0, historyOffset - historyLimit); loadHistory()">‹ prev</button>
+      <span x-text="(historyOffset+1) + '–' + Math.min(historyOffset + historyLimit, historyTotal) + ' of ' + historyTotal"></span>
+      <button class="btn secondary sm"
+              :disabled="historyOffset + historyLimit >= historyTotal"
+              @click="historyOffset += historyLimit; loadHistory()">next ›</button>
+    </div>
+  </div>
+
+  <!-- Admin / retention -->
+  <div class="card flush-card">
+    <div class="card-title">⚙ Maintenance</div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
+      Manually prune history entries. Background retention is already 90 days / 10,000 rows.
+    </p>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)">
+        Delete events older than
+        <input x-model.number="histPruneDays" type="number" min="1" style="width:70px;font-family:monospace">
+        days
+      </label>
+      <button class="btn sm" @click="pruneHistoryByAge()" :disabled="!histPruneDays">Prune by age</button>
+      <span style="flex:1"></span>
+      <template x-if="!histFlushConfirm">
+        <button class="btn sm danger" @click="histFlushConfirm=true">Flush all history</button>
+      </template>
+      <template x-if="histFlushConfirm">
+        <div style="display:flex;gap:8px;align-items:center">
+          <span style="color:var(--red);font-size:12px">Delete every history row?</span>
+          <button class="btn" style="background:var(--red);border-color:var(--red)" @click="pruneHistoryAll()">Yes, flush</button>
+          <button class="btn secondary sm" @click="histFlushConfirm=false">Cancel</button>
+        </div>
+      </template>
+    </div>
+  </div>
+</div>
+
 <!-- ══════════════════════════════════════════════════════════ EXCLUSIONS ══ -->
 <div class="content" x-show="tab==='exclusions'">
   <div class="card">
@@ -656,6 +882,20 @@ function detection() { return {
   riskFilter: { ip:'', asn:'', country:'' },
   riskSort: { key:'peak_fused', dir:'desc' },
 
+  // History
+  history: [],
+  historyTotal: 0,
+  historyLoading: false,
+  historyQ: '',
+  historySort: 'last_seen',
+  historyLimit: 100,
+  historyOffset: 0,
+  historyExpanded: null,
+  historyDetail: null,
+  historyDetailLoading: false,
+  histPruneDays: 30,
+  histFlushConfirm: false,
+
   // Exclusions
   excludes: [],
   enrichment: {},
@@ -694,6 +934,11 @@ get filteredBlackholes() {
       if (av > bv) return dir === 'asc' ?  1 : -1
       return 0
     })
+  },
+
+  get filteredHistory() {
+    // Server already filters/sorts; expose as-is.
+    return this.history
   },
 
   get filteredRiskIPs() {
@@ -818,6 +1063,123 @@ get filteredBlackholes() {
       this.riskData = await r.json()
     } catch(e) { console.warn('api/risk:', e) }
     finally { this.riskLoading = false }
+  },
+
+  // ── History ──────────────────────────────────────────────────────────────
+  async loadHistory() {
+    if (this.historyLoading) return
+    this.historyLoading = true
+    try {
+      const params = new URLSearchParams({
+        limit:  this.historyLimit,
+        offset: this.historyOffset,
+        sort:   this.historySort,
+      })
+      if (this.historyQ.trim()) params.set('q', this.historyQ.trim())
+      const r = await fetch('/blackhole-history?' + params, { headers: this.authHeaders() })
+      if (!r.ok) throw new Error('HTTP ' + r.status)
+      const data = await r.json()
+      this.history      = data.results || []
+      this.historyTotal = data.total ?? this.history.length
+    } catch(e) { console.warn('blackhole-history:', e) }
+    finally { this.historyLoading = false }
+  },
+
+  async toggleHistoryDetail(ip) {
+    if (this.historyExpanded === ip) {
+      this.historyExpanded = null
+      this.historyDetail = null
+      return
+    }
+    this.historyExpanded = ip
+    this.historyDetail = null
+    this.historyDetailLoading = true
+    try {
+      const r = await fetch('/blackhole-history?ip=' + encodeURIComponent(ip), { headers: this.authHeaders() })
+      if (!r.ok) throw new Error('HTTP ' + r.status)
+      this.historyDetail = await r.json()
+    } catch(e) {
+      console.warn('history detail:', e)
+      this.historyDetail = { summary: { ip }, events: [] }
+    } finally { this.historyDetailLoading = false }
+  },
+
+  async quickAnnounce(ip) {
+    if (!ip) return
+    if (!confirm(`Blackhole ${ip}/32 with default community (65001:666) for 4h?`)) return
+    try {
+      const r = await fetch('/announce', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...this.authHeaders() },
+        body: JSON.stringify({
+          prefix:           ip + '/32',
+          next_hop:         '192.0.2.1',
+          communities:      ['65001:666'],
+          duration_seconds: 14400,
+        }),
+      })
+      if (!r.ok) throw new Error('HTTP ' + r.status)
+      this.showToast('Announced ' + ip + '/32', 'ok')
+      await this.loadBlackholes()
+      await this.loadHistory()
+      // refresh the open detail card if it was for this IP
+      if (this.historyExpanded === ip) {
+        this.historyExpanded = null
+        await this.toggleHistoryDetail(ip)
+      }
+    } catch(e) { this.showToast('Announce failed: ' + e.message, 'err') }
+  },
+
+  async deleteHistoryForIP(ip) {
+    if (!ip) return
+    if (!confirm(`Delete all history for ${ip}?`)) return
+    try {
+      const r = await fetch('/blackhole-history/prune', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...this.authHeaders() },
+        body: JSON.stringify({ ip }),
+      })
+      const data = await r.json()
+      if (!r.ok) throw new Error(data.error || 'HTTP ' + r.status)
+      this.showToast('Deleted ' + (data.deleted || 0) + ' rows', 'ok')
+      this.historyExpanded = null
+      this.historyDetail = null
+      await this.loadHistory()
+    } catch(e) { this.showToast(e.message, 'err') }
+  },
+
+  async pruneHistoryByAge() {
+    const days = parseInt(this.histPruneDays)
+    if (!days || days < 1) return
+    if (!confirm(`Delete every history event older than ${days} days?`)) return
+    try {
+      const r = await fetch('/blackhole-history/prune', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...this.authHeaders() },
+        body: JSON.stringify({ older_than_days: days }),
+      })
+      const data = await r.json()
+      if (!r.ok) throw new Error(data.error || 'HTTP ' + r.status)
+      this.showToast('Pruned ' + (data.deleted || 0) + ' rows', 'ok')
+      await this.loadHistory()
+    } catch(e) { this.showToast(e.message, 'err') }
+  },
+
+  async pruneHistoryAll() {
+    try {
+      const r = await fetch('/blackhole-history/prune', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...this.authHeaders() },
+        body: JSON.stringify({ all: true }),
+      })
+      const data = await r.json()
+      if (!r.ok) throw new Error(data.error || 'HTTP ' + r.status)
+      this.showToast('Flushed ' + (data.deleted || 0) + ' rows', 'ok')
+      this.histFlushConfirm = false
+      this.historyExpanded = null
+      this.historyDetail = null
+      await this.loadHistory()
+    } catch(e) { this.showToast(e.message, 'err') }
   },
 
   // ── Exclusions ────────────────────────────────────────────────────────────

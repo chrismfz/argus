@@ -46,6 +46,15 @@ func (e *Engine) HandleBlackhole(rule DetectionRule, flows []Flow, count int) {
                 timestamp := time.Now().Format(time.RFC3339)
                 LogBlackhole(fmt.Sprintf("[%s] BLACKHOLE-SKIPPED: Rule='%s' | SRC: %s | Reason=%s",
                         timestamp, rule.Name, targetIP, why))
+                if s, ok := e.store.(*SQLiteStore); ok {
+                        RecordBlackholeEvent(s.DB(), BlackholeEvent{
+                                IP:     targetIP,
+                                Event:  BHEventSkipped,
+                                Source: BHSourceRule,
+                                Rule:   rule.Name,
+                                Reason: "protection: " + why,
+                        })
+                }
                 return
         }
 
@@ -56,6 +65,15 @@ func (e *Engine) HandleBlackhole(rule DetectionRule, flows []Flow, count int) {
                 timestamp := time.Now().Format(time.RFC3339)
                 LogBlackhole(fmt.Sprintf("[%s] BLACKHOLE-SKIPPED: Rule='%s' | TARGET: %s | Reason=myNets",
                         timestamp, rule.Name, targetIP))
+                if s, ok := e.store.(*SQLiteStore); ok {
+                        RecordBlackholeEvent(s.DB(), BlackholeEvent{
+                                IP:     targetIP,
+                                Event:  BHEventSkipped,
+                                Source: BHSourceRule,
+                                Rule:   rule.Name,
+                                Reason: "protection: myNets",
+                        })
+                }
                 return
         }
 
@@ -158,6 +176,19 @@ func (e *Engine) HandleBlackhole(rule DetectionRule, flows []Flow, count int) {
 		); err != nil {
 			log.Printf("[BLACKHOLE] Failed to insert %s into SQLite: %v", prefix, err)
 		}
+		RecordBlackholeEvent(s.DB(), BlackholeEvent{
+			IP:         targetIP,
+			Prefix:     prefix,
+			Event:      BHEventAnnounced,
+			Source:     BHSourceRule,
+			Rule:       rule.Name,
+			Reason:     reason,
+			TTLSeconds: ttl,
+			ASN:        fmt.Sprintf("AS%d", asn),
+			ASNName:    asnName,
+			Country:    country,
+			PTR:        ptr,
+		})
 	}
 
 //cfm api reporter
@@ -187,6 +218,16 @@ if e.reporter != nil {
         log.Printf("[CFM] report unblock failed ip=%s err=%v", targetIP, err)
     }
 }
+				if s, ok := e.store.(*SQLiteStore); ok {
+					RecordBlackholeEvent(s.DB(), BlackholeEvent{
+						IP:     targetIP,
+						Prefix: prefix,
+						Event:  BHEventExpired,
+						Source: BHSourceTTL,
+						Rule:   ruleName,
+						Reason: "TTL expired",
+					})
+				}
 
 
 			}

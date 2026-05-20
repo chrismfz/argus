@@ -37,6 +37,26 @@ CREATE TABLE IF NOT EXISTS blackholes (
   ptr TEXT
 );
 
+CREATE TABLE IF NOT EXISTS blackhole_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts TEXT NOT NULL,
+  ip TEXT NOT NULL,
+  prefix TEXT NOT NULL,
+  event TEXT NOT NULL,
+  source TEXT,
+  rule TEXT,
+  reason TEXT,
+  ttl_seconds INTEGER,
+  asn TEXT,
+  asn_name TEXT,
+  country TEXT,
+  ptr TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_blackhole_events_ip ON blackhole_events(ip);
+CREATE INDEX IF NOT EXISTS idx_blackhole_events_ts ON blackhole_events(ts DESC);
+CREATE INDEX IF NOT EXISTS idx_blackhole_events_ip_ts ON blackhole_events(ip, ts DESC);
+
 CREATE TABLE IF NOT EXISTS whitelist (
   ip TEXT PRIMARY KEY,
   reason TEXT,

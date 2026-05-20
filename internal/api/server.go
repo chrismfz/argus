@@ -208,6 +208,8 @@ func Start() {
 	mainMux.HandleFunc("/bgpstatus", WithAuth(handleBGPStatus))
 	mainMux.HandleFunc("/blackhole-list", WithAuth(handleBlackholeList))
 	mainMux.HandleFunc("/blackhole-search", WithAuth(handleBlackholeSearch))
+	mainMux.HandleFunc("/blackhole-history", WithAuth(handleBlackholeHistory))
+	mainMux.HandleFunc("/blackhole-history/prune", WithAuth(handleBlackholeHistoryPrune))
 	mainMux.HandleFunc("/flush", WithAuth(handleFlush))
 	mainMux.HandleFunc("/snmp/interfaces", WithAuth(handleSNMPInterfaces))
 

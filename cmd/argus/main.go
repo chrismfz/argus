@@ -171,18 +171,25 @@ func main() {
 
 
 	// ── SQLite ────────────────────────────────────────────────────────────────
+	// WAL lets many readers run concurrently with a single writer, so the read
+	// endpoints (e.g. /blackhole-list) no longer queue behind a busy writer.
+	// NB: cache=shared is deliberately dropped — it forces a single shared-cache
+	// lock that serialises every connection and reintroduces SQLITE_LOCKED under
+	// concurrency. Each connection now keeps its own page cache; busy_timeout
+	// makes a second writer wait instead of erroring immediately.
 	dsn := "file:detections.sqlite?mode=rwc" +
 		"&_pragma=journal_mode(WAL)" +
 		"&_pragma=synchronous(NORMAL)" +
-		"&_pragma=busy_timeout(5000)" +
-		"&cache=shared"
+		"&_pragma=busy_timeout(5000)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		log.Fatal("Failed to open DB:", err)
 	}
 	defer db.Close()
-	db.SetMaxOpenConns(1)
-	db.SetMaxIdleConns(1)
+	// Allow concurrent readers; SQLite still serialises writes internally.
+	db.SetMaxOpenConns(8)
+	db.SetMaxIdleConns(8)
+	db.SetConnMaxIdleTime(5 * time.Minute)
 	if _, err := db.Exec(`PRAGMA journal_mode=WAL;`); err != nil {
 		log.Printf("[SQLite] set WAL failed: %v", err)
 	}

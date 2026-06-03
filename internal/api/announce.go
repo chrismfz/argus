@@ -397,7 +397,13 @@ func handleBlackholeList(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    rows, err := DB.Query(`
+    // Bound the query to the single shared SQLite connection: fail fast instead
+    // of hanging when the connection is busy, and release it if the client
+    // (e.g. cfm-web) disconnects first. Avoids cURL 28 "0 bytes received".
+    ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+    defer cancel()
+
+    rows, err := DB.QueryContext(ctx, `
         SELECT prefix, timestamp, expires_at, rule, reason, asn, asn_name, country, ptr
         FROM blackholes
     `)
@@ -501,7 +507,10 @@ func handleBlackholeSearch(w http.ResponseWriter, r *http.Request) {
     var ts, expires sql.NullString
     var rule, reason, asn, asnName, country, ptr sql.NullString
 
-    err := DB.QueryRow(`
+    ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+    defer cancel()
+
+    err := DB.QueryRowContext(ctx, `
         SELECT prefix, timestamp, expires_at, rule, reason, asn, asn_name, country, ptr
         FROM blackholes
         WHERE prefix LIKE ?

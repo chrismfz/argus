@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -132,7 +133,10 @@ func handleBlackholeHistorySummary(w http.ResponseWriter, r *http.Request) {
 
 	args = append(args, limit, offset)
 
-	rows, err := DB.Query(query, args...)
+	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+	defer cancel()
+
+	rows, err := DB.QueryContext(ctx, query, args...)
 	if err != nil {
 		log.Printf("[blackhole-history] summary query failed: %v", err)
 		http.Error(w, "query failed", http.StatusInternalServerError)
@@ -161,7 +165,7 @@ func handleBlackholeHistorySummary(w http.ResponseWriter, r *http.Request) {
 	// a loop because LIMIT is small (default 200) — keeps each subquery indexed
 	// by ip and avoids a sprawling window-function query.
 	for i := range summaries {
-		enrichSummary(&summaries[i])
+		enrichSummary(ctx, &summaries[i])
 	}
 
 	var total int
@@ -169,7 +173,7 @@ func handleBlackholeHistorySummary(w http.ResponseWriter, r *http.Request) {
 	if whereClause != "" {
 		totalQuery += " " + whereClause
 	}
-	if err := DB.QueryRow(totalQuery, args[:len(args)-2]...).Scan(&total); err != nil {
+	if err := DB.QueryRowContext(ctx, totalQuery, args[:len(args)-2]...).Scan(&total); err != nil {
 		log.Printf("[blackhole-history] total count failed: %v", err)
 	}
 
@@ -181,12 +185,12 @@ func handleBlackholeHistorySummary(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func enrichSummary(s *BlackholeHistorySummary) {
+func enrichSummary(ctx context.Context, s *BlackholeHistorySummary) {
 	var (
 		event, source, rule, reason sql.NullString
 		asn, asnName, country, ptr  sql.NullString
 	)
-	err := DB.QueryRow(`
+	err := DB.QueryRowContext(ctx, `
 		SELECT event, source, rule, reason, asn, asn_name, country, ptr
 		FROM blackhole_events
 		WHERE ip = ?
@@ -224,7 +228,7 @@ func enrichSummary(s *BlackholeHistorySummary) {
 	var (
 		prefix, expires sql.NullString
 	)
-	err = DB.QueryRow(`
+	err = DB.QueryRowContext(ctx, `
 		SELECT prefix, expires_at
 		FROM blackholes
 		WHERE prefix LIKE ?
@@ -253,7 +257,10 @@ func handleBlackholeHistoryByIP(w http.ResponseWriter, r *http.Request, ip strin
 		limit = 500
 	}
 
-	rows, err := DB.Query(`
+	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+	defer cancel()
+
+	rows, err := DB.QueryContext(ctx, `
 		SELECT id, ts, ip, prefix, event,
 		       COALESCE(source,''), COALESCE(rule,''), COALESCE(reason,''),
 		       COALESCE(ttl_seconds, 0),
@@ -285,7 +292,7 @@ func handleBlackholeHistoryByIP(w http.ResponseWriter, r *http.Request, ip strin
 	}
 
 	summary := BlackholeHistorySummary{IP: ip}
-	_ = DB.QueryRow(`
+	_ = DB.QueryRowContext(ctx, `
 		SELECT
 			COUNT(*),
 			SUM(CASE WHEN event='announced' THEN 1 ELSE 0 END),
@@ -301,7 +308,7 @@ func handleBlackholeHistoryByIP(w http.ResponseWriter, r *http.Request, ip strin
 		&summary.Expirations, &summary.Skips,
 		&summary.FirstSeen, &summary.LastSeen,
 	)
-	enrichSummary(&summary)
+	enrichSummary(ctx, &summary)
 
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"summary": summary,

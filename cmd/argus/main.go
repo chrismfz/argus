@@ -715,6 +715,14 @@ if listener != nil {
             IdleTimeout:   idleTimeout,
             CookieName:    cookieName,
             SecureCookie:  cfg.Auth.SecureCookie,
+
+            // MFA / WebAuthn. MFAEncryptionKey is required by goauth; when
+            // left empty here goauth falls back to GOAUTH_MFA_ENCRYPTION_KEY.
+            MFAEncryptionKey:      cfg.Auth.MFAEncryptionKey,
+            MFAIssuer:             cfg.Auth.MFAIssuer,
+            WebAuthnRPID:          cfg.Auth.WebAuthnRPID,
+            WebAuthnRPDisplayName: cfg.Auth.WebAuthnRPDisplayName,
+            WebAuthnOrigins:       cfg.Auth.WebAuthnOrigins,
         })
         if err != nil {
             log.Fatalf("[AUTH] failed to init: %v", err)

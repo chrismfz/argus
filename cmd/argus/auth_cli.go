@@ -28,12 +28,38 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"argus/internal/config"
 	"github.com/chrismfz/goauth"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
 
 const defaultAuthDB = "/opt/argus/etc/auth.db"
+
+// authConfigPath is set by the root --config flag so authOpen can read the
+// MFA encryption key from the same config file the server uses. Empty means
+// auto-detect the default config location.
+var authConfigPath string
+
+// resolveMFAKey returns the MFA encryption key for CLI use. It loads the key
+// from the argus config (auth.mfa_encryption_key) so the CLI and server stay
+// in sync. When the config is missing or the key is unset, it returns "" and
+// goauth falls back to the GOAUTH_MFA_ENCRYPTION_KEY environment variable.
+func resolveMFAKey() string {
+	path := authConfigPath
+	if path == "" {
+		p, err := config.GetDefaultConfigPath()
+		if err != nil {
+			return ""
+		}
+		path = p
+	}
+	cfg, err := config.LoadConfig(path)
+	if err != nil {
+		return ""
+	}
+	return cfg.Auth.MFAEncryptionKey
+}
 
 // runAuthCLI is called from main() when os.Args[1] == "auth".
 // It never returns — it calls os.Exit via cobra.
@@ -59,6 +85,10 @@ Examples:
 	root.PersistentFlags().StringVar(
 		&dbPath, "db", defaultAuthDB,
 		"Path to the auth SQLite database",
+	)
+	root.PersistentFlags().StringVar(
+		&authConfigPath, "config", "",
+		"Path to the argus config file (for the MFA encryption key); auto-detected if empty",
 	)
 
 	userCmd := &cobra.Command{
@@ -106,9 +136,10 @@ sessionCmd := &cobra.Command{
 
 func authOpen(dbPath *string) (*goauth.Manager, error) {
 	m, err := goauth.New(goauth.Config{
-		DBPath:       *dbPath,
-		SessionTTL:   8 * time.Hour,
-		SecureCookie: false, // irrelevant for CLI use
+		DBPath:           *dbPath,
+		SessionTTL:       8 * time.Hour,
+		SecureCookie:     false, // irrelevant for CLI use
+		MFAEncryptionKey: resolveMFAKey(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("cannot open auth database %q: %w\n"+

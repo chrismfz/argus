@@ -65,7 +65,24 @@ auth:
   idle_timeout:  30m
   secure_cookie: true          # set false only if testing over plain HTTP
   cookie_name:   __Host-argus-sid
- 
+
+  # MFA (TOTP) — REQUIRED since goauth gained MFA support. goauth encrypts
+  # TOTP secrets at rest with this key. Accepts a raw 16/24/32-byte string,
+  # hex, or base64. Generate one with:  openssl rand -hex 32
+  # Keep it stable and secret: rotating/losing it makes enrolled TOTP secrets
+  # undecryptable. If left empty, goauth falls back to the
+  # GOAUTH_MFA_ENCRYPTION_KEY environment variable.
+  mfa_encryption_key: "CHANGE_ME_openssl_rand_hex_32"
+  # Issuer label shown in authenticator apps (optional, defaults to "goauth").
+  mfa_issuer: "Argus"
+
+  # WebAuthn / passkeys (optional). Set webauthn_rpid to your panel's domain
+  # to enable security-key endpoints. Leave unset to keep them disabled.
+  # webauthn_rpid: "argus.example.com"
+  # webauthn_rp_display_name: "Argus NOC"
+  # webauthn_origins:
+  #   - "https://argus.example.com"
+
 
 debug: false
 

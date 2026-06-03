@@ -214,6 +214,20 @@ type AuthConfig struct {
 	IdleTimeout   time.Duration `yaml:"idle_timeout"`
 	SecureCookie  bool          `yaml:"secure_cookie"`
 	CookieName    string        `yaml:"cookie_name"`
+
+	// MFAEncryptionKey is the symmetric key goauth uses to encrypt TOTP
+	// secrets at rest. Required once goauth has MFA support. Accepts a raw
+	// 16/24/32-byte string, hex, or base64. If empty, goauth falls back to
+	// the GOAUTH_MFA_ENCRYPTION_KEY environment variable.
+	MFAEncryptionKey string `yaml:"mfa_encryption_key"`
+	// MFAIssuer is the issuer label shown in authenticator apps (otpauth:// URI).
+	MFAIssuer string `yaml:"mfa_issuer"`
+
+	// WebAuthn / passkey support (optional). WebAuthnRPID enables the
+	// WebAuthn endpoints when set (the effective domain, e.g. "argus.example.com").
+	WebAuthnRPID          string   `yaml:"webauthn_rpid"`
+	WebAuthnRPDisplayName string   `yaml:"webauthn_rp_display_name"`
+	WebAuthnOrigins       []string `yaml:"webauthn_origins"`
 }
 
 // Add this struct (alongside SNMPConfig, CFMConfig etc.)

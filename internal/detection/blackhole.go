@@ -30,6 +30,23 @@ func GetPTR(ip string) string {
 
 // helper functions end
 
+// escalationTTL picks the blackhole duration (seconds) for the Nth offense
+// (times is 1-based), clamping to the last configured entry once the escalation
+// ladder is exhausted. Returns 0 (permanent) when no durations are configured.
+func escalationTTL(durations []int, times int) int {
+	if len(durations) == 0 {
+		return 0
+	}
+	idx := times - 1
+	if idx < 0 {
+		idx = 0
+	}
+	if idx >= len(durations) {
+		idx = len(durations) - 1
+	}
+	return durations[idx]
+}
+
 
 func (e *Engine) HandleBlackhole(rule DetectionRule, flows []Flow, count int) {
 
@@ -116,14 +133,7 @@ func (e *Engine) HandleBlackhole(rule DetectionRule, flows []Flow, count int) {
 			times = t
 		}
 	}
-	ttl := 0 // default = permanent
-	if len(durations) > 0 {
-		idx := times - 1
-		if idx >= len(durations) {
-			idx = len(durations) - 1
-		}
-		ttl = durations[idx]
-	}
+	ttl := escalationTTL(durations, times)
 
 	reason := buildReason(rule)
 	timestamp := time.Now().Format(time.RFC3339)

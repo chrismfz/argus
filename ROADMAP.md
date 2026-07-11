@@ -72,12 +72,17 @@ tiered rollups) and a size-capped optional flow log. Details in Phase 2.
       `AddFlow` on the ingest path. Now holds the lock only to prune + snapshot the
       flow cache; rule evaluation and actions run lock-free. Regression test included.
       *(PR: phase-0 detection lock)*
-- [ ] Implement or remove the no-op `slack` rule action (silent no-op today).
-- [ ] Prune the unbounded tables: `snapshots`, `alert_events`/`alert_deliveries`,
-      `detections` (configurable retention each).
-- [ ] Tests for: rule evaluation (`filters.go`) — partial: `runDetection` matching +
-      lock behaviour covered — plus direction classification, flowstore flush/prune,
-      blackhole TTL escalation.
+- [x] `slack` rule action is no longer a silent no-op — it logs a one-time
+      "not implemented" warning; real wiring deferred to Phase 4 (Alerting v2).
+      *(PR: phase-0 cleanup)*
+- [x] Prune the unbounded tables: `detections` (by last_seen), `alert_events`
+      (cascades to `alert_deliveries`), and `snapshots` (period-aware: daily pruned,
+      weekly/monthly/yearly/manual kept). Wired into the cleanup ticker with retention
+      parameters (hardcoded defaults for now; Phase 1 lifts all retentions to config).
+      *(PR: phase-0 cleanup)*
+- [x] Tests: rule evaluation + `runDetection` lock behaviour, direction classification
+      (`flowdir`), flowstore flush/prune, blackhole TTL escalation (`escalationTTL` +
+      `BlackholeDurations`), period-aware snapshot pruning. *(PRs: phase-0 lock / flowdir / cleanup)*
 
 ## Phase 1 — Stop the bleeding: configurable retention & caps
 

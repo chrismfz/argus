@@ -17,6 +17,14 @@ Every behavior-changing PR must add an entry under **Unreleased**.
   my-prefix match → NetFlow DIRECTION) with full test coverage.
 
 ### Changed
+- Unbounded tables are now pruned on the 1-minute cleanup ticker: `detections`
+  (by `last_seen`, 90d), `alert_events` (90d, cascades to `alert_deliveries`), and
+  `snapshots` (period-aware — daily pruned at 400d; weekly/monthly/yearly/manual
+  kept forever). Retentions are hardcoded defaults for now; Phase 1 moves them to
+  config. New tests cover flowstore prune, snapshot period-aware prune, and
+  blackhole TTL escalation.
+- `detection` `slack` rule action no longer silently no-ops — it logs a one-time
+  "not implemented" warning. Real Slack wiring stays in Phase 4 (Alerting v2).
 - Direction classification unified: `telemetry.classifyDirection` and
   `flowstore.classifyInbound` — previously duplicated and hand-synced — now both
   delegate to `internal/flowdir`. The duplicated `isMyIP` prefix helper is unified

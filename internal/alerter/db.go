@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 )
 
@@ -426,6 +427,24 @@ func QueryStats(db *sql.DB) (EventStats, error) {
 		}
 	}
 	return stats, rows.Err()
+}
+
+// PruneEvents deletes alert_events older than maxAge (cascading to
+// alert_deliveries via the FK). The table is otherwise unbounded — one row per
+// fired alert. maxAge <= 0 disables pruning (keep forever).
+func PruneEvents(db *sql.DB, maxAge time.Duration) error {
+	if maxAge <= 0 {
+		return nil
+	}
+	cutoff := time.Now().Add(-maxAge).Format(time.RFC3339)
+	res, err := db.Exec(`DELETE FROM alert_events WHERE fired_at < ?`, cutoff)
+	if err != nil {
+		return fmt.Errorf("prune alert_events: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		log.Printf("[alert_events] pruned %d rows older than %s", n, maxAge)
+	}
+	return nil
 }
 
 // ClearEvents deletes all events (and cascades to deliveries).

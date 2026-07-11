@@ -224,6 +224,18 @@ func main() {
     if err := detection.PruneBlackholeEvents(db, 90*24*time.Hour, 10000); err != nil {
         log.Printf("[WARN] Periodic blackhole_events prune error: %v", err)
     }
+    // Prune detections: 90 days retention (by last_seen)
+    if err := detection.PruneDetections(db, 90*24*time.Hour); err != nil {
+        log.Printf("[WARN] Periodic detections prune error: %v", err)
+    }
+    // Prune alert_events: 90 days retention (cascades to deliveries)
+    if err := alerter.PruneEvents(db, 90*24*time.Hour); err != nil {
+        log.Printf("[WARN] Periodic alert_events prune error: %v", err)
+    }
+    // Prune daily snapshots: 400 days retention (weekly/monthly/yearly/manual kept)
+    if err := telemetry.PruneSnapshots(db, 400*24*time.Hour); err != nil {
+        log.Printf("[WARN] Periodic snapshots prune error: %v", err)
+    }
 
 			}
 		}

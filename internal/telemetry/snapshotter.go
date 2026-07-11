@@ -30,6 +30,27 @@ func InitSchema(db *sql.DB) error {
 	return err
 }
 
+// PruneSnapshots bounds the snapshots table. Only "daily" auto-snapshots are
+// pruned (they accrue one per day); "weekly"/"monthly"/"yearly" roll-ups are
+// low-volume and historically valuable, and "manual" snapshots are explicit
+// user intent — all four are kept forever. dailyRetention <= 0 disables pruning.
+func PruneSnapshots(db *sql.DB, dailyRetention time.Duration) error {
+	if dailyRetention <= 0 {
+		return nil
+	}
+	cutoff := time.Now().Add(-dailyRetention).Unix()
+	res, err := db.Exec(
+		`DELETE FROM snapshots WHERE period = 'daily' AND created_at < ?`, cutoff,
+	)
+	if err != nil {
+		return fmt.Errorf("prune snapshots: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		log.Printf("[snapshots] pruned %d daily rows older than %s", n, dailyRetention)
+	}
+	return nil
+}
+
 // ── Persistence ───────────────────────────────────────────────────────────────
 
 // SaveSnapshot writes one snapshot row to SQLite and returns its row ID.

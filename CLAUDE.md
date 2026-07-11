@@ -86,16 +86,15 @@ engine) → SQLite + dashboard + BGP blackhole actions.
 
 ## Known gotchas (verified, as of 2026-07)
 
-- `internal/telemetry/peristence.go` — filename typo ("persistence"); rename pending.
 - flowstore "hourly" tables actually flush every **30 minutes** (`tick1h` = 30m,
   buckets aligned to 1800s). Naming is misleading.
-- Telemetry bucket retention is hardcoded to 30 days in `peristence.go` despite the
-  function taking a parameter.
+- Telemetry bucket retention is hardcoded to 30 days in `telemetry/persistence.go`
+  despite the function taking a parameter.
 - `detection/engine.go` has empty TODO stubs: `slack` action is a silent no-op.
 - Only 2 test files exist (both in `internal/api`). Detection/flowstore/telemetry
   cores are untested — be extra careful there and add tests when you touch them.
-- `go vet` currently fails: `internal/collectors/netflow.go:574` — `Start` has a
-  value receiver on `Netflow`, which copies an embedded `sync.Once`. Fix pending.
+- `detection/engine.go` holds `e.mu` across `HandleBlackhole` (BGP announce + DNS +
+  SQLite), which blocks flow ingest under load. Fix pending (Phase 0).
 - Package-level singletons everywhere (`flowstore.Global`, `telemetry.Global`,
   `enrich.Global`, `config.AppConfig`, API package globals). Prefer passing deps;
   don't add new globals.

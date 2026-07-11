@@ -2,7 +2,7 @@ BIN_DIR := bin
 BINARY := $(BIN_DIR)/argus
 CMD_PATH := ./cmd/argus
 
-.PHONY: help setup update build run clean
+.PHONY: help setup update build run clean fmt vet test check lint git
 
 help: ## Show this help message
 	@echo ""
@@ -30,6 +30,29 @@ build: ## Build the binary into ./bin/
 
 run: build ## Run the application
 	@./$(BINARY)
+
+fmt: ## Check formatting (gofmt); fails if any file needs formatting
+	@unformatted=$$(gofmt -l $$(find . -name '*.go' -not -path './vendor/*')); \
+	if [ -n "$$unformatted" ]; then \
+		echo "❌ These files need gofmt:"; echo "$$unformatted"; exit 1; \
+	fi
+	@echo "✅ gofmt clean."
+
+vet: ## Run go vet
+	go vet ./...
+	@echo "✅ go vet clean."
+
+test: ## Run the test suite
+	go test ./...
+
+check: vet test ## Run vet + tests (the CI gate)
+
+lint: ## Run golangci-lint if installed (optional, not required by CI)
+	@if command -v golangci-lint >/dev/null 2>&1; then \
+		golangci-lint run ./...; \
+	else \
+		echo "⚠️  golangci-lint not installed — skipping. See https://golangci-lint.run"; \
+	fi
 
 clean: ## Remove build artifacts
 	@rm -rf $(BIN_DIR)

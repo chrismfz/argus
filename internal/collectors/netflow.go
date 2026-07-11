@@ -571,7 +571,7 @@ func (n *Netflow) Configure(config map[string]string) {
 
 
 
-func (nf Netflow) Start() {
+func (nf *Netflow) Start() {
 	if nf.logFile != nil {
 		defer func() {
 			if err := nf.logFile.Close(); err != nil {

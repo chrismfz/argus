@@ -147,26 +147,36 @@ func (e *Engine) Run(ctx context.Context) {
 
 // ✅ Εφαρμογή detection rules κάθε 1s
 func (e *Engine) runDetection() {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-
 	now := time.Now().UTC()
-	DlogEngine("runDetection started. Current raw flow cache size: %d", len(e.flows))
-
-	// Κρατάμε μόνο τα πρόσφατα flows εντός του window
 	cutoff := now.Add(-e.maxWindow)
-	var recent []Flow
+
+	// Critical section kept as short as possible: prune the flow cache to the
+	// window and take a private snapshot to evaluate. Everything below — rule
+	// evaluation, IncrementCount (SQLite), LogDetection, and HandleBlackhole
+	// (BGP announce + PTR DNS + SQLite + CFM API) — performs blocking I/O and
+	// MUST run WITHOUT e.mu held. Holding the lock across those calls stalls
+	// AddFlow on the ingest hot path — precisely under attack, when a blackhole
+	// fires and its DNS/BGP work is slowest. The stores are internally
+	// synchronised (MemoryStore mutex / SQLite serialisation), so the rule loop
+	// is safe lock-free.
+	e.mu.Lock()
+	DlogEngine("runDetection started. Current raw flow cache size: %d", len(e.flows))
+	kept := e.flows[:0]
 	for _, f := range e.flows {
 		if f.Timestamp.After(cutoff) {
-			recent = append(recent, f)
+			kept = append(kept, f)
 		} else {
 			DlogEngine("Flow %s -> %s (at %s) is older than cutoff %s, dropping.", f.SrcIP, f.DstIP, f.Timestamp.Format(time.RFC3339), cutoff.Format(time.RFC3339))
 		}
 	}
-	e.flows = recent
-	DlogEngine("Flow cache after cleanup (flows within %s window): %d", e.maxWindow.String(), len(e.flows))
+	e.flows = kept
+	recent := make([]Flow, len(kept))
+	copy(recent, kept)
+	e.mu.Unlock()
 
-	if len(e.flows) == 0 {
+	DlogEngine("Flow cache after cleanup (flows within %s window): %d", e.maxWindow.String(), len(recent))
+
+	if len(recent) == 0 {
 		DlogEngine("No recent flows to evaluate. Skipping rule evaluation.")
 		return
 	}

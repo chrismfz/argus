@@ -7,13 +7,30 @@ Every behavior-changing PR must add an entry under **Unreleased**.
 
 ## [Unreleased]
 
+### Added
+- CI (`.github/workflows/ci.yml`): gofmt (advisory), `go vet`, `go build`, `go test`
+  on push to `main` and all PRs. New `make` targets: `fmt`, `vet`, `test`, `check`,
+  `lint`. (#20)
+- First tests for `internal/detection`: `runDetection` rule matching + a regression
+  test proving the ingest path (`AddFlow`) is not blocked while a detection action runs.
+
 ### Changed
 - ROADMAP reorganized: Phase 4 split into "Detection & mitigation depth"
   (attack incidents, egress detection presets, threat feeds, ML feedback loop,
   time-of-day baselines), Phase 5 "Visibility & business value" (peering
   candidates report, 95th-percentile reports, RPKI/hijack watch), and Phase 6
   "Ops & platform" (multi-exporter, sFlow, backup/restore, action audit trail).
-  BGP FlowSpec parked last, pending RouterOS support.
+  BGP FlowSpec parked last, pending RouterOS support. (#19)
+
+### Fixed
+- **Detection engine no longer stalls flow ingest while acting.** `runDetection`
+  held `e.mu` across the entire rule loop — including `HandleBlackhole` (BGP announce
+  + PTR DNS + SQLite + CFM) — so a slow blackhole blocked `AddFlow` on the ingest hot
+  path, precisely under attack. The lock is now held only to prune + snapshot the
+  flow cache; rule evaluation and all actions run lock-free.
+- `go vet` failure: `collectors.Netflow.Start` had a value receiver copying the
+  struct's embedded `sync.Once`; changed to a pointer receiver. (#20)
+- Renamed `internal/telemetry/peristence.go` → `persistence.go`. (#20)
 
 ## 2026-07
 

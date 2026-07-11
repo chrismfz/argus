@@ -63,8 +63,9 @@ engine) → SQLite + dashboard + BGP blackhole actions.
 3. **Update `CHANGELOG.md`** (Unreleased section) in every PR that changes behavior.
 4. **Hot paths must not block.** `flow.Batcher` fan-out, `flowstore.Accumulate`, and
    `detection.Engine.AddFlow` are on the ingest path. No network I/O, no DNS, no
-   synchronous SQLite writes while holding their locks. (Known violation to fix:
-   `detection/engine.go` holds `e.mu` across `HandleBlackhole`, which does BGP+DNS+DB.)
+   synchronous SQLite writes while holding their locks. `detection.runDetection`
+   now holds `e.mu` only to prune + snapshot the flow cache, then evaluates rules
+   and runs actions (BGP/DNS/SQLite/CFM) lock-free — keep it that way.
 5. **SQLite discipline.** WAL mode, batched transactions on tickers (existing pattern
    in `flowstore/persist.go`), `busy_timeout`, and prune every table you create —
    unbounded tables are bugs (`snapshots`, `alert_events`, `detections` currently lack pruning).
@@ -91,10 +92,9 @@ engine) → SQLite + dashboard + BGP blackhole actions.
 - Telemetry bucket retention is hardcoded to 30 days in `telemetry/persistence.go`
   despite the function taking a parameter.
 - `detection/engine.go` has empty TODO stubs: `slack` action is a silent no-op.
-- Only 2 test files exist (both in `internal/api`). Detection/flowstore/telemetry
-  cores are untested — be extra careful there and add tests when you touch them.
-- `detection/engine.go` holds `e.mu` across `HandleBlackhole` (BGP announce + DNS +
-  SQLite), which blocks flow ingest under load. Fix pending (Phase 0).
+- Test coverage is thin: `internal/api` and now `internal/detection` (engine lock +
+  rule matching) have tests; flowstore/telemetry cores are still untested — be extra
+  careful there and add tests when you touch them.
 - Package-level singletons everywhere (`flowstore.Global`, `telemetry.Global`,
   `enrich.Global`, `config.AppConfig`, API package globals). Prefer passing deps;
   don't add new globals.

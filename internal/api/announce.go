@@ -1,34 +1,33 @@
 package api
 
 import (
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"time"
-	"net"
-	"strings"
 	"argus/internal/bgp"
 	"argus/internal/config"
 	"argus/internal/detection"
 	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
 	apipb "github.com/osrg/gobgp/v3/api"
 	"github.com/osrg/gobgp/v3/pkg/apiutil"
 	bgppkt "github.com/osrg/gobgp/v3/pkg/packet/bgp"
 	"log"
-	"database/sql"
- "strconv" // <- Make sure this is imported
+	"net"
+	"net/http"
+	"strconv" // <- Make sure this is imported
+	"strings"
+	"time"
 )
 
 type AnnouncedPrefix struct {
-	Prefix      string   `json:"prefix"`
-	NextHop     string   `json:"next_hop"`
-	Communities []string `json:"communities"`
-	Timestamp   time.Time `json:"timestamp"`
-	ASPath []uint32 `json:"as_path,omitempty"`
-	IsBlackhole bool `json:"blackhole"`
-	DurationSeconds int `json:"duration_seconds,omitempty"` // 
+	Prefix          string    `json:"prefix"`
+	NextHop         string    `json:"next_hop"`
+	Communities     []string  `json:"communities"`
+	Timestamp       time.Time `json:"timestamp"`
+	ASPath          []uint32  `json:"as_path,omitempty"`
+	IsBlackhole     bool      `json:"blackhole"`
+	DurationSeconds int       `json:"duration_seconds,omitempty"` //
 }
-
 
 type BlackholeList struct {
 	Prefix      string     `json:"prefix"`
@@ -45,9 +44,6 @@ type BlackholeList struct {
 	Rule    string `json:"rule,omitempty"`
 	Reason  string `json:"reason,omitempty"`
 }
-
-
-
 
 func handleAnnounce(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -81,10 +77,8 @@ func handleAnnounce(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-asn := config.GetLocalASN()
-req.ASPath = []uint32{asn}
-
-
+	asn := config.GetLocalASN()
+	req.ASPath = []uint32{asn}
 
 	err := bgp.AnnouncePrefix(req.Prefix, req.NextHop, req.Communities, req.ASPath)
 	if err != nil {
@@ -92,62 +86,58 @@ req.ASPath = []uint32{asn}
 		return
 	}
 
-// after successful bgp.AnnouncePrefix (inside handleAnnounce)
-if CFM != nil {
-    ipOnly := strings.Split(req.Prefix, "/")[0]
-    ttl := req.DurationSeconds // already parsed from JSON
-    desc := "(manual) blackhole via API"
-    if err := CFM.ReportBlock(ipOnly, desc, ttl); err != nil {
-        log.Printf("[CFM] report block failed for %s: %v", ipOnly, err)
-    } else {
-        log.Printf("[CFM] report block OK ip=%s ttl=%d", ipOnly, ttl)
-    }
-}
-
-
-
-// SQLite logging (αν DB υπάρχει)
-if DB != nil {
-	ip := strings.Split(req.Prefix, "/")[0]
-	ptr := Resolver.LookupPTR(ip)
-	asn := Geo.GetASNNumber(ip)
-	asnName := Geo.GetASNName(ip)
-	country := Geo.GetCountry(ip)
-
-	ttl := time.Duration(req.DurationSeconds) * time.Second
-	if ttl == 0 {
-		ttl = 1 * time.Hour // default TTL
+	// after successful bgp.AnnouncePrefix (inside handleAnnounce)
+	if CFM != nil {
+		ipOnly := strings.Split(req.Prefix, "/")[0]
+		ttl := req.DurationSeconds // already parsed from JSON
+		desc := "(manual) blackhole via API"
+		if err := CFM.ReportBlock(ipOnly, desc, ttl); err != nil {
+			log.Printf("[CFM] report block failed for %s: %v", ipOnly, err)
+		} else {
+			log.Printf("[CFM] report block OK ip=%s ttl=%d", ipOnly, ttl)
+		}
 	}
-	now := time.Now()
-	expires := now.Add(ttl)
 
-	_, err := DB.Exec(`
+	// SQLite logging (αν DB υπάρχει)
+	if DB != nil {
+		ip := strings.Split(req.Prefix, "/")[0]
+		ptr := Resolver.LookupPTR(ip)
+		asn := Geo.GetASNNumber(ip)
+		asnName := Geo.GetASNName(ip)
+		country := Geo.GetCountry(ip)
+
+		ttl := time.Duration(req.DurationSeconds) * time.Second
+		if ttl == 0 {
+			ttl = 1 * time.Hour // default TTL
+		}
+		now := time.Now()
+		expires := now.Add(ttl)
+
+		_, err := DB.Exec(`
 		INSERT OR REPLACE INTO blackholes
 		(prefix, timestamp, expires_at, rule, reason, asn, asn_name, country, ptr)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, req.Prefix, now.Format(time.RFC3339), expires.Format(time.RFC3339), "(api)", "(manual)", asn, asnName, country, ptr)
 
-	if err != nil {
-		log.Printf("[WARN] Failed to insert into blackholes DB: %v", err)
+		if err != nil {
+			log.Printf("[WARN] Failed to insert into blackholes DB: %v", err)
+		}
+
+		detection.RecordBlackholeEvent(DB, detection.BlackholeEvent{
+			Timestamp:  now,
+			IP:         ip,
+			Prefix:     req.Prefix,
+			Event:      detection.BHEventAnnounced,
+			Source:     detection.BHSourceAPI,
+			Rule:       "(api)",
+			Reason:     "(manual)",
+			TTLSeconds: req.DurationSeconds,
+			ASN:        fmt.Sprintf("AS%d", asn),
+			ASNName:    asnName,
+			Country:    country,
+			PTR:        ptr,
+		})
 	}
-
-	detection.RecordBlackholeEvent(DB, detection.BlackholeEvent{
-		Timestamp:  now,
-		IP:         ip,
-		Prefix:     req.Prefix,
-		Event:      detection.BHEventAnnounced,
-		Source:     detection.BHSourceAPI,
-		Rule:       "(api)",
-		Reason:     "(manual)",
-		TTLSeconds: req.DurationSeconds,
-		ASN:        fmt.Sprintf("AS%d", asn),
-		ASNName:    asnName,
-		Country:    country,
-		PTR:        ptr,
-	})
-}
-
-
 
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, "Announced %s\n", req.Prefix)
@@ -173,41 +163,32 @@ func handleWithdraw(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-
-// after successful bgp.WithdrawPrefix (inside handleWithdraw)
-if CFM != nil {
-    ipOnly := strings.Split(req.Prefix, "/")[0]
-    if err := CFM.ReportUnblock(ipOnly, "manual", "withdraw via API"); err != nil {
-        log.Printf("[CFM] report unblock failed for %s: %v", ipOnly, err)
-    } else {
-        log.Printf("[CFM] report unblock OK ip=%s", ipOnly)
-    }
-}
-
-
-
-if DB != nil {
-	_, err := DB.Exec(`DELETE FROM blackholes WHERE prefix = ?`, req.Prefix)
-	if err != nil {
-		log.Printf("[WARN] Failed to delete from blackholes DB: %v", err)
+	// after successful bgp.WithdrawPrefix (inside handleWithdraw)
+	if CFM != nil {
+		ipOnly := strings.Split(req.Prefix, "/")[0]
+		if err := CFM.ReportUnblock(ipOnly, "manual", "withdraw via API"); err != nil {
+			log.Printf("[CFM] report unblock failed for %s: %v", ipOnly, err)
+		} else {
+			log.Printf("[CFM] report unblock OK ip=%s", ipOnly)
+		}
 	}
-	detection.RecordBlackholeEvent(DB, detection.BlackholeEvent{
-		Prefix: req.Prefix,
-		Event:  detection.BHEventWithdrawn,
-		Source: detection.BHSourceAPI,
-		Reason: "withdraw via API",
-	})
-}
 
-
-
+	if DB != nil {
+		_, err := DB.Exec(`DELETE FROM blackholes WHERE prefix = ?`, req.Prefix)
+		if err != nil {
+			log.Printf("[WARN] Failed to delete from blackholes DB: %v", err)
+		}
+		detection.RecordBlackholeEvent(DB, detection.BlackholeEvent{
+			Prefix: req.Prefix,
+			Event:  detection.BHEventWithdrawn,
+			Source: detection.BHSourceAPI,
+			Reason: "withdraw via API",
+		})
+	}
 
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, "Withdrawn %s\n", req.Prefix)
 }
-
-
-
 
 func handleListAnnouncements(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -239,90 +220,78 @@ func handleListAnnouncements(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(all)
 }
 
-
-
-
-
 type AdjInEntry struct {
-    Prefix      string   `json:"prefix"`
-    ASPath      []uint32 `json:"as_path,omitempty"`
-    Communities []string `json:"communities,omitempty"`
+	Prefix      string   `json:"prefix"`
+	ASPath      []uint32 `json:"as_path,omitempty"`
+	Communities []string `json:"communities,omitempty"`
 }
-
 
 func handleAdjIn(w http.ResponseWriter, r *http.Request) {
-    results := make(map[string][]map[string]interface{})
+	results := make(map[string][]map[string]interface{})
 
-    err := bgp.AnnounceServer.ListPeer(context.Background(), &apipb.ListPeerRequest{}, func(peer *apipb.Peer) {
-        for _, rf := range []bgppkt.RouteFamily{bgppkt.RF_IPv4_UC, bgppkt.RF_IPv6_UC} {
-            afi, safi := bgppkt.RouteFamilyToAfiSafi(rf)
-            family := &apipb.Family{
-                Afi:  apipb.Family_Afi(afi),
-                Safi: apipb.Family_Safi(safi),
-            }
+	err := bgp.AnnounceServer.ListPeer(context.Background(), &apipb.ListPeerRequest{}, func(peer *apipb.Peer) {
+		for _, rf := range []bgppkt.RouteFamily{bgppkt.RF_IPv4_UC, bgppkt.RF_IPv6_UC} {
+			afi, safi := bgppkt.RouteFamilyToAfiSafi(rf)
+			family := &apipb.Family{
+				Afi:  apipb.Family_Afi(afi),
+				Safi: apipb.Family_Safi(safi),
+			}
 
-            _ = bgp.AnnounceServer.ListPath(context.Background(), &apipb.ListPathRequest{
-                Family:    family,
-                Name:      peer.Conf.NeighborAddress,
-                TableType: apipb.TableType_ADJ_IN,
-            }, func(dest *apipb.Destination) {
-                for _, p := range dest.Paths {
-                    entry := map[string]interface{}{}
+			_ = bgp.AnnounceServer.ListPath(context.Background(), &apipb.ListPathRequest{
+				Family:    family,
+				Name:      peer.Conf.NeighborAddress,
+				TableType: apipb.TableType_ADJ_IN,
+			}, func(dest *apipb.Destination) {
+				for _, p := range dest.Paths {
+					entry := map[string]interface{}{}
 
-                    nlri, _ := apiutil.UnmarshalNLRI(rf, p.Nlri)
-                    if prefix, ok := nlri.(bgppkt.AddrPrefixInterface); ok {
-                        entry["prefix"] = prefix.String()
-                    }
+					nlri, _ := apiutil.UnmarshalNLRI(rf, p.Nlri)
+					if prefix, ok := nlri.(bgppkt.AddrPrefixInterface); ok {
+						entry["prefix"] = prefix.String()
+					}
 
-                    // Parse attributes
-                    if attrs, err := apiutil.UnmarshalPathAttributes(p.Pattrs); err == nil {
-                        for _, attr := range attrs {
-                            switch v := attr.(type) {
-                            case *bgppkt.PathAttributeAsPath:
-                                var asns []uint32
-                                for _, seg := range v.Value {
-                                    switch s := seg.(type) {
-                                    case *bgppkt.As4PathParam:
-                                        asns = append(asns, s.AS...)
-                                    case *bgppkt.AsPathParam:
-                                        for _, asn := range s.AS {
-                                            asns = append(asns, uint32(asn))
-                                        }
-                                    }
-                                }
-                                entry["as_path"] = asns
+					// Parse attributes
+					if attrs, err := apiutil.UnmarshalPathAttributes(p.Pattrs); err == nil {
+						for _, attr := range attrs {
+							switch v := attr.(type) {
+							case *bgppkt.PathAttributeAsPath:
+								var asns []uint32
+								for _, seg := range v.Value {
+									switch s := seg.(type) {
+									case *bgppkt.As4PathParam:
+										asns = append(asns, s.AS...)
+									case *bgppkt.AsPathParam:
+										for _, asn := range s.AS {
+											asns = append(asns, uint32(asn))
+										}
+									}
+								}
+								entry["as_path"] = asns
 
-                            case *bgppkt.PathAttributeCommunities:
-                                var comms []string
-                                for _, c := range v.Value {
-                                    comms = append(comms, fmt.Sprintf("%d:%d", c>>16, c&0xFFFF))
-                                }
-                                entry["communities"] = comms
-                            }
-                        }
-                    }
+							case *bgppkt.PathAttributeCommunities:
+								var comms []string
+								for _, c := range v.Value {
+									comms = append(comms, fmt.Sprintf("%d:%d", c>>16, c&0xFFFF))
+								}
+								entry["communities"] = comms
+							}
+						}
+					}
 
-                    results[peer.Conf.NeighborAddress] = append(results[peer.Conf.NeighborAddress], entry)
-                }
-            })
-        }
-    })
+					results[peer.Conf.NeighborAddress] = append(results[peer.Conf.NeighborAddress], entry)
+				}
+			})
+		}
+	})
 
-    if err != nil {
-        http.Error(w, "Failed to list adj-in paths", http.StatusInternalServerError)
-        return
-    }
+	if err != nil {
+		http.Error(w, "Failed to list adj-in paths", http.StatusInternalServerError)
+		return
+	}
 
-    w.Header().Set("Content-Type", "application/json")
-    _ = json.NewEncoder(w).Encode(results)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(results)
 }
-
-
-
-
-
-
-
 
 func handleASPathViz(w http.ResponseWriter, r *http.Request) {
 	ipStr := r.URL.Query().Get("ip")
@@ -364,9 +333,9 @@ func handleASPathViz(w http.ResponseWriter, r *http.Request) {
 
 	// Δημιούργησε απλή JSON απεικόνιση path
 	type Hop struct {
-		ASN      string `json:"asn"`
-		ASNName  string `json:"asn_name,omitempty"`
-		Country  string `json:"country,omitempty"`
+		ASN     string `json:"asn"`
+		ASNName string `json:"asn_name,omitempty"`
+		Country string `json:"country,omitempty"`
 	}
 
 	var hops []Hop
@@ -378,7 +347,7 @@ func handleASPathViz(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-netCopy := longest.Network()
+	netCopy := longest.Network()
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"ip":      ipStr,
 		"prefix":  (&netCopy).String(), // ✅
@@ -386,205 +355,187 @@ netCopy := longest.Network()
 	})
 }
 
-
-
-
 func handleBlackholeList(w http.ResponseWriter, r *http.Request) {
-    w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/json")
 
-    if DB == nil {
-        http.Error(w, "DB not initialized", http.StatusInternalServerError)
-        return
-    }
+	if DB == nil {
+		http.Error(w, "DB not initialized", http.StatusInternalServerError)
+		return
+	}
 
-    // Bound the query to the single shared SQLite connection: fail fast instead
-    // of hanging when the connection is busy, and release it if the client
-    // (e.g. cfm-web) disconnects first. Avoids cURL 28 "0 bytes received".
-    ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
-    defer cancel()
+	// Bound the query to the single shared SQLite connection: fail fast instead
+	// of hanging when the connection is busy, and release it if the client
+	// (e.g. cfm-web) disconnects first. Avoids cURL 28 "0 bytes received".
+	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+	defer cancel()
 
-    rows, err := DB.QueryContext(ctx, `
+	rows, err := DB.QueryContext(ctx, `
         SELECT prefix, timestamp, expires_at, rule, reason, asn, asn_name, country, ptr
         FROM blackholes
     `)
-    if err != nil {
-        http.Error(w, fmt.Sprintf("DB error: %v", err), http.StatusInternalServerError)
-        return
-    }
-    defer rows.Close()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("DB error: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
 
-    result := make(map[string]BlackholeList)
+	result := make(map[string]BlackholeList)
 
-    for rows.Next() {
-        var b BlackholeList
-        var ts, expires sql.NullString
-        var rule, reason, asn, asnName, country, ptr sql.NullString
+	for rows.Next() {
+		var b BlackholeList
+		var ts, expires sql.NullString
+		var rule, reason, asn, asnName, country, ptr sql.NullString
 
-        err := rows.Scan(&b.Prefix, &ts, &expires, &rule, &reason, &asn, &asnName, &country, &ptr)
-        if err != nil {
-            log.Printf("[ERROR] Failed to scan row: %v", err)
-            continue
-        }
+		err := rows.Scan(&b.Prefix, &ts, &expires, &rule, &reason, &asn, &asnName, &country, &ptr)
+		if err != nil {
+			log.Printf("[ERROR] Failed to scan row: %v", err)
+			continue
+		}
 
-        if ts.Valid {
-            if t, err := time.Parse(time.RFC3339, ts.String); err == nil {
-                b.Timestamp = t
-            }
-        }
-        if expires.Valid {
-            if exp, err := time.Parse(time.RFC3339, expires.String); err == nil {
-                b.ExpiresAt = &exp
-            }
-        }
-        if rule.Valid {
-            b.Rule = rule.String
-        }
-        if reason.Valid {
-            b.Reason = reason.String
-        }
-        
-        // Corrected ASN parsing and assignment
-        if asn.Valid {
-            asnStr := strings.TrimPrefix(asn.String, "AS")
-            if val, err := strconv.ParseUint(asnStr, 10, 32); err == nil {
-                b.ASN = uint32(val)
-            } else {
-                log.Printf("[ERROR] Failed to parse ASN: %v", err)
-            }
-        }
+		if ts.Valid {
+			if t, err := time.Parse(time.RFC3339, ts.String); err == nil {
+				b.Timestamp = t
+			}
+		}
+		if expires.Valid {
+			if exp, err := time.Parse(time.RFC3339, expires.String); err == nil {
+				b.ExpiresAt = &exp
+			}
+		}
+		if rule.Valid {
+			b.Rule = rule.String
+		}
+		if reason.Valid {
+			b.Reason = reason.String
+		}
 
-        if asnName.Valid {
-            b.ASNName = asnName.String
-        }
-        if country.Valid {
-            b.Country = country.String
-        }
-        if ptr.Valid {
-            b.PTR = ptr.String
-        }
+		// Corrected ASN parsing and assignment
+		if asn.Valid {
+			asnStr := strings.TrimPrefix(asn.String, "AS")
+			if val, err := strconv.ParseUint(asnStr, 10, 32); err == nil {
+				b.ASN = uint32(val)
+			} else {
+				log.Printf("[ERROR] Failed to parse ASN: %v", err)
+			}
+		}
 
-        result[b.Prefix] = b
-    }
+		if asnName.Valid {
+			b.ASNName = asnName.String
+		}
+		if country.Valid {
+			b.Country = country.String
+		}
+		if ptr.Valid {
+			b.PTR = ptr.String
+		}
 
-    if err := rows.Err(); err != nil {
-        log.Printf("[ERROR] Rows error: %v", err)
-        http.Error(w, "Failed to read blackholes", http.StatusInternalServerError)
-        return
-    }
+		result[b.Prefix] = b
+	}
 
-    _ = json.NewEncoder(w).Encode(result)
+	if err := rows.Err(); err != nil {
+		log.Printf("[ERROR] Rows error: %v", err)
+		http.Error(w, "Failed to read blackholes", http.StatusInternalServerError)
+		return
+	}
+
+	_ = json.NewEncoder(w).Encode(result)
 }
 
-
-
-
-
-
-
 func handleBlackholeSearch(w http.ResponseWriter, r *http.Request) {
-    w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/json")
 
-    if DB == nil {
-        http.Error(w, "DB not initialized", http.StatusInternalServerError)
-        return
-    }
+	if DB == nil {
+		http.Error(w, "DB not initialized", http.StatusInternalServerError)
+		return
+	}
 
-    ipStr := r.URL.Query().Get("ip")
-    if ipStr == "" {
-        http.Error(w, "Missing ?ip= parameter", http.StatusBadRequest)
-        return
-    }
+	ipStr := r.URL.Query().Get("ip")
+	if ipStr == "" {
+		http.Error(w, "Missing ?ip= parameter", http.StatusBadRequest)
+		return
+	}
 
-    if net.ParseIP(ipStr) == nil {
-        http.Error(w, "Invalid IP", http.StatusBadRequest)
-        return
-    }
+	if net.ParseIP(ipStr) == nil {
+		http.Error(w, "Invalid IP", http.StatusBadRequest)
+		return
+	}
 
-    // Θα ψάξουμε prefix που να ξεκινάει με την IP π.χ. "1.2.3.4/%"
-    like := ipStr + "/%"
+	// Θα ψάξουμε prefix που να ξεκινάει με την IP π.χ. "1.2.3.4/%"
+	like := ipStr + "/%"
 
-    var b BlackholeList
-    var ts, expires sql.NullString
-    var rule, reason, asn, asnName, country, ptr sql.NullString
+	var b BlackholeList
+	var ts, expires sql.NullString
+	var rule, reason, asn, asnName, country, ptr sql.NullString
 
-    ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
-    defer cancel()
+	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+	defer cancel()
 
-    err := DB.QueryRowContext(ctx, `
+	err := DB.QueryRowContext(ctx, `
         SELECT prefix, timestamp, expires_at, rule, reason, asn, asn_name, country, ptr
         FROM blackholes
         WHERE prefix LIKE ?
         LIMIT 1
     `, like).Scan(
-        &b.Prefix,
-        &ts, &expires,
-        &rule, &reason,
-        &asn, &asnName, &country, &ptr,
-    )
+		&b.Prefix,
+		&ts, &expires,
+		&rule, &reason,
+		&asn, &asnName, &country, &ptr,
+	)
 
-    if err == sql.ErrNoRows {
-        w.WriteHeader(http.StatusNotFound)
-        _ = json.NewEncoder(w).Encode(map[string]any{
-            "found":   false,
-            "ip":      ipStr,
-            "message": "not blackholed",
-        })
-        return
-    } else if err != nil {
-        log.Printf("[ERROR] DB error in blackhole-search: %v", err)
-        http.Error(w, "DB error", http.StatusInternalServerError)
-        return
-    }
+	if err == sql.ErrNoRows {
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"found":   false,
+			"ip":      ipStr,
+			"message": "not blackholed",
+		})
+		return
+	} else if err != nil {
+		log.Printf("[ERROR] DB error in blackhole-search: %v", err)
+		http.Error(w, "DB error", http.StatusInternalServerError)
+		return
+	}
 
-    if ts.Valid {
-        if t, err := time.Parse(time.RFC3339, ts.String); err == nil {
-            b.Timestamp = t
-        }
-    }
-    if expires.Valid {
-        if exp, err := time.Parse(time.RFC3339, expires.String); err == nil {
-            b.ExpiresAt = &exp
-        }
-    }
-    if rule.Valid {
-        b.Rule = rule.String
-    }
-    if reason.Valid {
-        b.Reason = reason.String
-    }
+	if ts.Valid {
+		if t, err := time.Parse(time.RFC3339, ts.String); err == nil {
+			b.Timestamp = t
+		}
+	}
+	if expires.Valid {
+		if exp, err := time.Parse(time.RFC3339, expires.String); err == nil {
+			b.ExpiresAt = &exp
+		}
+	}
+	if rule.Valid {
+		b.Rule = rule.String
+	}
+	if reason.Valid {
+		b.Reason = reason.String
+	}
 
-    // ASN parsing όπως ήδη κάνεις στο handleBlackholeList
-    if asn.Valid {
-        asnStr := strings.TrimPrefix(asn.String, "AS")
-        if val, err := strconv.ParseUint(asnStr, 10, 32); err == nil {
-            b.ASN = uint32(val)
-        } else {
-            log.Printf("[ERROR] Failed to parse ASN in blackhole-search: %v", err)
-        }
-    }
+	// ASN parsing όπως ήδη κάνεις στο handleBlackholeList
+	if asn.Valid {
+		asnStr := strings.TrimPrefix(asn.String, "AS")
+		if val, err := strconv.ParseUint(asnStr, 10, 32); err == nil {
+			b.ASN = uint32(val)
+		} else {
+			log.Printf("[ERROR] Failed to parse ASN in blackhole-search: %v", err)
+		}
+	}
 
-    if asnName.Valid {
-        b.ASNName = asnName.String
-    }
-    if country.Valid {
-        b.Country = country.String
-    }
-    if ptr.Valid {
-        b.PTR = ptr.String
-    }
+	if asnName.Valid {
+		b.ASNName = asnName.String
+	}
+	if country.Valid {
+		b.Country = country.String
+	}
+	if ptr.Valid {
+		b.PTR = ptr.String
+	}
 
-    // Επιτυχία – επιστρέφουμε ένα single BlackholeList object
-    _ = json.NewEncoder(w).Encode(b)
+	// Επιτυχία – επιστρέφουμε ένα single BlackholeList object
+	_ = json.NewEncoder(w).Encode(b)
 }
-
-
-
-
-
-
-
-
-
 
 // handleFlush clears the database and BGP announcements for a fresh start.
 func handleFlush(w http.ResponseWriter, r *http.Request) {
@@ -638,10 +589,10 @@ func handleFlush(w http.ResponseWriter, r *http.Request) {
 	// 4. Respond with a detailed success message
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"status": "success",
-		"message": "All data flushed successfully.",
+		"status":                    "success",
+		"message":                   "All data flushed successfully.",
 		"rib_announcements_cleared": announcedCount,
-		"db_blackholes_cleared": blackholesCount,
-		"db_detections_cleared": detectionsCount,
+		"db_blackholes_cleared":     blackholesCount,
+		"db_detections_cleared":     detectionsCount,
 	})
 }

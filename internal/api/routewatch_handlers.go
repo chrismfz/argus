@@ -47,7 +47,7 @@ type rwASNEntry struct {
 	Name        string          `json:"name,omitempty"`
 	BytesIn1h   uint64          `json:"bytes_in_1h"`
 	PrefixCount int             `json:"prefix_count"`
-	Transits    []string        `json:"transits"`    // distinct transit labels seen
+	Transits    []string        `json:"transits"`           // distinct transit labels seen
 	Prefixes    []rwPrefixEntry `json:"prefixes,omitempty"` // top 10 by hops desc
 }
 

@@ -21,11 +21,21 @@ type EHBOS struct {
 }
 
 func NewEHBOS(bins int, eps float64, nSubspaces, subspaceSize int, agg string, d int) *EHBOS {
-	if bins <= 1 { bins = 10 }
-	if eps <= 0  { eps  = 1e-6 }
-	if subspaceSize <= 1 { subspaceSize = 2 }
-	if nSubspaces <= 0 { nSubspaces = 12 }
-	if agg != "max" && agg != "mean" { agg = "max" }
+	if bins <= 1 {
+		bins = 10
+	}
+	if eps <= 0 {
+		eps = 1e-6
+	}
+	if subspaceSize <= 1 {
+		subspaceSize = 2
+	}
+	if nSubspaces <= 0 {
+		nSubspaces = 12
+	}
+	if agg != "max" && agg != "mean" {
+		agg = "max"
+	}
 
 	// build random subspaces deterministically per process start
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -33,9 +43,14 @@ func NewEHBOS(bins int, eps float64, nSubspaces, subspaceSize int, agg string, d
 	seen := map[string]bool{}
 	pick := func() []int {
 		ix := make([]int, d)
-		for i := 0; i < d; i++ { ix[i] = i }
+		for i := 0; i < d; i++ {
+			ix[i] = i
+		}
 		// shuffle and take first k
-		for i := d-1; i > 0; i-- { j := r.Intn(i+1); ix[i], ix[j] = ix[j], ix[i] }
+		for i := d - 1; i > 0; i-- {
+			j := r.Intn(i + 1)
+			ix[i], ix[j] = ix[j], ix[i]
+		}
 		out := append([]int(nil), ix[:subspaceSize]...)
 		sort.Ints(out)
 		return out
@@ -61,7 +76,9 @@ func fmtKey(s []int) string {
 
 // Train on baseline B (rows=vectors), using each subspace.
 func (e *EHBOS) Train(B [][]float64) {
-	if len(B) == 0 || len(e.subs) == 0 { return }
+	if len(B) == 0 || len(e.subs) == 0 {
+		return
+	}
 	e.model = make([]*HBOS, len(e.subs))
 	// train one HBOS per subspace
 	for i, sub := range e.subs {
@@ -75,14 +92,16 @@ func (e *EHBOS) Train(B [][]float64) {
 	for _, v := range B {
 		e.trainScores = append(e.trainScores, e.Score(v))
 	}
-sort.Float64s(e.trainScores)
+	sort.Float64s(e.trainScores)
 }
 
 func project(B [][]float64, sub []int) [][]float64 {
 	out := make([][]float64, len(B))
 	for i, v := range B {
 		row := make([]float64, len(sub))
-		for j, idx := range sub { row[j] = v[idx] }
+		for j, idx := range sub {
+			row[j] = v[idx]
+		}
 		out[i] = row
 	}
 	return out
@@ -90,14 +109,20 @@ func project(B [][]float64, sub []int) [][]float64 {
 
 // Score: aggregate per-subspace raw HBOS scores. Larger => more anomalous.
 func (e *EHBOS) Score(v []float64) float64 {
-	if len(e.model) == 0 { return 0 }
+	if len(e.model) == 0 {
+		return 0
+	}
 	acc := 0.0
 	maxv := -1e308
 	for i, sub := range e.subs {
 		p := make([]float64, len(sub))
-		for j, idx := range sub { p[j] = v[idx] }
+		for j, idx := range sub {
+			p[j] = v[idx]
+		}
 		s := e.model[i].Score(p)
-		if s > maxv { maxv = s }
+		if s > maxv {
+			maxv = s
+		}
 		acc += s
 	}
 	if e.agg == "max" {
@@ -108,9 +133,15 @@ func (e *EHBOS) Score(v []float64) float64 {
 
 // Bound(p): p-quantile over aggregate training scores.
 func (e *EHBOS) Bound(p float64) float64 {
-	if len(e.trainScores) == 0 { return 1e9 }
-	if p <= 0 { return e.trainScores[0] }
-	if p >= 1 { return e.trainScores[len(e.trainScores)-1] }
+	if len(e.trainScores) == 0 {
+		return 1e9
+	}
+	if p <= 0 {
+		return e.trainScores[0]
+	}
+	if p >= 1 {
+		return e.trainScores[len(e.trainScores)-1]
+	}
 	pos := int(p*float64(len(e.trainScores)-1) + 0.5)
 	return e.trainScores[pos]
 }
@@ -119,10 +150,16 @@ func (e *EHBOS) Bound(p float64) float64 {
 func (e *EHBOS) ScoreNorm(v []float64) float64 {
 	raw := e.Score(v)
 	n := len(e.trainScores)
-	if n == 0 { return 0 }
+	if n == 0 {
+		return 0
+	}
 	idx := sort.Search(n, func(i int) bool { return e.trainScores[i] >= raw })
 	q := (float64(idx) - 0.5) / float64(n)
-	if q < 0 { q = 0 }
-	if q > 1 { q = 1 }
+	if q < 0 {
+		q = 0
+	}
+	if q > 1 {
+		q = 1
+	}
 	return q
 }

@@ -1,16 +1,15 @@
 package detection
 
 import (
+	"argus/internal/enrich"
 	"context"
 	"log"
 	"net"
+	"os"
 	"strings"
 	"sync"
 	"time"
-	"os"
-	"argus/internal/enrich"
 )
-
 
 var (
 	debugEngine   = false
@@ -39,11 +38,6 @@ func DlogEngine(msg string, args ...interface{}) {
 	}
 }
 
-
-
-
-
-
 type Flow struct {
 	Timestamp time.Time
 	SrcIP     string
@@ -54,16 +48,16 @@ type Flow struct {
 	Bytes     uint64
 	Packets   uint64
 	TCPFlags  uint8
-    // New (optional) signals
-    Direction string // "ingress" | "egress" | ""
-    // NAT (if your ingest populates them; safe to leave empty otherwise)
-    PostNATSrcIP   string
-    PostNATDstIP   string
-    PostNATSrcPort uint16
-    PostNATDstPort uint16
-    // TTL (min/max seen on the flow if available)
-    TTLMin uint8
-    TTLMax uint8
+	// New (optional) signals
+	Direction string // "ingress" | "egress" | ""
+	// NAT (if your ingest populates them; safe to leave empty otherwise)
+	PostNATSrcIP   string
+	PostNATDstIP   string
+	PostNATSrcPort uint16
+	PostNATDstPort uint16
+	// TTL (min/max seen on the flow if available)
+	TTLMin uint8
+	TTLMax uint8
 }
 
 type Engine struct {
@@ -73,32 +67,30 @@ type Engine struct {
 	myASN     uint32
 	myNets    []*net.IPNet
 	maxWindow time.Duration
-	Geo *enrich.GeoIP
-	DNS *enrich.DNSResolver
-	store DetectionStore
-	reporter Reporter
-	anomaly *Anomaly
+	Geo       *enrich.GeoIP
+	DNS       *enrich.DNSResolver
+	store     DetectionStore
+	reporter  Reporter
+	anomaly   *Anomaly
 }
 
 type Reporter interface {
-    ReportBlock(ip, description string, ttlSec int) error
-    ReportUnblock(ip, source, why string) error
+	ReportBlock(ip, description string, ttlSec int) error
+	ReportUnblock(ip, source, why string) error
 }
 
 func (e *Engine) SetReporter(r Reporter) { e.reporter = r }
 
-
-
-
 func (e *Engine) SetAnomaly(a *Anomaly) {
 	e.anomaly = a
-	if a != nil { a.BindEngine(e) }
+	if a != nil {
+		a.BindEngine(e)
+	}
 }
-
 
 // ✅ Δημιουργία του detection engine
 // Removed geo, resolver, ifnames parameters
-func NewEngine(rules []DetectionRule, asn uint32, prefixes []*net.IPNet, maxWin time.Duration, geo *enrich.GeoIP, dns *enrich.DNSResolver, store DetectionStore ) *Engine {
+func NewEngine(rules []DetectionRule, asn uint32, prefixes []*net.IPNet, maxWin time.Duration, geo *enrich.GeoIP, dns *enrich.DNSResolver, store DetectionStore) *Engine {
 	DlogEngine("NewEngine created with %d rules, maxWindow: %s", len(rules), maxWin.String())
 	return &Engine{
 		rules:     rules,
@@ -109,7 +101,7 @@ func NewEngine(rules []DetectionRule, asn uint32, prefixes []*net.IPNet, maxWin 
 		Geo:       geo,
 		DNS:       dns,
 		store:     store,
-//		alertCount: make(map[string]map[string]int), //old RAM
+		//		alertCount: make(map[string]map[string]int), //old RAM
 	}
 }
 
@@ -121,10 +113,9 @@ func (e *Engine) AddFlow(f Flow) {
 	DlogEngine("Flow added. Current flow cache size: %d. Added: Src=%s, Dst=%s, DstPort=%d, Proto=%s, Timestamp=%s",
 		len(e.flows), f.SrcIP, f.DstIP, f.DstPort, f.Proto, f.Timestamp.Format(time.RFC3339Nano))
 
-if e.anomaly != nil {
-	e.anomaly.AddFlow(f)
-}
-
+	if e.anomaly != nil {
+		e.anomaly.AddFlow(f)
+	}
 
 }
 
@@ -195,19 +186,19 @@ func (e *Engine) runDetection() {
 		// Πάρε srcIP (χρησιμοποιούμε το πρώτο flow ως δείγμα)
 		srcIP := flows[0].SrcIP
 
-// OLD fallback logic (in-memory):
-//if e.alertCount[rule.Name] == nil {
-//e.alertCount[rule.Name] = make(map[string]int)
-//}
-//e.alertCount[rule.Name][srcIP]++
-//count := e.alertCount[rule.Name][srcIP]
-count, err := e.store.IncrementCount(rule.Name, srcIP)
-if err != nil {
-	log.Printf("[ERROR] Failed to increment detection count for %s/%s: %v", rule.Name, srcIP, err)
-	continue
-}
+		// OLD fallback logic (in-memory):
+		// if e.alertCount[rule.Name] == nil {
+		// e.alertCount[rule.Name] = make(map[string]int)
+		// }
+		// e.alertCount[rule.Name][srcIP]++
+		// count := e.alertCount[rule.Name][srcIP]
+		count, err := e.store.IncrementCount(rule.Name, srcIP)
+		if err != nil {
+			log.Printf("[ERROR] Failed to increment detection count for %s/%s: %v", rule.Name, srcIP, err)
+			continue
+		}
 
-	// ➕ Ενημέρωση log
+		// ➕ Ενημέρωση log
 		DlogEngine("IP %s triggered rule '%s' %d time(s)", srcIP, rule.Name, count)
 
 		// Εκτέλεση actions
@@ -225,7 +216,7 @@ if err != nil {
 				})
 			case "blackhole":
 				if rule.BlackholeCount > 0 && count >= rule.BlackholeCount {
-				e.HandleBlackhole(rule, flows, count)
+					e.HandleBlackhole(rule, flows, count)
 				}
 			default:
 				log.Printf("[WARN] Unknown action: %s for rule %s", act, rule.Name)
@@ -233,10 +224,6 @@ if err != nil {
 		}
 	}
 }
-
-
-
-
 
 // ✅ Helper: διαχωρισμός action list (π.χ. "alert, slack")
 func parseActions(s string) []string {
@@ -263,4 +250,3 @@ func ProtocolToString(p uint8) string {
 		return "unknown"
 	}
 }
-

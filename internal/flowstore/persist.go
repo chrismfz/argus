@@ -139,9 +139,9 @@ func initSchema(db *sql.DB) error {
 // Also writes ASN meta deltas. Called every 5 minutes.
 func (s *Store) flush5m() error {
 	s.mu.Lock()
-	tl     := s.tl
+	tl := s.tl
 	deltas := s.drainMetaDeltas()
-	s.tl    = make(map[tlKey]*tlVal)
+	s.tl = make(map[tlKey]*tlVal)
 	s.mu.Unlock()
 
 	if len(tl) == 0 && len(deltas) == 0 {
@@ -239,7 +239,7 @@ func (s *Store) drainMetaDeltas() map[uint32]metaDelta {
 			deltaIn:   m.pendingIn,
 			deltaOut:  m.pendingOut,
 		}
-		m.pendingIn  = 0
+		m.pendingIn = 0
 		m.pendingOut = 0
 	}
 	return out
@@ -251,8 +251,8 @@ func (s *Store) drainMetaDeltas() map[uint32]metaDelta {
 // the detail tables. Called every hour.
 func (s *Store) flushHourly() error {
 	s.mu.Lock()
-	hours   := s.hours
-	s.hours  = make(map[hourKey]*hourAccum)
+	hours := s.hours
+	s.hours = make(map[hourKey]*hourAccum)
 	s.mu.Unlock()
 
 	if len(hours) == 0 {

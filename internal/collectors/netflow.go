@@ -1,10 +1,10 @@
 package collectors
 
 import (
+	"argus/internal/fields"
 	"encoding/binary"
 	"fmt"
-	"argus/internal/fields"
-	"io" // Import for io.Writer
+	"io"  // Import for io.Writer
 	"log" // Import for logging
 	"net"
 	"os"
@@ -127,123 +127,120 @@ const ROUTER_TEMPLATE_BYTES_ID = 4
 const ROUTER_TEMPLATE_LAST_SWITCHED_ID = 1
 const ROUTER_TEMPLATE_FIRST_SWITCHED_ID = 2
 
-
 // Extension fields
 const _TIMESTAMP = fields.CUSTOM_TIMESTAMP // Now using your new custom timestamp ID
 
 var FUNCTIONMAP = map[uint16]func([]byte) fields.Value{
-	IN_BYTES:             fields.GetInt,
-	IN_PKTS:              fields.GetInt,
-	FLOWS:                fields.GetInt,
-	PROTOCOL:             fields.GetInt,
-	SRC_TOS:              fields.GetInt,
-	TCP_FLAGS:            fields.GetInt,
-	L4_SRC_PORT:          fields.GetInt,
-	IPV4_SRC_ADDR:        fields.GetAddr,
-	SRC_MASK:             fields.GetInt,
-	INPUT_SNMP:           fields.GetInt,
-	L4_DST_PORT:          fields.GetInt,
-	IPV4_DST_ADDR:        fields.GetAddr,
-	DST_MASK:             fields.GetInt,
-	OUTPUT_SNMP:          fields.GetInt,
-	IPV4_NEXT_HOP:        fields.GetAddr,
-	OUT_BYTES:            fields.GetInt,
-	OUT_PKTS:             fields.GetInt,
-	LAST_SWITCHED:        fields.GetInt,
-	IPV6_SRC_ADDR:        fields.GetAddr6,
-	IPV6_DST_ADDR:        fields.GetAddr6,
-	SRC_AS:                 fields.GetInt,
-	DST_AS:                 fields.GetInt,
-	BGP_IPV4_NEXT_HOP:      fields.GetAddr,
-	FIRST_SWITCHED:         fields.GetInt,
-	MIN_PKT_LNGTH:          fields.GetInt,
-	MAX_PKT_LNGTH:          fields.GetInt,
-	MIN_TTL:                fields.GetInt,
-	MAX_TTL:                fields.GetInt,
-	SAMPLING_INTERVAL:      fields.GetInt,
-	ICMP_TYPE:              fields.GetInt,
-	MUL_IGMP_TYPE:          fields.GetInt,
-	SAMPLING_ALGORITHM:     fields.GetInt,
-	FLOW_ACTIVE_TIMEOUT:    fields.GetInt,
-	FLOW_INACTIVE_TIMEOUT:  fields.GetInt,
-	ENGINE_TYPE:            fields.GetInt,
-	ENGINE_ID:              fields.GetInt,
-	TOTAL_BYTES_EXP:        fields.GetInt,
-	TOTAL_PKTS_EXP:         fields.GetInt,
-	TOTAL_FLOWS_EXP:        fields.GetInt,
-	IPV4_SRC_PREFIX:        fields.GetAddr,
-	IPV4_DST_PREFIX:        fields.GetAddr,
-	MPLS_TOP_LABEL_TYPE:    fields.GetInt,
-	MPLS_TOP_LABEL_IP_ADDR: fields.GetAddr,
-	FLOW_SAMPLER_ID:        fields.GetInt,
-	FLOW_SAMPLER_MODE:      fields.GetInt,
-	FLOW_SAMPLER_RANDOM_INTERVAL: fields.GetInt,
-	IPV4_IDENT:             fields.GetInt,
-	DST_TOS:                fields.GetInt,
-	IN_SRC_MAC:             fields.GetMac,
-	OUT_DST_MAC:            fields.GetMac,
-	SRC_VLAN:               fields.GetInt,
-	DST_VLAN:               fields.GetInt,
-	IP_PROTOCOL_VERSION:    fields.GetInt,
-	DIRECTION:              fields.GetInt,
-	IPV6_NEXT_HOP:          fields.GetAddr6,
-	BPG_IPV6_NEXT_HOP:      fields.GetAddr6,
-	IPV6_OPTION_HEADERS:    fields.GetInt,
-	MPLS_LABEL_1:           fields.GetInt,
-	MPLS_LABEL_2:           fields.GetInt,
-	MPLS_LABEL_3:           fields.GetInt,
-	MPLS_LABEL_4:           fields.GetInt,
-	MPLS_LABEL_5:           fields.GetInt,
-	MPLS_LABEL_6:           fields.GetInt,
-	MPLS_LABEL_7:           fields.GetInt,
-	MPLS_LABEL_8:           fields.GetInt,
-	MPLS_LABEL_9:           fields.GetInt,
-	MPLS_LABEL_10:          fields.GetInt,
-	IN_DST_MAC:             fields.GetMac,
-	OUT_SRC_MAC:            fields.GetMac,
-	IF_NAME:                fields.GetString,
-	IF_DESC:                fields.GetString,
-	SAMPLER_NAME:           fields.GetString,
-	IN_PERMANENT_BYTES:     fields.GetInt,
-	IN_PERMANENT_PKTS:      fields.GetInt,
-	FRAGMENT_OFFSET:        fields.GetInt,
-	FORWARDING_STATUS:      fields.GetInt,
-	MPLS_PAL_RD:            fields.GetBytes,
-	MPLS_PREFIX_LEN:        fields.GetInt,
-	SRC_TRAFFIC_INDEX:      fields.GetInt,
-	DST_TRAFFIC_INDEX:      fields.GetInt,
-	APPLICATION_DESCRIPTION: fields.GetString,
-	APPLICATION_TAG:        fields.GetInt,
-	APPLICATION_NAME:       fields.GetString,
-	POST_IP_DIFF_SERV_CODE_POINT: fields.GetInt,
-	REPLICATION_FACTOR:     fields.GetInt,
-	DEPRECATED:             fields.GetBytes,
-	LAYER2_PACKET_SECTION_OFFSET: fields.GetInt,
-	LAYER2_PACKET_SECTION_SIZE: fields.GetInt,
-	LAYER2_PACKET_SECTION_DATA: fields.GetBytes,
-	FIREWALL_EVENT:         fields.GetInt,
-	POST_NAT_SOURCE_IPV4_ADDRESS: fields.GetAddr,
-	POST_NAT_DESTINATION_IPV4_ADDRESS: fields.GetAddr,
-	POST_NAPT_SOURCE_TRANSPORT_PORT: fields.GetInt,
+	IN_BYTES:                             fields.GetInt,
+	IN_PKTS:                              fields.GetInt,
+	FLOWS:                                fields.GetInt,
+	PROTOCOL:                             fields.GetInt,
+	SRC_TOS:                              fields.GetInt,
+	TCP_FLAGS:                            fields.GetInt,
+	L4_SRC_PORT:                          fields.GetInt,
+	IPV4_SRC_ADDR:                        fields.GetAddr,
+	SRC_MASK:                             fields.GetInt,
+	INPUT_SNMP:                           fields.GetInt,
+	L4_DST_PORT:                          fields.GetInt,
+	IPV4_DST_ADDR:                        fields.GetAddr,
+	DST_MASK:                             fields.GetInt,
+	OUTPUT_SNMP:                          fields.GetInt,
+	IPV4_NEXT_HOP:                        fields.GetAddr,
+	OUT_BYTES:                            fields.GetInt,
+	OUT_PKTS:                             fields.GetInt,
+	LAST_SWITCHED:                        fields.GetInt,
+	IPV6_SRC_ADDR:                        fields.GetAddr6,
+	IPV6_DST_ADDR:                        fields.GetAddr6,
+	SRC_AS:                               fields.GetInt,
+	DST_AS:                               fields.GetInt,
+	BGP_IPV4_NEXT_HOP:                    fields.GetAddr,
+	FIRST_SWITCHED:                       fields.GetInt,
+	MIN_PKT_LNGTH:                        fields.GetInt,
+	MAX_PKT_LNGTH:                        fields.GetInt,
+	MIN_TTL:                              fields.GetInt,
+	MAX_TTL:                              fields.GetInt,
+	SAMPLING_INTERVAL:                    fields.GetInt,
+	ICMP_TYPE:                            fields.GetInt,
+	MUL_IGMP_TYPE:                        fields.GetInt,
+	SAMPLING_ALGORITHM:                   fields.GetInt,
+	FLOW_ACTIVE_TIMEOUT:                  fields.GetInt,
+	FLOW_INACTIVE_TIMEOUT:                fields.GetInt,
+	ENGINE_TYPE:                          fields.GetInt,
+	ENGINE_ID:                            fields.GetInt,
+	TOTAL_BYTES_EXP:                      fields.GetInt,
+	TOTAL_PKTS_EXP:                       fields.GetInt,
+	TOTAL_FLOWS_EXP:                      fields.GetInt,
+	IPV4_SRC_PREFIX:                      fields.GetAddr,
+	IPV4_DST_PREFIX:                      fields.GetAddr,
+	MPLS_TOP_LABEL_TYPE:                  fields.GetInt,
+	MPLS_TOP_LABEL_IP_ADDR:               fields.GetAddr,
+	FLOW_SAMPLER_ID:                      fields.GetInt,
+	FLOW_SAMPLER_MODE:                    fields.GetInt,
+	FLOW_SAMPLER_RANDOM_INTERVAL:         fields.GetInt,
+	IPV4_IDENT:                           fields.GetInt,
+	DST_TOS:                              fields.GetInt,
+	IN_SRC_MAC:                           fields.GetMac,
+	OUT_DST_MAC:                          fields.GetMac,
+	SRC_VLAN:                             fields.GetInt,
+	DST_VLAN:                             fields.GetInt,
+	IP_PROTOCOL_VERSION:                  fields.GetInt,
+	DIRECTION:                            fields.GetInt,
+	IPV6_NEXT_HOP:                        fields.GetAddr6,
+	BPG_IPV6_NEXT_HOP:                    fields.GetAddr6,
+	IPV6_OPTION_HEADERS:                  fields.GetInt,
+	MPLS_LABEL_1:                         fields.GetInt,
+	MPLS_LABEL_2:                         fields.GetInt,
+	MPLS_LABEL_3:                         fields.GetInt,
+	MPLS_LABEL_4:                         fields.GetInt,
+	MPLS_LABEL_5:                         fields.GetInt,
+	MPLS_LABEL_6:                         fields.GetInt,
+	MPLS_LABEL_7:                         fields.GetInt,
+	MPLS_LABEL_8:                         fields.GetInt,
+	MPLS_LABEL_9:                         fields.GetInt,
+	MPLS_LABEL_10:                        fields.GetInt,
+	IN_DST_MAC:                           fields.GetMac,
+	OUT_SRC_MAC:                          fields.GetMac,
+	IF_NAME:                              fields.GetString,
+	IF_DESC:                              fields.GetString,
+	SAMPLER_NAME:                         fields.GetString,
+	IN_PERMANENT_BYTES:                   fields.GetInt,
+	IN_PERMANENT_PKTS:                    fields.GetInt,
+	FRAGMENT_OFFSET:                      fields.GetInt,
+	FORWARDING_STATUS:                    fields.GetInt,
+	MPLS_PAL_RD:                          fields.GetBytes,
+	MPLS_PREFIX_LEN:                      fields.GetInt,
+	SRC_TRAFFIC_INDEX:                    fields.GetInt,
+	DST_TRAFFIC_INDEX:                    fields.GetInt,
+	APPLICATION_DESCRIPTION:              fields.GetString,
+	APPLICATION_TAG:                      fields.GetInt,
+	APPLICATION_NAME:                     fields.GetString,
+	POST_IP_DIFF_SERV_CODE_POINT:         fields.GetInt,
+	REPLICATION_FACTOR:                   fields.GetInt,
+	DEPRECATED:                           fields.GetBytes,
+	LAYER2_PACKET_SECTION_OFFSET:         fields.GetInt,
+	LAYER2_PACKET_SECTION_SIZE:           fields.GetInt,
+	LAYER2_PACKET_SECTION_DATA:           fields.GetBytes,
+	FIREWALL_EVENT:                       fields.GetInt,
+	POST_NAT_SOURCE_IPV4_ADDRESS:         fields.GetAddr,
+	POST_NAT_DESTINATION_IPV4_ADDRESS:    fields.GetAddr,
+	POST_NAPT_SOURCE_TRANSPORT_PORT:      fields.GetInt,
 	POST_NAPT_DESTINATION_TRANSPORT_PORT: fields.GetInt,
-	_TIMESTAMP:             fields.GetInt,
+	_TIMESTAMP:                           fields.GetInt,
 }
 
-//
 // GENERICS
 //
 // Netflow listener and main object
 type Netflow struct {
-	Templates   map[uint32]map[uint32]map[uint16]netflowPacketTemplate
-	BindAddr    net.IP
-	BindPort    int
-	debug       bool
-	FlowChannel chan map[uint16]fields.Value
-	logger      *log.Logger // New logger field
-	logFile     *os.File    // To hold the file handle if logging to file
+	Templates           map[uint32]map[uint32]map[uint16]netflowPacketTemplate
+	BindAddr            net.IP
+	BindPort            int
+	debug               bool
+	FlowChannel         chan map[uint16]fields.Value
+	logger              *log.Logger // New logger field
+	logFile             *os.File    // To hold the file handle if logging to file
 	ReportedVersionOnce sync.Once
 	ReportedVersion     uint16
-	
 }
 type netflowPacket struct {
 	Source    uint32
@@ -253,14 +250,14 @@ type netflowPacket struct {
 	Data      []netflowDataFlowset
 }
 type netflowPacketHeader struct {
-	Version  uint16
-	Length   uint16 // <--- THIS WAS MISSING
-	Count    uint16
-	Uptime   uint32
-	Usecs    uint32
-	Sequence uint32
+	Version             uint16
+	Length              uint16 // <--- THIS WAS MISSING
+	Count               uint16
+	Uptime              uint32
+	Usecs               uint32
+	Sequence            uint32
 	Id                  uint32 // v9: Engine ID, v10: ObservationDomainID
-        ObservationDomainID uint32 // ipfix
+	ObservationDomainID uint32 // ipfix
 	ExportTime          uint32 // ipfix
 }
 type netflowPacketFlowset struct {
@@ -303,7 +300,6 @@ type flowRecord struct {
 //	}
 //	return ts
 //}
-
 
 // netflow.go
 // s = sysUpTime (ms since boot), u = unix seconds (seconds since epoch)
@@ -365,6 +361,7 @@ ParseData
 
 Takes a slice of a data flowset and retreives all the flow records
 Requires
+
 	n netflowPacket : Netflow packet struct (for templates)
 	p []byte : Data Flowset slice
 	logger *log.Logger : Logger instance for warnings
@@ -429,8 +426,11 @@ ParseTemplate
 
 Slices a flow template out of an overall packet
 Requires
+
 	templateSlice []byte : Full packet bytes
+
 Returns
+
 	netFlowPacketTemplate: Struct of template
 */
 func parseTemplate(templateSlice []byte) netflowPacketTemplate {
@@ -471,6 +471,7 @@ Route
 Takes an entire packet slice, and routes each flowset to the correct handler
 
 Requires
+
 	nfp netflowPacket : netflowpacket struct
 	p []byte        : Packet bytes
 	start uint16        : Byte index to start at (skip the headers, etc)
@@ -567,10 +568,6 @@ func (n *Netflow) Configure(config map[string]string) {
 	n.FlowChannel = make(chan map[uint16]fields.Value, 1000)
 }
 
-
-
-
-
 func (nf *Netflow) Start() {
 	if nf.logFile != nil {
 		defer func() {
@@ -612,46 +609,45 @@ func (nf *Netflow) Start() {
 
 		nfpacket.Source = binary.BigEndian.Uint32(remoteAddr.IP)
 
-p := netflowPacketHeader{}
-p.Version = binary.BigEndian.Uint16(packet[:2])
-p.Length = binary.BigEndian.Uint16(packet[2:4])
+		p := netflowPacketHeader{}
+		p.Version = binary.BigEndian.Uint16(packet[:2])
+		p.Length = binary.BigEndian.Uint16(packet[2:4])
 
-nf.ReportedVersionOnce.Do(func() {
-	nf.ReportedVersion = p.Version
-	switch p.Version {
-	case 9:
-		msg := "[NETFLOW] Detected NetFlow v9"
-		nf.logger.Println(msg) // γράφει σε log αρχείο
-		fmt.Println(msg)        // δείχνει στην κονσόλα
-	case 10:
-		msg := "[NETFLOW] Detected IPFIX (v10)"
-		nf.logger.Println(msg)
-		fmt.Println(msg)
-	default:
-		msg := fmt.Sprintf("[NETFLOW] Detected unknown NetFlow version: %d", p.Version)
-		nf.logger.Println(msg)
-		fmt.Println(msg)
-	}
-})
-
+		nf.ReportedVersionOnce.Do(func() {
+			nf.ReportedVersion = p.Version
+			switch p.Version {
+			case 9:
+				msg := "[NETFLOW] Detected NetFlow v9"
+				nf.logger.Println(msg) // γράφει σε log αρχείο
+				fmt.Println(msg)       // δείχνει στην κονσόλα
+			case 10:
+				msg := "[NETFLOW] Detected IPFIX (v10)"
+				nf.logger.Println(msg)
+				fmt.Println(msg)
+			default:
+				msg := fmt.Sprintf("[NETFLOW] Detected unknown NetFlow version: %d", p.Version)
+				nf.logger.Println(msg)
+				fmt.Println(msg)
+			}
+		})
 
 		if nfpacket.Length < 20 {
 			nf.logger.Printf("Packet too short. Skipping.\n")
 			continue
 		}
 
-switch p.Version {
-case 9:
-        p.Uptime = binary.BigEndian.Uint32(packet[4:8])
-        p.Usecs = binary.BigEndian.Uint32(packet[8:12])
-        p.Sequence = binary.BigEndian.Uint32(packet[12:16])
-        p.Id = binary.BigEndian.Uint32(packet[16:20])
-case 10:
-        p.ExportTime = binary.BigEndian.Uint32(packet[4:8])
-        p.Sequence = binary.BigEndian.Uint32(packet[8:12])
-        p.ObservationDomainID = binary.BigEndian.Uint32(packet[12:16])
-        p.Id = p.ObservationDomainID // προαιρετικό, για κοινή χρήση
-}
+		switch p.Version {
+		case 9:
+			p.Uptime = binary.BigEndian.Uint32(packet[4:8])
+			p.Usecs = binary.BigEndian.Uint32(packet[8:12])
+			p.Sequence = binary.BigEndian.Uint32(packet[12:16])
+			p.Id = binary.BigEndian.Uint32(packet[16:20])
+		case 10:
+			p.ExportTime = binary.BigEndian.Uint32(packet[4:8])
+			p.Sequence = binary.BigEndian.Uint32(packet[8:12])
+			p.ObservationDomainID = binary.BigEndian.Uint32(packet[12:16])
+			p.Id = p.ObservationDomainID // προαιρετικό, για κοινή χρήση
+		}
 		switch p.Version {
 		case 5:
 			nf.logger.Printf("NetFlow v5 unsupported. Exiting.\n")
@@ -693,10 +689,6 @@ case 10:
 	}
 }
 
-
-
-
-
 // NEW: Add flowChannel parameter
 func NewNetflowCollector(addr string, port int, debug bool, flowChannel chan map[uint16]fields.Value, writer io.Writer) (*Netflow, error) {
 	parsedAddr := net.ParseIP(addr)
@@ -716,12 +708,9 @@ func NewNetflowCollector(addr string, port int, debug bool, flowChannel chan map
 	}, nil
 }
 
-
-
-
 func (nf *Netflow) HandleUDPFlow(remoteAddr *net.UDPAddr, packet []byte) {
 	nfpacket := netflowPacket{}
-	
+
 	// Ensure packet is long enough for the header
 	if len(packet) < 20 {
 		nf.logger.Printf("Packet too short for Netflow header. Length: %d. Skipping.\n", len(packet))
@@ -736,14 +725,11 @@ func (nf *Netflow) HandleUDPFlow(remoteAddr *net.UDPAddr, packet []byte) {
 	nfpacket.Header.Sequence = binary.BigEndian.Uint32(packet[12:16])
 	nfpacket.Header.Id = binary.BigEndian.Uint32(packet[16:20])
 
-
-
 	// Basic validation for Netflow header length
 	if int(nfpacket.Header.Length) > len(packet) {
 		nf.logger.Printf("Netflow packet header claims length %d, but actual packet size is %d. Skipping.\n", nfpacket.Header.Length, len(packet))
 		return // Exit early if header length is invalid
 	}
-
 
 	switch nfpacket.Header.Version {
 	case 5:
@@ -763,7 +749,7 @@ func (nf *Netflow) HandleUDPFlow(remoteAddr *net.UDPAddr, packet []byte) {
 		for _, record := range dfs.Records {
 			// CORRECTED LINE: Use nfpacket.Header.Uptime and nfpacket.Header.Usecs
 			record.calcTime(nfpacket.Header.Uptime, nfpacket.Header.Usecs)
-			
+
 			if nf.FlowChannel != nil {
 				nf.FlowChannel <- record.ValuesMap
 			}

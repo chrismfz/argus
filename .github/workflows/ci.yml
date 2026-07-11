@@ -23,17 +23,8 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      # Advisory only until the tree-wide gofmt PR lands (ROADMAP Phase 0),
-      # after which this becomes `make fmt` as a hard gate.
-      - name: gofmt (advisory)
-        run: |
-          unformatted=$(gofmt -l $(find . -name '*.go' -not -path './vendor/*'))
-          if [ -n "$unformatted" ]; then
-            echo "::warning::$(echo "$unformatted" | wc -l) file(s) need gofmt (advisory, not blocking):"
-            echo "$unformatted"
-          else
-            echo "gofmt clean."
-          fi
+      - name: gofmt
+        run: make fmt
 
       - name: go vet
         run: make vet

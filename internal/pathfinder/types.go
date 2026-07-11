@@ -35,12 +35,12 @@ type ASNResult struct {
 // and measured RTT from the router's perspective.
 type RouteSummary struct {
 	// Routing
-	Gateway      string `json:"gateway"`      // next-hop IP
-	Interface    string `json:"interface"`    // e.g. sfp1-Synapsecom
-	Distance     int    `json:"distance"`     // 20 = Synapsecom, 30 = GR-IX
-	Active       bool   `json:"active"`       // true = this path is forwarding
-	Upstream     string `json:"upstream,omitempty"` // label derived from interface name
-	LocalIP      string `json:"local_ip,omitempty"`  // our own IP on this peering link
+	Gateway   string `json:"gateway"`            // next-hop IP
+	Interface string `json:"interface"`          // e.g. sfp1-Synapsecom
+	Distance  int    `json:"distance"`           // 20 = Synapsecom, 30 = GR-IX
+	Active    bool   `json:"active"`             // true = this path is forwarding
+	Upstream  string `json:"upstream,omitempty"` // label derived from interface name
+	LocalIP   string `json:"local_ip,omitempty"` // our own IP on this peering link
 
 	// Why this path was/wasn't chosen
 	Contribution string `json:"contribution"` // "active","candidate","best-candidate"
@@ -50,11 +50,11 @@ type RouteSummary struct {
 	BelongsTo   string `json:"belongs_to,omitempty"`   // e.g. "bgp-IP-78.108.36.244"
 
 	// BGP path attributes
-	ASPath      []uint32 `json:"as_path,omitempty"`
-	Hops        int      `json:"hops"`        // len(ASPath) — for quick comparison
-	LocalPref   int      `json:"local_pref"`
-	MED         int      `json:"med"`
-	Communities []string `json:"communities,omitempty"`
+	ASPath           []uint32 `json:"as_path,omitempty"`
+	Hops             int      `json:"hops"` // len(ASPath) — for quick comparison
+	LocalPref        int      `json:"local_pref"`
+	MED              int      `json:"med"`
+	Communities      []string `json:"communities,omitempty"`
 	LargeCommunities []string `json:"large_communities,omitempty"`
 
 	// RTT measured by router via /ping (0 if not measured)

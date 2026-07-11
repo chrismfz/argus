@@ -239,7 +239,6 @@ func handleAlerterStream(w http.ResponseWriter, r *http.Request) {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-
 func alerterIDFromPath(path, prefix string) (int64, error) {
 	raw := strings.TrimPrefix(path, prefix)
 	raw = strings.TrimSuffix(raw, "/")

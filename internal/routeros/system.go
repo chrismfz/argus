@@ -2,10 +2,10 @@ package routeros
 
 import (
 	"context"
-//	"fmt"
+	//	"fmt"
+	"net"
 	"strconv"
 	"strings"
-	"net"
 )
 
 // SystemIdentity returns the router's hostname from /rest/system/identity.
@@ -57,9 +57,9 @@ func (c *Client) PingHost(ctx context.Context, host string, count int, srcAddres
 		"count":    count,
 		"interval": "100ms",
 	}
-    if srcAddress != "" {
-        body["src-address"] = srcAddress
-    }
+	if srcAddress != "" {
+		body["src-address"] = srcAddress
+	}
 
 	var raw []map[string]string
 	if err := c.post(ctx, "tool/ping", body, &raw); err != nil {
@@ -83,33 +83,33 @@ func (c *Client) PingHost(ctx context.Context, host string, count int, srcAddres
 }
 
 func parseRTT(s string) float64 {
-    s = strings.TrimSpace(s)
-    if s == "" {
-        return 0
-    }
-    // Handle combined format: "2ms233us"
-    total := 0.0
-    remaining := s
-    for remaining != "" {
-        if idx := strings.Index(remaining, "ms"); idx != -1 && (strings.Index(remaining, "us") == -1 || idx < strings.Index(remaining, "us")) {
-            v, _ := strconv.ParseFloat(remaining[:idx], 64)
-            total += v
-            remaining = remaining[idx+2:]
-        } else if idx := strings.Index(remaining, "us"); idx != -1 {
-            v, _ := strconv.ParseFloat(remaining[:idx], 64)
-            total += v / 1000.0
-            remaining = remaining[idx+2:]
-        } else if strings.HasSuffix(remaining, "s") {
-            v, _ := strconv.ParseFloat(strings.TrimSuffix(remaining, "s"), 64)
-            total += v * 1000.0
-            remaining = ""
-        } else {
-            v, _ := strconv.ParseFloat(remaining, 64)
-            total += v
-            remaining = ""
-        }
-    }
-    return total
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0
+	}
+	// Handle combined format: "2ms233us"
+	total := 0.0
+	remaining := s
+	for remaining != "" {
+		if idx := strings.Index(remaining, "ms"); idx != -1 && (strings.Index(remaining, "us") == -1 || idx < strings.Index(remaining, "us")) {
+			v, _ := strconv.ParseFloat(remaining[:idx], 64)
+			total += v
+			remaining = remaining[idx+2:]
+		} else if idx := strings.Index(remaining, "us"); idx != -1 {
+			v, _ := strconv.ParseFloat(remaining[:idx], 64)
+			total += v / 1000.0
+			remaining = remaining[idx+2:]
+		} else if strings.HasSuffix(remaining, "s") {
+			v, _ := strconv.ParseFloat(strings.TrimSuffix(remaining, "s"), 64)
+			total += v * 1000.0
+			remaining = ""
+		} else {
+			v, _ := strconv.ParseFloat(remaining, 64)
+			total += v
+			remaining = ""
+		}
+	}
+	return total
 }
 
 // UpstreamLabelFromIface strips port prefix: "sfp1-Synapsecom" → "Synapsecom"
@@ -183,25 +183,24 @@ func StateColor(s BGPSessionState) string {
 	}
 }
 
-
 // LocalIPForGateway finds the router's own IP in the same subnet as gateway.
 // e.g. gateway=78.108.36.244 → returns "78.108.36.245" (our Synapsecom IP)
 func LocalIPForGateway(gateway string, addrs []IPAddress) string {
-    gwIP := net.ParseIP(gateway)
-    if gwIP == nil {
-        return ""
-    }
-    for _, a := range addrs {
-        if a.Disabled {
-            continue
-        }
-        _, ipNet, err := net.ParseCIDR(a.Address)
-        if err != nil {
-            continue
-        }
-        if ipNet.Contains(gwIP) {
-            return strings.Split(a.Address, "/")[0]
-        }
-    }
-    return ""
+	gwIP := net.ParseIP(gateway)
+	if gwIP == nil {
+		return ""
+	}
+	for _, a := range addrs {
+		if a.Disabled {
+			continue
+		}
+		_, ipNet, err := net.ParseCIDR(a.Address)
+		if err != nil {
+			continue
+		}
+		if ipNet.Contains(gwIP) {
+			return strings.Split(a.Address, "/")[0]
+		}
+	}
+	return ""
 }

@@ -3,11 +3,11 @@
 //
 //   - Every 5 minutes → flowstore_timeline     (bytes/packets/flows + iface split)
 //   - Every 1 hour    → flowstore_top_ips,
-//                       flowstore_top_prefixes,
-//                       flowstore_proto,
-//                       flowstore_country,
-//                       flowstore_ports,
-//                       flowstore_tcp_flags
+//     flowstore_top_prefixes,
+//     flowstore_proto,
+//     flowstore_country,
+//     flowstore_ports,
+//     flowstore_tcp_flags
 //
 // A permanent flowstore_asn_meta table tracks first/last seen and lifetime
 // byte totals for every ASN encountered.
@@ -66,13 +66,13 @@ const (
 // ── Key types ─────────────────────────────────────────────────────────────────
 
 type tlKey struct {
-	ts  int64  // 5-min aligned unix epoch
+	ts  int64 // 5-min aligned unix epoch
 	asn uint32
 	dir string // "in" | "out"
 }
 
 type hourKey struct {
-	ts  int64  // hour-aligned unix epoch
+	ts  int64 // hour-aligned unix epoch
 	asn uint32
 	dir string // "in" | "out"
 }
@@ -115,15 +115,15 @@ type tlVal struct {
 // hourAccum holds all hourly accumulators for one (asn, dir) bucket.
 type hourAccum struct {
 	asnName string
-	ips     map[ipKey]*ipCounter   // top IPs
-	pfx     map[string]*counter    // top BGP prefixes
-	proto   map[uint8]*counter     // proto number → counter
-	country map[string]*counter    // ISO country code → counter
-	ports   map[uint16]*counter    // dst port → counter
+	ips     map[ipKey]*ipCounter // top IPs
+	pfx     map[string]*counter  // top BGP prefixes
+	proto   map[uint8]*counter   // proto number → counter
+	country map[string]*counter  // ISO country code → counter
+	ports   map[uint16]*counter  // dst port → counter
 	// TCP flag counters — TCP flows only
-	tcpFlows                      uint64
-	synCount, ackCount, rstCount  uint64
-	finCount, pshCount, urgCount  uint64
+	tcpFlows                     uint64
+	synCount, ackCount, rstCount uint64
+	finCount, pshCount, urgCount uint64
 }
 
 // metaDelta carries the per-flush delta for flowstore_asn_meta.
@@ -205,8 +205,8 @@ func Init(
 
 // loop runs the three periodic tickers.
 func (s *Store) loop() {
-	tick5m  := time.NewTicker(5 * time.Minute)
-	tick1h  := time.NewTicker(30 * time.Minute)
+	tick5m := time.NewTicker(5 * time.Minute)
+	tick1h := time.NewTicker(30 * time.Minute)
 	tick24h := time.NewTicker(24 * time.Hour)
 	defer tick5m.Stop()
 	defer tick1h.Stop()
@@ -244,19 +244,19 @@ func (s *Store) Accumulate(rec *FlowEvent) {
 	var dir string
 
 	if inbound {
-		peerASN     = rec.PeerSrcAS
+		peerASN = rec.PeerSrcAS
 		peerASNName = rec.PeerSrcASName
-		peerIP      = rec.SrcHost
-		localIP     = rec.DstHost
-		ifaceName   = rec.InputInterfaceName
-		dir         = "in"
+		peerIP = rec.SrcHost
+		localIP = rec.DstHost
+		ifaceName = rec.InputInterfaceName
+		dir = "in"
 	} else {
-		peerASN     = rec.PeerDstAS
+		peerASN = rec.PeerDstAS
 		peerASNName = rec.PeerDstASName
-		peerIP      = rec.DstHost
-		localIP     = rec.SrcHost
-		ifaceName   = rec.OutputInterfaceName
-		dir         = "out"
+		peerIP = rec.DstHost
+		localIP = rec.SrcHost
+		ifaceName = rec.OutputInterfaceName
+		dir = "out"
 	}
 
 	// Skip unknown ASNs, our own ASN, and flows where the "peer" IP is ours.
@@ -264,8 +264,8 @@ func (s *Store) Accumulate(rec *FlowEvent) {
 		return
 	}
 
-	now  := time.Now()
-	ts5  := (now.Unix() / 300) * 300
+	now := time.Now()
+	ts5 := (now.Unix() / 300) * 300
 	ts1h := (now.Unix() / 1800) * 1800
 
 	s.mu.Lock()
@@ -294,7 +294,7 @@ func (s *Store) Accumulate(rec *FlowEvent) {
 		tv = &tlVal{asnName: peerASNName}
 		s.tl[tk] = tv
 	}
-	tv.bytes   += rec.Bytes
+	tv.bytes += rec.Bytes
 	tv.packets += rec.Packets
 	tv.flows++
 	if ifaceName != "" {
@@ -368,12 +368,24 @@ func (s *Store) Accumulate(rec *FlowEvent) {
 	if rec.Proto == 6 {
 		ha.tcpFlows++
 		f := rec.TCPFlags
-		if f&0x02 != 0 { ha.synCount++ }
-		if f&0x10 != 0 { ha.ackCount++ }
-		if f&0x04 != 0 { ha.rstCount++ }
-		if f&0x01 != 0 { ha.finCount++ }
-		if f&0x08 != 0 { ha.pshCount++ }
-		if f&0x20 != 0 { ha.urgCount++ }
+		if f&0x02 != 0 {
+			ha.synCount++
+		}
+		if f&0x10 != 0 {
+			ha.ackCount++
+		}
+		if f&0x04 != 0 {
+			ha.rstCount++
+		}
+		if f&0x01 != 0 {
+			ha.finCount++
+		}
+		if f&0x08 != 0 {
+			ha.pshCount++
+		}
+		if f&0x20 != 0 {
+			ha.urgCount++
+		}
 	}
 }
 

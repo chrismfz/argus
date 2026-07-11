@@ -1,4 +1,3 @@
-
 package detection
 
 import (
@@ -101,7 +100,7 @@ func IsProtected(ipStr string) bool {
 func ShouldExecuteBlackhole(ruleName, ip string) (ok bool, reason string) {
 	if ip == "" {
 		return false, "empty-target"
-}
+	}
 	if IsProtected(ip) {
 		return false, "protected"
 	}

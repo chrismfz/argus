@@ -10,9 +10,9 @@ package api
 // The existing WithAuth (Bearer token) and globalGuard are unchanged.
 
 import (
-	"net/http"
-	"log"
 	"github.com/chrismfz/goauth"
+	"log"
+	"net/http"
 )
 
 // Auth is the shared goauth Manager. Set by main.go before api.Start().
@@ -22,17 +22,16 @@ var Auth *goauth.Manager
 // sessionAllowed returns true if the request carries a valid goauth session.
 // Requires Auth to be set and LoadAndSave to have already run in the chain.
 func sessionAllowed(r *http.Request) bool {
-    if Auth == nil {
-        log.Printf("[AUTH] sessionAllowed: Auth is nil")
-        return false
-    }
-    result := Auth.IsAuthenticated(r)
-    ip := realIP(r)
-    log.Printf("[AUTH] sessionAllowed: ip=%s result=%v xff=%q",
-        ip, result, r.Header.Get("X-Forwarded-For"))
-    return result
+	if Auth == nil {
+		log.Printf("[AUTH] sessionAllowed: Auth is nil")
+		return false
+	}
+	result := Auth.IsAuthenticated(r)
+	ip := realIP(r)
+	log.Printf("[AUTH] sessionAllowed: ip=%s result=%v xff=%q",
+		ip, result, r.Header.Get("X-Forwarded-For"))
+	return result
 }
-
 
 // ── Login page ────────────────────────────────────────────────────────────────
 

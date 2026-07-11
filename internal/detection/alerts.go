@@ -1,22 +1,20 @@
 package detection
 
 import (
-//	"fmt" // fmt is not strictly needed if only using log.Printf and DlogEngine
+	//	"fmt" // fmt is not strictly needed if only using log.Printf and DlogEngine
+	"argus/internal/enrich"
+	"fmt"
 	"log"
 	"os"
 	"sync"
 	"time"
-	"argus/internal/enrich"
-	"fmt"
 )
-
 
 var (
 	detectionLogger *log.Logger
-	blackholeLogger  *log.Logger
+	blackholeLogger *log.Logger
 	once            sync.Once
 )
-
 
 func initLoggers() {
 	// detection.log
@@ -33,7 +31,6 @@ func initLoggers() {
 	}
 	blackholeLogger = log.New(bf, "", log.Ldate|log.Ltime)
 }
-
 
 func openDetectionLog() (*os.File, error) {
 	return os.OpenFile("detections.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -52,18 +49,18 @@ func LogDetection(rule DetectionRule, flows []Flow, geo *enrich.GeoIP, dns *enri
 	timestamp := time.Now().Format(time.RFC3339)
 	first := flows[0]
 
-  ports := rule.DstPorts()
-  var rulePorts string
-  if len(ports) == 1 {
-      rulePorts = fmt.Sprintf("%d", ports[0])
-  } else if len(ports) > 1 {
-      rulePorts = fmt.Sprintf("%v", ports)
-  } else {
-      rulePorts = "-" // no restriction
-  }
+	ports := rule.DstPorts()
+	var rulePorts string
+	if len(ports) == 1 {
+		rulePorts = fmt.Sprintf("%d", ports[0])
+	} else if len(ports) > 1 {
+		rulePorts = fmt.Sprintf("%v", ports)
+	} else {
+		rulePorts = "-" // no restriction
+	}
 
-  detectionLogger.Printf("[%s] ALERT: Rule='%s' | Flows=%d | Proto=%s | RulePorts=%s | Example=%s:%d → %s",
-      timestamp, rule.Name, len(flows), first.Proto, rulePorts, first.DstIP, first.DstPort, first.SrcIP)
+	detectionLogger.Printf("[%s] ALERT: Rule='%s' | Flows=%d | Proto=%s | RulePorts=%s | Example=%s:%d → %s",
+		timestamp, rule.Name, len(flows), first.Proto, rulePorts, first.DstIP, first.DstPort, first.SrcIP)
 
 	detectionLogger.Printf("         Reason: %s", buildReason(rule))
 
@@ -98,6 +95,6 @@ func LogDetection(rule DetectionRule, flows []Flow, geo *enrich.GeoIP, dns *enri
 }
 
 func LogBlackhole(entry string) {
-    once.Do(initLoggers)
-    blackholeLogger.Println(entry)
+	once.Do(initLoggers)
+	blackholeLogger.Println(entry)
 }

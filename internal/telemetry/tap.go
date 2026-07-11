@@ -20,7 +20,7 @@ type TapRecord struct {
 	Bytes         uint64 `json:"bytes"`
 	Packets       uint64 `json:"packets"`
 	FlowDirection uint8  `json:"flow_dir_raw"`   // raw value from MikroTik
-	Inbound       bool   `json:"inbound"`         // computed by isInbound()
+	Inbound       bool   `json:"inbound"`        // computed by isInbound()
 	SrcInMyNets   bool   `json:"src_in_my_nets"` // debug: src matched my_prefixes
 	DstInMyNets   bool   `json:"dst_in_my_nets"` // debug: dst matched my_prefixes
 }

@@ -155,15 +155,15 @@ func parseDetailedRoute(m map[string]string) Route {
 
 func parseRoute(m map[string]string) Route {
 	r := Route{
-		ID:          m[".id"],
-		DstAddress:  m["dst-address"],
+		ID:           m[".id"],
+		DstAddress:   m["dst-address"],
 		RoutingTable: m["routing-table"],
-		Distance:    parseIntField(m["distance"]),
-		Active:      parseBool(m["active"]),
-		Dynamic:     parseBool(m["dynamic"]),
-		IsBGP:       parseBool(m["bgp"]),
-		Blackhole:   parseBool(m["blackhole"]),
-		ECMP:        parseBool(m["ecmp"]),
+		Distance:     parseIntField(m["distance"]),
+		Active:       parseBool(m["active"]),
+		Dynamic:      parseBool(m["dynamic"]),
+		IsBGP:        parseBool(m["bgp"]),
+		Blackhole:    parseBool(m["blackhole"]),
+		ECMP:         parseBool(m["ecmp"]),
 	}
 	if gw := m["gateway"]; gw != "" {
 		r.Gateway = gw
@@ -180,71 +180,66 @@ func parseIntField(s string) int {
 	return v
 }
 
-
-
 // TracerouteHop is one hop from /rest/tool/traceroute.
 type TracerouteHop struct {
-    Hop     int     `json:"hop"`
-    Address string  `json:"address"`
-    AvgMs   float64 `json:"avg_ms"`
-    BestMs  float64 `json:"best_ms"`
-    WorstMs float64 `json:"worst_ms"`
-    Loss    int     `json:"loss"`
-    Status  string  `json:"status,omitempty"` // MPLS labels etc.
+	Hop     int     `json:"hop"`
+	Address string  `json:"address"`
+	AvgMs   float64 `json:"avg_ms"`
+	BestMs  float64 `json:"best_ms"`
+	WorstMs float64 `json:"worst_ms"`
+	Loss    int     `json:"loss"`
+	Status  string  `json:"status,omitempty"` // MPLS labels etc.
 }
-
 
 func (c *Client) Traceroute(ctx context.Context, address, srcAddress string) ([]TracerouteHop, error) {
-    body := map[string]interface{}{
-        "address":  address,
-        "count":    "3",     // 3 probes per hop
-        "max-hops": "10",
-        "protocol": "icmp",
-        "use-dns":  "no",
-        "timeout":  "500ms",  // don't wait more than 500ms per hop
-        // no duration — let count control it
-    }
-    if srcAddress != "" {
-        body["src-address"] = srcAddress
-    }
+	body := map[string]interface{}{
+		"address":  address,
+		"count":    "3", // 3 probes per hop
+		"max-hops": "10",
+		"protocol": "icmp",
+		"use-dns":  "no",
+		"timeout":  "500ms", // don't wait more than 500ms per hop
+		// no duration — let count control it
+	}
+	if srcAddress != "" {
+		body["src-address"] = srcAddress
+	}
 
-    var raw []map[string]string
-    if err := c.postSlow(ctx, "tool/traceroute", body, &raw); err != nil {
-        return nil, fmt.Errorf("Traceroute: %w", err)
-    }
+	var raw []map[string]string
+	if err := c.postSlow(ctx, "tool/traceroute", body, &raw); err != nil {
+		return nil, fmt.Errorf("Traceroute: %w", err)
+	}
 
-// Each unique IP appears once — take first occurrence of each address in order.
-    // RouterOS REST returns multiple rows per hop (one per probe), all with the
-    // same .section value, so section-based grouping doesn't give us hop numbers.
-    seen := make(map[string]bool)
-    hops := make([]TracerouteHop, 0)
-    hopNum := 1
-    for _, m := range raw {
-        addr := strings.TrimSpace(m["address"])
-        avgStr := strings.TrimSpace(m["avg"])
-        if addr == "" || avgStr == "" {
-            continue
-        }
-        if seen[addr] {
-            continue
-        }
-        seen[addr] = true
-        h := TracerouteHop{
-            Hop:     hopNum,
-            Address: addr,
-            Loss:    parseIntField(m["loss"]),
-            Status:  strings.TrimSpace(m["status"]),
-        }
-        h.AvgMs, _ = strconv.ParseFloat(avgStr, 64)
-        h.BestMs, _ = strconv.ParseFloat(strings.TrimSpace(m["best"]), 64)
-        h.WorstMs, _ = strconv.ParseFloat(strings.TrimSpace(m["worst"]), 64)
-        hops = append(hops, h)
-        hopNum++
-    }
-    return hops, nil
+	// Each unique IP appears once — take first occurrence of each address in order.
+	// RouterOS REST returns multiple rows per hop (one per probe), all with the
+	// same .section value, so section-based grouping doesn't give us hop numbers.
+	seen := make(map[string]bool)
+	hops := make([]TracerouteHop, 0)
+	hopNum := 1
+	for _, m := range raw {
+		addr := strings.TrimSpace(m["address"])
+		avgStr := strings.TrimSpace(m["avg"])
+		if addr == "" || avgStr == "" {
+			continue
+		}
+		if seen[addr] {
+			continue
+		}
+		seen[addr] = true
+		h := TracerouteHop{
+			Hop:     hopNum,
+			Address: addr,
+			Loss:    parseIntField(m["loss"]),
+			Status:  strings.TrimSpace(m["status"]),
+		}
+		h.AvgMs, _ = strconv.ParseFloat(avgStr, 64)
+		h.BestMs, _ = strconv.ParseFloat(strings.TrimSpace(m["best"]), 64)
+		h.WorstMs, _ = strconv.ParseFloat(strings.TrimSpace(m["worst"]), 64)
+		hops = append(hops, h)
+		hopNum++
+	}
+	return hops, nil
 }
-
-
 
 // ReceivedRoute is one prefix received from a BGP peer, as seen in
 // /routing/route filtered by belongs-to=bgp-IP-<remoteIP>.
@@ -254,7 +249,7 @@ type ReceivedRoute struct {
 	Active   bool   `json:"active"`
 	Distance int    `json:"distance,omitempty"`
 }
- 
+
 // ListPeerRoutes returns all routes received from a specific BGP peer.
 // belongsTo is the RouterOS internal process identifier for that session,
 // e.g. "bgp-IP-185.1.123.10" for a peer at 185.1.123.10.

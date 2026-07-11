@@ -1,17 +1,16 @@
 package detection
 
 import (
+	"argus/internal/bgp"
+	"argus/internal/config"
+	"argus/internal/enrich"
 	"fmt"
 	"log"
-	"time"
 	"strings"
-	"argus/internal/config"
-	"argus/internal/bgp"
-        "argus/internal/enrich"
-
+	"time"
 )
 
-//helper functions
+// helper functions
 func GetASN(ip string) uint32 {
 	return enrich.Global.Geo.GetASNNumber(ip)
 }
@@ -47,56 +46,52 @@ func escalationTTL(durations []int, times int) int {
 	return durations[idx]
 }
 
-
 func (e *Engine) HandleBlackhole(rule DetectionRule, flows []Flow, count int) {
 
-        // Decide target (default "src", optional "dst")
-        targetIP := flows[0].SrcIP
-        if strings.ToLower(rule.BlackholeTarget) == "dst" {
-                targetIP = flows[0].DstIP
-        }
+	// Decide target (default "src", optional "dst")
+	targetIP := flows[0].SrcIP
+	if strings.ToLower(rule.BlackholeTarget) == "dst" {
+		targetIP = flows[0].DstIP
+	}
 
-        // Safeguard 1: file-based protection list
-        if ok, why := ShouldExecuteBlackhole(rule.Name, targetIP); !ok {
-                log.Printf("[SAFEGUARD] skipping blackhole for %s (rule=%s reason=%s); logging only", targetIP, rule.Name, why)
-                // Still log an 'ALERT-like' line to blackholes.txt for audit
-                timestamp := time.Now().Format(time.RFC3339)
-                LogBlackhole(fmt.Sprintf("[%s] BLACKHOLE-SKIPPED: Rule='%s' | SRC: %s | Reason=%s",
-                        timestamp, rule.Name, targetIP, why))
-                if s, ok := e.store.(*SQLiteStore); ok {
-                        RecordBlackholeEvent(s.DB(), BlackholeEvent{
-                                IP:     targetIP,
-                                Event:  BHEventSkipped,
-                                Source: BHSourceRule,
-                                Rule:   rule.Name,
-                                Reason: "protection: " + why,
-                        })
-                }
-                return
-        }
+	// Safeguard 1: file-based protection list
+	if ok, why := ShouldExecuteBlackhole(rule.Name, targetIP); !ok {
+		log.Printf("[SAFEGUARD] skipping blackhole for %s (rule=%s reason=%s); logging only", targetIP, rule.Name, why)
+		// Still log an 'ALERT-like' line to blackholes.txt for audit
+		timestamp := time.Now().Format(time.RFC3339)
+		LogBlackhole(fmt.Sprintf("[%s] BLACKHOLE-SKIPPED: Rule='%s' | SRC: %s | Reason=%s",
+			timestamp, rule.Name, targetIP, why))
+		if s, ok := e.store.(*SQLiteStore); ok {
+			RecordBlackholeEvent(s.DB(), BlackholeEvent{
+				IP:     targetIP,
+				Event:  BHEventSkipped,
+				Source: BHSourceRule,
+				Rule:   rule.Name,
+				Reason: "protection: " + why,
+			})
+		}
+		return
+	}
 
+	// Safeguard 2: treat myNets as protected (auto-skip)
+	if isMyPrefix(targetIP, e.myNets) {
+		log.Printf("[SAFEGUARD] skipping blackhole for %s (rule=%s reason=myNets)", targetIP, rule.Name)
+		timestamp := time.Now().Format(time.RFC3339)
+		LogBlackhole(fmt.Sprintf("[%s] BLACKHOLE-SKIPPED: Rule='%s' | TARGET: %s | Reason=myNets",
+			timestamp, rule.Name, targetIP))
+		if s, ok := e.store.(*SQLiteStore); ok {
+			RecordBlackholeEvent(s.DB(), BlackholeEvent{
+				IP:     targetIP,
+				Event:  BHEventSkipped,
+				Source: BHSourceRule,
+				Rule:   rule.Name,
+				Reason: "protection: myNets",
+			})
+		}
+		return
+	}
 
-        // Safeguard 2: treat myNets as protected (auto-skip)
-        if isMyPrefix(targetIP, e.myNets) {
-                log.Printf("[SAFEGUARD] skipping blackhole for %s (rule=%s reason=myNets)", targetIP, rule.Name)
-                timestamp := time.Now().Format(time.RFC3339)
-                LogBlackhole(fmt.Sprintf("[%s] BLACKHOLE-SKIPPED: Rule='%s' | TARGET: %s | Reason=myNets",
-                        timestamp, rule.Name, targetIP))
-                if s, ok := e.store.(*SQLiteStore); ok {
-                        RecordBlackholeEvent(s.DB(), BlackholeEvent{
-                                IP:     targetIP,
-                                Event:  BHEventSkipped,
-                                Source: BHSourceRule,
-                                Rule:   rule.Name,
-                                Reason: "protection: myNets",
-                        })
-                }
-                return
-        }
-
-
-        prefix := fmt.Sprintf("%s/32", targetIP)
-
+	prefix := fmt.Sprintf("%s/32", targetIP)
 
 	// Αποφυγή διπλής ανακοίνωσης
 	if _, already := bgp.ListAnnouncements()[prefix]; already {
@@ -144,14 +139,13 @@ func (e *Engine) HandleBlackhole(rule DetectionRule, flows []Flow, count int) {
 		log.Printf("[BLACKHOLE] Announced %s (rule: %s) ttl=%ds (escalation #%d)", prefix, rule.Name, ttl, times)
 	}
 
-        LogBlackhole(fmt.Sprintf("[%s] BLACKHOLE: Rule='%s' | SRC: %s", timestamp, rule.Name, targetIP))
+	LogBlackhole(fmt.Sprintf("[%s] BLACKHOLE: Rule='%s' | SRC: %s", timestamp, rule.Name, targetIP))
 
 	// Enrichment
-        ptr := e.DNS.LookupPTR(targetIP)
-        asn := e.Geo.GetASNNumber(targetIP)
-        asnName := e.Geo.GetASNName(targetIP)
-        country := e.Geo.GetCountry(targetIP)
-
+	ptr := e.DNS.LookupPTR(targetIP)
+	asn := e.Geo.GetASNNumber(targetIP)
+	asnName := e.Geo.GetASNName(targetIP)
+	country := e.Geo.GetCountry(targetIP)
 
 	if ptr == "" {
 		ptr = "NoPTR"
@@ -201,15 +195,12 @@ func (e *Engine) HandleBlackhole(rule DetectionRule, flows []Flow, count int) {
 		})
 	}
 
-//cfm api reporter
-if e.reporter != nil {
-    if err := e.reporter.ReportBlock(targetIP, fmt.Sprintf("Rule=%s; %s", rule.Name, reason), ttl); err != nil {
-        log.Printf("[CFM] report block failed ip=%s err=%v", targetIP, err)
-    }
-}
-
-
-
+	// cfm api reporter
+	if e.reporter != nil {
+		if err := e.reporter.ReportBlock(targetIP, fmt.Sprintf("Rule=%s; %s", rule.Name, reason), ttl); err != nil {
+			log.Printf("[CFM] report block failed ip=%s err=%v", targetIP, err)
+		}
+	}
 
 	// Auto-withdraw μόνο όταν ttl > 0 (όχι για permanent)
 	if ttl > 0 {
@@ -223,11 +214,11 @@ if e.reporter != nil {
 			} else {
 				log.Printf("[BLACKHOLE] Withdrawn %s after %v", prefix, duration)
 				LogBlackhole(fmt.Sprintf("[%s] WITHDRAW: Rule='%s' | SRC: %s", timestamp, ruleName, targetIP))
-if e.reporter != nil {
-    if err := e.reporter.ReportUnblock(targetIP, "auto", "TTL expired"); err != nil {
-        log.Printf("[CFM] report unblock failed ip=%s err=%v", targetIP, err)
-    }
-}
+				if e.reporter != nil {
+					if err := e.reporter.ReportUnblock(targetIP, "auto", "TTL expired"); err != nil {
+						log.Printf("[CFM] report unblock failed ip=%s err=%v", targetIP, err)
+					}
+				}
 				if s, ok := e.store.(*SQLiteStore); ok {
 					RecordBlackholeEvent(s.DB(), BlackholeEvent{
 						IP:     targetIP,
@@ -239,9 +230,7 @@ if e.reporter != nil {
 					})
 				}
 
-
 			}
 		}(prefix, duration, rule.Name, targetIP)
 	}
 }
-

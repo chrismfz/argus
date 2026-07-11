@@ -1,12 +1,12 @@
 package detection
 
 import (
+	"argus/internal/bgp"
 	"database/sql"
 	"fmt"
+	"log"
 	"sync"
 	"time"
-	"log"
-	"argus/internal/bgp"
 )
 
 type DetectionStore interface {
@@ -98,8 +98,6 @@ func (s *SQLiteStore) GetCount(rule, ip string) (int, error) {
 	return count, nil
 }
 
-
-
 // RestoreActiveBlackholes φορτώνει όλα τα ενεργά prefixes από SQLite και τα ανακοινώνει ξανά
 func RestoreActiveBlackholes(db *sql.DB) error {
 	rows, err := db.Query(`
@@ -120,13 +118,13 @@ func RestoreActiveBlackholes(db *sql.DB) error {
 		}
 
 		// Default announce χωρίς έξτρα community / next-hop (θα οριστεί από config)
-err = bgp.AnnouncePrefix(prefix, "", nil, []uint32{})
-if err != nil {
-	log.Printf("[WARN] Failed to re-announce prefix %s: %v", prefix, err)
-} else {
-	log.Printf("[RESTORE] Re-announced prefix %s from SQLite", prefix)
-	count++
-}
+		err = bgp.AnnouncePrefix(prefix, "", nil, []uint32{})
+		if err != nil {
+			log.Printf("[WARN] Failed to re-announce prefix %s: %v", prefix, err)
+		} else {
+			log.Printf("[RESTORE] Re-announced prefix %s from SQLite", prefix)
+			count++
+		}
 	}
 
 	if count > 0 {
@@ -134,8 +132,6 @@ if err != nil {
 	}
 	return nil
 }
-
-
 
 func (s *SQLiteStore) InsertBlackhole(
 	prefix, timestamp, expires, rule, reason, asn, asnName, country, ptr string,
@@ -146,7 +142,6 @@ func (s *SQLiteStore) InsertBlackhole(
 	`, prefix, timestamp, expires, rule, reason, asn, asnName, country, ptr)
 	return err
 }
-
 
 // InsertRiskEvent persists one risk.log line to SQLite.
 // Called from afterTickPrintInteresting right after logRiskLine.

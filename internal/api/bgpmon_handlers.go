@@ -162,7 +162,6 @@ func handleBGPOriginated(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-
 // GET /bgp/advertisements?peer=<session-name>
 //
 // Returns the prefixes MikroTik is currently advertising to the named peer,
@@ -178,10 +177,10 @@ func handleBGPAdvertisements(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, http.StatusBadRequest, "missing ?peer=")
 		return
 	}
- 
+
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
- 
+
 	ads, err := PathfinderROSClient.ListBGPAdvertisements(ctx, peer)
 	if err != nil {
 		jsonErr(w, http.StatusInternalServerError, err.Error())
@@ -196,8 +195,6 @@ func handleBGPAdvertisements(w http.ResponseWriter, r *http.Request) {
 		"advertisements": ads,
 	})
 }
-
-
 
 // GET /bgp/received?session=<session-name>
 //
@@ -223,24 +220,24 @@ func handleBGPReceived(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, http.StatusBadRequest, "missing ?session=")
 		return
 	}
- 
+
 	// Look up session to get remote IP and AFI.
 	sess, ok := BGPMon.SessionByName(sessionName)
 	if !ok {
 		jsonErr(w, http.StatusNotFound, "session not found: "+sessionName)
 		return
 	}
- 
+
 	// RouterOS internal process name for this session's routes.
 	// IPv6 peers use "bgp-IPv6-<ip>", IPv4 peers use "bgp-IP-<ip>".
 	belongsTo := "bgp-IP-" + sess.RemoteAddress
 	if sess.AFI == "ipv6" {
 		belongsTo = "bgp-IPv6-" + sess.RemoteAddress
 	}
- 
+
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
- 
+
 	routes, err := PathfinderROSClient.ListPeerRoutes(ctx, belongsTo)
 	if err != nil {
 		jsonErr(w, http.StatusInternalServerError, err.Error())
@@ -249,7 +246,7 @@ func handleBGPReceived(w http.ResponseWriter, r *http.Request) {
 	if routes == nil {
 		routes = []routeros.ReceivedRoute{}
 	}
- 
+
 	jsonOK(w, map[string]interface{}{
 		"session":    sessionName,
 		"remote":     sess.RemoteAddress,

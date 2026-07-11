@@ -26,15 +26,15 @@ import "time"
 // (e.g. "is the Synapsecom session actually up before I probe via it?").
 type SessionStatus struct {
 	Name           string `json:"name"`
-	Comment        string `json:"comment"`         // human label e.g. "Synapsecom", "GR-IX"
+	Comment        string `json:"comment"` // human label e.g. "Synapsecom", "GR-IX"
 	RemoteAS       uint32 `json:"remote_as"`
-	RemoteASName   string `json:"remote_as_name"`  // resolved via MaxMind from RemoteAddress
+	RemoteASName   string `json:"remote_as_name"` // resolved via MaxMind from RemoteAddress
 	RemoteAddress  string `json:"remote_address"`
 	LocalAddress   string `json:"local_address"`
-	AFI            string `json:"afi"`             // "ip" | "ipv6"
-	State          string `json:"state"`           // "established" | "idle" | "unknown"
+	AFI            string `json:"afi"`   // "ip" | "ipv6"
+	State          string `json:"state"` // "established" | "idle" | "unknown"
 	Established    bool   `json:"established"`
-	UptimeRaw      string `json:"uptime_raw"`      // RouterOS format e.g. "2w6d13h"
+	UptimeRaw      string `json:"uptime_raw"` // RouterOS format e.g. "2w6d13h"
 	PrefixesRx     int    `json:"prefixes_rx"`
 	PrefixesTx     int    `json:"prefixes_tx"`
 	LastSeen       int64  `json:"last_seen"`       // unix timestamp of last successful poll
@@ -76,7 +76,7 @@ type EventKind string
 
 const (
 	// Session lifecycle events (bgpmon)
-	EventEstablished   EventKind = "established"   // session came up (first seen or recovered)
+	EventEstablished   EventKind = "established"    // session came up (first seen or recovered)
 	EventDown          EventKind = "down"           // established → idle/unknown
 	EventFlap          EventKind = "flap"           // established → established with uptime reset
 	EventRecovered     EventKind = "recovered"      // idle/unknown → established
@@ -101,8 +101,8 @@ const (
 // flapping before the blackhole appeared?").
 type SessionEvent struct {
 	ID           int64     `json:"id"`
-	Timestamp    int64     `json:"ts"`                      // unix seconds
-	Session      string    `json:"session"`                 // session name
+	Timestamp    int64     `json:"ts"`      // unix seconds
+	Session      string    `json:"session"` // session name
 	RemoteAS     uint32    `json:"remote_as"`
 	Kind         EventKind `json:"event"`
 	FromState    string    `json:"from_state,omitempty"`

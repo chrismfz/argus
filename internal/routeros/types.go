@@ -8,15 +8,15 @@ import "time"
 type Route struct {
 	ID           string `json:"id"`
 	DstAddress   string `json:"dst_address"`
-	Gateway      string `json:"gateway"`      // next-hop IP
-	Interface    string `json:"interface"`    // outgoing interface (sfp1-Synapsecom)
+	Gateway      string `json:"gateway"`   // next-hop IP
+	Interface    string `json:"interface"` // outgoing interface (sfp1-Synapsecom)
 	RoutingTable string `json:"routing_table"`
 	Distance     int    `json:"distance"`
 	Scope        int    `json:"scope"`
 	TargetScope  int    `json:"target_scope"`
 
 	// Route status
-	Active    bool `json:"active"`    // contribution == "active"
+	Active    bool `json:"active"` // contribution == "active"
 	Dynamic   bool `json:"dynamic"`
 	IsBGP     bool `json:"is_bgp"`
 	Blackhole bool `json:"blackhole"`
@@ -29,19 +29,19 @@ type Route struct {
 // BGPRouteAttr holds BGP-specific attributes as reported by RouterOS.
 // Fields from /routing/route print detail (RouterOS 7).
 type BGPRouteAttr struct {
-	LocalPref   int      `json:"local_pref"`
-	MED         int      `json:"med"`
-	Origin      string   `json:"origin"` // "igp", "egp", "incomplete"
-	ASPath      []uint32 `json:"as_path"`
-	Communities []string `json:"communities,omitempty"`
+	LocalPref        int      `json:"local_pref"`
+	MED              int      `json:"med"`
+	Origin           string   `json:"origin"` // "igp", "egp", "incomplete"
+	ASPath           []uint32 `json:"as_path"`
+	Communities      []string `json:"communities,omitempty"`
 	LargeCommunities []string `json:"large_communities,omitempty"`
-	NextHop     string   `json:"next_hop"`
-	OriginAS    uint32   `json:"origin_as"` // last ASN in path
+	NextHop          string   `json:"next_hop"`
+	OriginAS         uint32   `json:"origin_as"` // last ASN in path
 
 	// RouterOS 7 /routing/route detail specific fields
-	SessionName  string `json:"session_name"`  // e.g. "AS8280-1", "rs1.thess.gr-ix.gr-IPv4-1"
-	BelongsTo    string `json:"belongs_to"`    // e.g. "bgp-IP-78.108.36.244"
-	Contribution string `json:"contribution"`  // "active", "candidate", "best-candidate"
+	SessionName  string `json:"session_name"` // e.g. "AS8280-1", "rs1.thess.gr-ix.gr-IPv4-1"
+	BelongsTo    string `json:"belongs_to"`   // e.g. "bgp-IP-78.108.36.244"
+	Contribution string `json:"contribution"` // "active", "candidate", "best-candidate"
 }
 
 // ── BGP Peers ─────────────────────────────────────────────────────────────────
@@ -90,21 +90,21 @@ const (
 )
 
 type BGPSession struct {
-	ID            string          `json:"id"`
-	Name          string          `json:"name"`
-	RemoteAddress string          `json:"remote_address"`
-	RemoteAS      uint32          `json:"remote_as"`
-	LocalAddress  string          `json:"local_address"`
-	LocalAS       uint32          `json:"local_as"`
-	State         BGPSessionState `json:"state"`
-	Established   bool            `json:"established"`
-	Uptime        time.Duration   `json:"uptime_seconds"`
-	UptimeRaw     string          `json:"uptime_raw"`
-	PrefixesReceived int          `json:"prefixes_received"`
-	PrefixesAdv      int          `json:"prefixes_advertised"`
-	Disabled      bool            `json:"disabled"`
-	Dynamic       bool            `json:"dynamic"`
-	ConnectionName string         `json:"connection_name,omitempty"`
+	ID               string          `json:"id"`
+	Name             string          `json:"name"`
+	RemoteAddress    string          `json:"remote_address"`
+	RemoteAS         uint32          `json:"remote_as"`
+	LocalAddress     string          `json:"local_address"`
+	LocalAS          uint32          `json:"local_as"`
+	State            BGPSessionState `json:"state"`
+	Established      bool            `json:"established"`
+	Uptime           time.Duration   `json:"uptime_seconds"`
+	UptimeRaw        string          `json:"uptime_raw"`
+	PrefixesReceived int             `json:"prefixes_received"`
+	PrefixesAdv      int             `json:"prefixes_advertised"`
+	Disabled         bool            `json:"disabled"`
+	Dynamic          bool            `json:"dynamic"`
+	ConnectionName   string          `json:"connection_name,omitempty"`
 }
 
 // ── Filter Rules ──────────────────────────────────────────────────────────────

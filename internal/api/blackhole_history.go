@@ -15,25 +15,25 @@ import (
 
 // BlackholeHistorySummary is one row in the grouped view (one per IP).
 type BlackholeHistorySummary struct {
-	IP                string `json:"ip"`
-	Events            int    `json:"events"`
-	Announcements     int    `json:"announcements"`
-	Withdrawals       int    `json:"withdrawals"`
-	Expirations       int    `json:"expirations"`
-	Skips             int    `json:"skips"`
-	FirstSeen         string `json:"first_seen"`
-	LastSeen          string `json:"last_seen"`
-	LastEvent         string `json:"last_event"`
-	LastRule          string `json:"last_rule,omitempty"`
-	LastReason        string `json:"last_reason,omitempty"`
-	LastSource        string `json:"last_source,omitempty"`
-	CurrentlyActive   bool   `json:"currently_active"`
-	ActivePrefix      string `json:"active_prefix,omitempty"`
-	ActiveExpiresAt   string `json:"active_expires_at,omitempty"`
-	ASN               string `json:"asn,omitempty"`
-	ASNName           string `json:"asn_name,omitempty"`
-	Country           string `json:"country,omitempty"`
-	PTR               string `json:"ptr,omitempty"`
+	IP              string `json:"ip"`
+	Events          int    `json:"events"`
+	Announcements   int    `json:"announcements"`
+	Withdrawals     int    `json:"withdrawals"`
+	Expirations     int    `json:"expirations"`
+	Skips           int    `json:"skips"`
+	FirstSeen       string `json:"first_seen"`
+	LastSeen        string `json:"last_seen"`
+	LastEvent       string `json:"last_event"`
+	LastRule        string `json:"last_rule,omitempty"`
+	LastReason      string `json:"last_reason,omitempty"`
+	LastSource      string `json:"last_source,omitempty"`
+	CurrentlyActive bool   `json:"currently_active"`
+	ActivePrefix    string `json:"active_prefix,omitempty"`
+	ActiveExpiresAt string `json:"active_expires_at,omitempty"`
+	ASN             string `json:"asn,omitempty"`
+	ASNName         string `json:"asn_name,omitempty"`
+	Country         string `json:"country,omitempty"`
+	PTR             string `json:"ptr,omitempty"`
 }
 
 // BlackholeHistoryEvent is one raw event row in the per-IP timeline view.
@@ -318,9 +318,11 @@ func handleBlackholeHistoryByIP(w http.ResponseWriter, r *http.Request, ip strin
 
 // handleBlackholeHistoryPrune is the admin endpoint for removing history rows.
 // POST body (JSON):
-//   {"ip": "1.2.3.4"}             — delete all events for one IP
-//   {"older_than_days": 30}        — delete events older than N days
-//   {"all": true}                  — wipe entire table
+//
+//	{"ip": "1.2.3.4"}             — delete all events for one IP
+//	{"older_than_days": 30}        — delete events older than N days
+//	{"all": true}                  — wipe entire table
+//
 // Exactly one of those fields must be set.
 func handleBlackholeHistoryPrune(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -334,9 +336,9 @@ func handleBlackholeHistoryPrune(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		IP             string `json:"ip"`
-		OlderThanDays  int    `json:"older_than_days"`
-		All            bool   `json:"all"`
+		IP            string `json:"ip"`
+		OlderThanDays int    `json:"older_than_days"`
+		All           bool   `json:"all"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)

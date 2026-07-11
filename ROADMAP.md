@@ -55,11 +55,14 @@ tiered rollups) and a size-capped optional flow log. Details in Phase 2.
 - [x] Remove committed 39 MB `argus` ELF binary from the tree; expand `.gitignore`
       (`*.log`, `*.db`, `*.sqlite*`, `blackholes.txt`, root binary). *(this PR)*
 - [x] Add CLAUDE.md, ROADMAP.md, CHANGELOG.md. *(this PR)*
-- [ ] `make test`, `make vet`, `make lint` targets + GitHub Actions CI
-      (build + vet + test on push/PR).
-- [ ] Fix the `go vet` failure: `collectors.Netflow.Start` value receiver copies an
-      embedded `sync.Once` (`internal/collectors/netflow.go:574`).
-- [ ] Rename `internal/telemetry/peristence.go` → `persistence.go`.
+- [x] `make test`, `make vet`, `make lint`, `make check` targets + GitHub Actions CI
+      (build + vet + test on push/PR). *(PR: phase-0 hygiene)*
+- [x] Fix the `go vet` failure: `collectors.Netflow.Start` value receiver copies an
+      embedded `sync.Once` (`internal/collectors/netflow.go`). *(PR: phase-0 hygiene)*
+- [x] Rename `internal/telemetry/peristence.go` → `persistence.go`. *(PR: phase-0 hygiene)*
+- [ ] Tree-wide `gofmt -w ./...` in a dedicated formatting-only PR (62 files are not
+      gofmt-clean today), then flip the CI gofmt check from advisory to a hard
+      `make fmt` gate. Kept separate so the diff is reviewable as "formatting only".
 - [ ] Unify the duplicated direction classifier (`telemetry.classifyDirection` /
       `flowstore.classifyInbound`) into one shared package with tests — it is the
       most load-bearing logic in the system.

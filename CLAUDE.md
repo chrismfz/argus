@@ -69,7 +69,9 @@ engine) → SQLite + dashboard + BGP blackhole actions.
    and runs actions (BGP/DNS/SQLite/CFM) lock-free — keep it that way.
 5. **SQLite discipline.** WAL mode, batched transactions on tickers (existing pattern
    in `flowstore/persist.go`), `busy_timeout`, and prune every table you create —
-   unbounded tables are bugs (`snapshots`, `alert_events`, `detections` currently lack pruning).
+   unbounded tables are bugs. All prune functions live behind the 1-minute cleanup
+   ticker in `cmd/argus/main.go` and take a retention parameter (currently called
+   with hardcoded defaults — Phase 1 lifts them to config).
 6. **UI pages are self-contained HTML** in `internal/api/static/`, embedded via
    `embed.go`. No frameworks, no build step. Shared bits go in small plain JS/CSS files
    (like `nav-search.js`). Match the existing dark dashboard style.
@@ -93,10 +95,11 @@ engine) → SQLite + dashboard + BGP blackhole actions.
   buckets aligned to 1800s). Naming is misleading.
 - Telemetry bucket retention is hardcoded to 30 days in `telemetry/persistence.go`
   despite the function taking a parameter.
-- `detection/engine.go` has empty TODO stubs: `slack` action is a silent no-op.
-- Test coverage is thin: `internal/api` and now `internal/detection` (engine lock +
-  rule matching) have tests; flowstore/telemetry cores are still untested — be extra
-  careful there and add tests when you touch them.
+- `detection` `slack` rule action is not implemented — it logs a one-time "not
+  implemented" warning (real wiring is ROADMAP Phase 4, Alerting v2).
+- Test coverage is growing but still thin: `internal/api`, `internal/detection`,
+  `internal/flowdir`, `internal/flowstore`, `internal/telemetry` have tests; enrich,
+  bgp, config, collectors cores are still untested — add tests when you touch them.
 - Package-level singletons everywhere (`flowstore.Global`, `telemetry.Global`,
   `enrich.Global`, `config.AppConfig`, API package globals). Prefer passing deps;
   don't add new globals.

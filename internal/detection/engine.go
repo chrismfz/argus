@@ -16,6 +16,7 @@ var (
 	debugEngine   = false
 	debugLog      *log.Logger
 	debugLogOnce  sync.Once
+	warnSlackOnce sync.Once
 )
 
 func InitDebugDetection(enabled bool) {
@@ -215,9 +216,13 @@ if err != nil {
 			case "alert":
 				LogDetection(rule, flows, e.Geo, e.DNS, count) // 🆕 περνάμε count
 
-				// TODO
 			case "slack":
-				// TODO
+				// Not implemented yet — see ROADMAP Phase 4 (Alerting v2).
+				// Warn once so a rule configured with action: slack is not a
+				// silent no-op, without spamming the log every tick.
+				warnSlackOnce.Do(func() {
+					log.Printf("[WARN] detection action 'slack' is not implemented yet (see ROADMAP Phase 4: Alerting v2); rules using it send no notification")
+				})
 			case "blackhole":
 				if rule.BlackholeCount > 0 && count >= rule.BlackholeCount {
 				e.HandleBlackhole(rule, flows, count)

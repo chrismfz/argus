@@ -4,9 +4,32 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-//	"time"
+	"time"
+
 	"argus/internal/bgp"
 )
+
+// PruneDetections deletes rows from the detections table whose last_seen is
+// older than maxAge. The table would otherwise grow without bound, one row per
+// (ip, rule) ever seen (including the "bh-escalate:*" escalation counters).
+// maxAge <= 0 disables pruning (keep forever). Comparison goes through SQLite's
+// datetime() so it is correct across timezone offsets / DST.
+func PruneDetections(db *sql.DB, maxAge time.Duration) error {
+	if maxAge <= 0 {
+		return nil
+	}
+	res, err := db.Exec(
+		`DELETE FROM detections WHERE datetime(last_seen) < datetime('now', ?)`,
+		fmt.Sprintf("-%d seconds", int64(maxAge.Seconds())),
+	)
+	if err != nil {
+		return fmt.Errorf("prune detections: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		log.Printf("[detections] pruned %d rows older than %s", n, maxAge)
+	}
+	return nil
+}
 
 // Κάνει withdraw και διαγράφει expired blackholes
 func CleanupExpiredBlackholes(db *sql.DB) error {

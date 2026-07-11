@@ -1,1 +1,15 @@
+# Build artifacts
 bin/
+/argus
+
+# Runtime data — never commit operational state
+*.log
+*.db
+*.sqlite
+*.sqlite3
+*.sqlite-shm
+*.sqlite-wal
+blackholes.txt
+
+# Local config with real credentials (example stays tracked)
+etc/config.yaml

@@ -7,14 +7,24 @@ Every behavior-changing PR must add an entry under **Unreleased**.
 
 ## [Unreleased]
 
+### Changed
+- ROADMAP reorganized: Phase 4 split into "Detection & mitigation depth"
+  (attack incidents, egress detection presets, threat feeds, ML feedback loop,
+  time-of-day baselines), Phase 5 "Visibility & business value" (peering
+  candidates report, 95th-percentile reports, RPKI/hijack watch), and Phase 6
+  "Ops & platform" (multi-exporter, sFlow, backup/restore, action audit trail).
+  BGP FlowSpec parked last, pending RouterOS support.
+
+## 2026-07
+
 ### Added
 - `CLAUDE.md` (working rules for AI-assisted development), `ROADMAP.md`
   (plan, storage decision ADR-001: stay on SQLite, tiered-rollup strategy),
-  and this `CHANGELOG.md`.
+  and `CHANGELOG.md`. (#18)
 
 ### Fixed
 - Removed the accidentally committed 39 MB `argus` build artifact from git tracking;
-  expanded `.gitignore` to cover binaries, logs, and SQLite databases.
+  expanded `.gitignore` to cover binaries, logs, and SQLite databases. (#18)
 
 ## 2026-06
 

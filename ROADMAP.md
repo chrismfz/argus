@@ -129,22 +129,79 @@ the UI barely exposes it. After Phases 1–2 there will be much more to show.
 - [ ] Detection UX: timeline of detections/blackholes over time, rule hit-rate chart,
       anomaly score history per IP (data already in `risk_events`).
 
-## Phase 4 — New capabilities (candidates, in rough priority order)
+## Phase 4 — Detection & mitigation depth
 
+- [ ] **Attack incidents.** Group detections into incidents with start/end, peak
+      bps/pps, vector classification (NTP/DNS/CLDAP/SSDP/memcached amplification is
+      trivially identifiable from src port + proto), affected prefixes, and the
+      actions argus took. Deliverables: an incident timeline in the UI and an
+      auto-generated incident report (the document you hand to a customer, upstream,
+      or abuse desk). Mostly aggregation + UI — the raw material already exists in
+      `detections`, `blackhole_events`, and `risk_events`.
+- [ ] **Egress detection presets.** All current rules watch ingress; the reverse
+      protects our own reputation: customer turned reflector (mass outbound UDP from
+      123/53/389), infected host scanning outward, outbound :25 spam bursts. The
+      engine already supports `direction: egress` — needs curated preset rules and a
+      separate alerting path (you notify the customer, you don't blackhole them).
+- [ ] **Threat-feed enrichment.** Ingest Spamhaus DROP / Team Cymru fullbogons on a
+      timer; tag flows and detections touching known-bad space, alert on
+      bogon-sourced ingress. Cheap enrichment, large signal boost.
+- [ ] **ML feedback loop.** True/false-positive marking on risk events in the UI,
+      feeding threshold tuning; per-rule **shadow mode** (log-only) to trial rules
+      before they can blackhole. Without this, tuning stays guesswork forever.
+- [ ] **Time-of-day baselines** for the anomaly layer: a per-hour-of-day baseline
+      (30 days of minute buckets already exist) so 04:00 traffic is not judged
+      against a 21:00 norm — should cut false positives materially.
+- [ ] Anomaly explainability: store the feature vector alongside each risk event so
+      the UI can show *why* an IP scored high.
+- [ ] Alerting v2: finish Slack action, add webhook/Telegram backends, alert on
+      anomaly-engine events (not just rules), digest mode.
+- [ ] Blackhole hygiene: dry-run mode, per-rule TTL overrides UI, RTBH community
+      per-upstream mapping.
+
+## Phase 5 — Visibility & business value
+
+Turning data argus already collects into operator decisions:
+
+- [ ] **Peering candidates report** — "which ASNs do I exchange the most transit
+      bytes with while they sit on the IX I'm already connected to?"
+      `flowstore_asn_meta` + the per-interface split almost answer this today.
+      For a network paying for transit, this feature pays for the project.
+- [ ] **95th-percentile / capacity report** per upstream interface, monthly,
+      billing-style — the minute buckets exist; this is a query and a page.
+- [ ] **RPKI validation** of the received RIB (flag invalid/unknown), plus
+      hijack/leak watch on `my_prefixes` — from the local RIB first, optionally a
+      RIPE RIS Live feed later. Fits naturally next to bgpmon/routewatch.
 - [ ] **Prometheus `/metrics` endpoint** — flows/sec, enrichment latency, detection
       counts, BGP session state. Cheap, huge operational value, optional for users.
+- [ ] Scheduled **reports** (daily/weekly email: top talkers, detections, blackholes).
+
+## Phase 6 — Ops & platform
+
 - [ ] **Multi-exporter support** — accept NetFlow from >1 router, tag flows by
       exporter, per-exporter direction config. (Architecture mostly allows it;
       config assumes one router today.)
 - [ ] **sFlow support** — opens the door to switches and other vendors.
-- [ ] Alerting v2: finish Slack action, add webhook/Telegram backends, alert on
-      anomaly-engine events (not just rules), digest mode.
-- [ ] Scheduled **reports** (daily/weekly email: top talkers, detections, blackholes).
-- [ ] Anomaly explainability: store the feature vector alongside each risk event so
-      the UI can show *why* an IP scored high.
-- [ ] Blackhole hygiene: dry-run mode, per-rule TTL overrides UI, RTBH community
-      per-upstream mapping.
+- [ ] **`argus backup` / `argus restore`** — consistent snapshot of all SQLite DBs
+      (`VACUUM INTO`) + config into one tarball. A single-binary, single-server
+      tool owes its operator a single-command disaster recovery.
+- [ ] **Audit trail for manual actions** — record which authenticated user ran
+      announce/withdraw/flush and when (`blackhole_events.source` already exists;
+      thread the username through).
 - [ ] Config validation command (`argus check-config`) + live config diff view in UI.
+
+## Parked — blocked on vendor support
+
+- [ ] **BGP FlowSpec (RFC 8955).** The right long-term evolution of mitigation:
+      instead of RTBH completing the DoS by dropping all traffic to the victim /32,
+      announce granular match/drop rules (e.g. "drop UDP src-port 123 toward X").
+      GoBGP already supports FlowSpec, but **RouterOS does not** — the feature
+      request has been open since ~2012
+      (https://forum.mikrotik.com/t/feature-request-bgp-flowspec-rfc5575/71256),
+      so this stays parked until MikroTik ships it (or a non-RouterOS edge exists).
+      Interim alternative if granular mitigation becomes urgent: generate MikroTik
+      raw firewall rules via the existing routewatch REST-API path — same concept,
+      no FlowSpec dependency.
 
 ## Non-goals
 

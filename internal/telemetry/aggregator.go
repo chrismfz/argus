@@ -5,6 +5,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"argus/internal/flowdir"
 )
 
 const RingSize = 1440
@@ -145,8 +147,8 @@ type Aggregator struct {
 	mu             sync.RWMutex
 	myASN          uint32
 	myName         string
-	myNets         []*net.IPNet
 	upstreamIfaces map[uint32]bool
+	dir            *flowdir.Classifier
 
 	ring      [RingSize]MinuteBucket
 	asnRing   [RingSize]map[uint32]*asnMinCount
@@ -174,8 +176,8 @@ func Init(myASN uint32, myName string, myNets []*net.IPNet, upstreamIfaces []uin
 	a := &Aggregator{
 		myASN:          myASN,
 		myName:         myName,
-		myNets:         myNets,
 		upstreamIfaces: ifSet,
+		dir:            flowdir.New(upstreamIfaces, myNets),
 		asnIface:       make(map[ifaceAsnKey]*ifaceAsnAccum),
 		ifaceNames:     make(map[uint32]string),
 		pairsIn:        make(map[pairKey]*pairAccum),
@@ -199,33 +201,11 @@ func Init(myASN uint32, myName string, myNets []*net.IPNet, upstreamIfaces []uin
 func slotFor(t time.Time) int { return int((t.Unix() / 60) % RingSize) }
 func minEpoch(t time.Time) int64 { return (t.Unix() / 60) * 60 }
 
+// classifyDirection delegates to the shared flowdir.Classifier so telemetry and
+// flowstore can never diverge on the 3-tier direction logic (see CLAUDE.md rule 7).
 func (a *Aggregator) classifyDirection(rec *Record) (inbound, srcInMy, dstInMy bool) {
-	// 1. Interface index (most reliable — avoids MikroTik direction=0 bug)
-	if len(a.upstreamIfaces) > 0 {
-		if rec.InputInterface != 0 && a.upstreamIfaces[rec.InputInterface] {
-			return true, false, false
-		}
-		if rec.OutputInterface != 0 && a.upstreamIfaces[rec.OutputInterface] {
-			return false, false, false
-		}
-	}
-	// 2. IP prefix matching
-	if len(a.myNets) > 0 {
-		if ip := net.ParseIP(rec.DstHost); ip != nil {
-			for _, n := range a.myNets {
-				if n.Contains(ip) { dstInMy = true; break }
-			}
-		}
-		if ip := net.ParseIP(rec.SrcHost); ip != nil {
-			for _, n := range a.myNets {
-				if n.Contains(ip) { srcInMy = true; break }
-			}
-		}
-		if dstInMy { return true, srcInMy, dstInMy }
-		if srcInMy { return false, srcInMy, dstInMy }
-	}
-	// 3. FlowDirection fallback
-	return rec.FlowDirection == 0, srcInMy, dstInMy
+	r := a.dir.Classify(rec.InputInterface, rec.OutputInterface, rec.SrcHost, rec.DstHost, rec.FlowDirection)
+	return r.Inbound, r.SrcInMy, r.DstInMy
 }
 
 // ── Ingest ────────────────────────────────────────────────────────────────────

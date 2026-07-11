@@ -41,6 +41,7 @@ internal/flow/        FlowRecord type + batcher → fans out to consumers
 internal/enrich/      GeoIP (MaxMind), rDNS/PTR, SNMP iface names, ASN intel
 internal/bgp/         embedded GoBGP speaker: receives full RIB, announces blackholes
 internal/bgpstate/    RIB state + AS-path lookups        internal/rib/  RIB watcher
+internal/flowdir/     shared inbound/outbound direction classifier (used by ↓)
 internal/telemetry/   in-memory 1440-min ring buffers + snapshots → SQLite
 internal/flowstore/   per-ASN aggregates → SQLite (5-min timeline, 30-min detail tables)
 internal/detection/   rules engine + anomaly ML (iForest/HBOS/eHBOS) + EWMA memory layer
@@ -73,9 +74,10 @@ engine) → SQLite + dashboard + BGP blackhole actions.
    `embed.go`. No frameworks, no build step. Shared bits go in small plain JS/CSS files
    (like `nav-search.js`). Match the existing dark dashboard style.
 7. **Direction classification is sacred.** The 3-tier logic (upstream iface index →
-   my_prefixes match → FlowDirection field) exists in `telemetry/aggregator.go` and is
-   mirrored in `flowstore/store.go`. If you touch one, fix both — or better, unify them
-   (ROADMAP Phase 0).
+   my_prefixes match → FlowDirection field) now lives in one place —
+   `internal/flowdir` — and both `telemetry.classifyDirection` and
+   `flowstore.classifyInbound` delegate to it. Change the behaviour there, with tests
+   (`flowdir_test.go`); never re-inline a second copy.
 8. **Safety around blackholing.** Anything that announces BGP routes must respect the
    protection list (`etc/exclude.detections.conf`), TTL escalation, and write to
    `blackhole_events`. Never widen a blackhole beyond /32 (v4) / /128 (v6) without an

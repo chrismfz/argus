@@ -63,9 +63,10 @@ tiered rollups) and a size-capped optional flow log. Details in Phase 2.
 - [ ] Tree-wide `gofmt -w ./...` in a dedicated formatting-only PR (62 files are not
       gofmt-clean today), then flip the CI gofmt check from advisory to a hard
       `make fmt` gate. Kept separate so the diff is reviewable as "formatting only".
-- [ ] Unify the duplicated direction classifier (`telemetry.classifyDirection` /
-      `flowstore.classifyInbound`) into one shared package with tests — it is the
-      most load-bearing logic in the system.
+- [x] Unify the duplicated direction classifier (`telemetry.classifyDirection` /
+      `flowstore.classifyInbound`) into one shared package (`internal/flowdir`) with
+      tests — the most load-bearing logic in the system. Both now delegate; the
+      duplicated `isMyIP` prefix helper is unified there too. *(PR: phase-0 flowdir)*
 - [x] Fix the detection engine lock hazard: `runDetection` held `e.mu` across the
       whole rule loop incl. `HandleBlackhole` (BGP announce + DNS + SQLite), stalling
       `AddFlow` on the ingest path. Now holds the lock only to prune + snapshot the

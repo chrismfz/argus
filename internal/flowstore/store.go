@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"argus/internal/enrich"
+	"argus/internal/flowdir"
 	"github.com/yl2chen/cidranger"
 )
 
@@ -159,12 +160,11 @@ type Store struct {
 	// Permanent ASN metadata — never reset, written as deltas on each 5-min flush.
 	meta map[uint32]*metaAccum
 
-	db             *sql.DB
-	myASN          uint32
-	myNets         []*net.IPNet
-	upstreamIfaces map[uint32]bool
-	ranger         cidranger.Ranger // for BGP prefix lookup on peer IPs
-	geo            *enrich.GeoIP
+	db     *sql.DB
+	myASN  uint32
+	dir    *flowdir.Classifier
+	ranger cidranger.Ranger // for BGP prefix lookup on peer IPs
+	geo    *enrich.GeoIP
 }
 
 // ── Initialisation ────────────────────────────────────────────────────────────
@@ -183,21 +183,15 @@ func Init(
 		return err
 	}
 
-	ifSet := make(map[uint32]bool, len(upstreamIfaces))
-	for _, idx := range upstreamIfaces {
-		ifSet[idx] = true
-	}
-
 	s := &Store{
-		tl:             make(map[tlKey]*tlVal),
-		hours:          make(map[hourKey]*hourAccum),
-		meta:           make(map[uint32]*metaAccum),
-		db:             db,
-		myASN:          myASN,
-		myNets:         myNets,
-		upstreamIfaces: ifSet,
-		ranger:         ranger,
-		geo:            geo,
+		tl:     make(map[tlKey]*tlVal),
+		hours:  make(map[hourKey]*hourAccum),
+		meta:   make(map[uint32]*metaAccum),
+		db:     db,
+		myASN:  myASN,
+		dir:    flowdir.New(upstreamIfaces, myNets),
+		ranger: ranger,
+		geo:    geo,
 	}
 
 	if err := s.warmupMeta(); err != nil {
@@ -385,53 +379,16 @@ func (s *Store) Accumulate(rec *FlowEvent) {
 
 // ── Direction classification ──────────────────────────────────────────────────
 
-// classifyInbound mirrors telemetry.Aggregator.classifyDirection:
-// upstream interface indices first, then IP prefix matching, then
-// NetFlow DIRECTION field as last resort.
+// classifyInbound delegates to the shared flowdir.Classifier so flowstore and
+// telemetry can never diverge on the 3-tier direction logic (see CLAUDE.md rule 7).
 func (s *Store) classifyInbound(rec *FlowEvent) bool {
-	// 1. Interface index — most reliable signal.
-	if len(s.upstreamIfaces) > 0 {
-		if rec.InputInterface != 0 && s.upstreamIfaces[rec.InputInterface] {
-			return true
-		}
-		if rec.OutputInterface != 0 && s.upstreamIfaces[rec.OutputInterface] {
-			return false
-		}
-	}
-	// 2. IP prefix matching.
-	if len(s.myNets) > 0 {
-		if ip := net.ParseIP(rec.DstHost); ip != nil {
-			for _, n := range s.myNets {
-				if n.Contains(ip) {
-					return true
-				}
-			}
-		}
-		if ip := net.ParseIP(rec.SrcHost); ip != nil {
-			for _, n := range s.myNets {
-				if n.Contains(ip) {
-					return false
-				}
-			}
-		}
-	}
-	// 3. NetFlow DIRECTION field fallback.
-	return rec.FlowDirection == 0
+	return s.dir.Classify(rec.InputInterface, rec.OutputInterface, rec.SrcHost, rec.DstHost, rec.FlowDirection).Inbound
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 func (s *Store) isMyIP(ipStr string) bool {
-	ip := net.ParseIP(ipStr)
-	if ip == nil {
-		return false
-	}
-	for _, n := range s.myNets {
-		if n.Contains(ip) {
-			return true
-		}
-	}
-	return false
+	return s.dir.IsMyIP(ipStr)
 }
 
 // lookupPrefix returns the most-specific BGP prefix containing ipStr,

@@ -13,8 +13,14 @@ Every behavior-changing PR must add an entry under **Unreleased**.
   `lint`. (#20)
 - First tests for `internal/detection`: `runDetection` rule matching + a regression
   test proving the ingest path (`AddFlow`) is not blocked while a detection action runs.
+- `internal/flowdir`: shared flow direction classifier (3-tier: upstream interface →
+  my-prefix match → NetFlow DIRECTION) with full test coverage.
 
 ### Changed
+- Direction classification unified: `telemetry.classifyDirection` and
+  `flowstore.classifyInbound` — previously duplicated and hand-synced — now both
+  delegate to `internal/flowdir`. The duplicated `isMyIP` prefix helper is unified
+  there too. No behaviour change (the `inbound` result was already identical).
 - ROADMAP reorganized: Phase 4 split into "Detection & mitigation depth"
   (attack incidents, egress detection presets, threat feeds, ML feedback loop,
   time-of-day baselines), Phase 5 "Visibility & business value" (peering

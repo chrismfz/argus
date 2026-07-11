@@ -66,14 +66,17 @@ tiered rollups) and a size-capped optional flow log. Details in Phase 2.
 - [ ] Unify the duplicated direction classifier (`telemetry.classifyDirection` /
       `flowstore.classifyInbound`) into one shared package with tests — it is the
       most load-bearing logic in the system.
-- [ ] Fix the detection engine lock hazard: `runDetection` holds `e.mu` across
-      `HandleBlackhole` (BGP announce + DNS + SQLite while ingest is blocked).
-      Move actions to a worker queue outside the lock.
+- [x] Fix the detection engine lock hazard: `runDetection` held `e.mu` across the
+      whole rule loop incl. `HandleBlackhole` (BGP announce + DNS + SQLite), stalling
+      `AddFlow` on the ingest path. Now holds the lock only to prune + snapshot the
+      flow cache; rule evaluation and actions run lock-free. Regression test included.
+      *(PR: phase-0 detection lock)*
 - [ ] Implement or remove the no-op `slack` rule action (silent no-op today).
 - [ ] Prune the unbounded tables: `snapshots`, `alert_events`/`alert_deliveries`,
       `detections` (configurable retention each).
-- [ ] Tests for: rule evaluation (`filters.go`), direction classification,
-      flowstore flush/prune, blackhole TTL escalation.
+- [ ] Tests for: rule evaluation (`filters.go`) — partial: `runDetection` matching +
+      lock behaviour covered — plus direction classification, flowstore flush/prune,
+      blackhole TTL escalation.
 
 ## Phase 1 — Stop the bleeding: configurable retention & caps
 

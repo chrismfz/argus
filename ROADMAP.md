@@ -50,7 +50,7 @@ needed, add an embedded columnar option (DuckDB/Parquet sidecar files) as an
 **What we do instead:** keep more, longer, with graceful degradation (RRD-style
 tiered rollups) and a size-capped optional flow log. Details in Phase 2.
 
-## Phase 0 — Hygiene & guardrails (small, do first)
+## Phase 0 — Hygiene & guardrails ✅ complete
 
 - [x] Remove committed 39 MB `argus` ELF binary from the tree; expand `.gitignore`
       (`*.log`, `*.db`, `*.sqlite*`, `blackholes.txt`, root binary). *(this PR)*
@@ -60,9 +60,8 @@ tiered rollups) and a size-capped optional flow log. Details in Phase 2.
 - [x] Fix the `go vet` failure: `collectors.Netflow.Start` value receiver copies an
       embedded `sync.Once` (`internal/collectors/netflow.go`). *(PR: phase-0 hygiene)*
 - [x] Rename `internal/telemetry/peristence.go` → `persistence.go`. *(PR: phase-0 hygiene)*
-- [ ] Tree-wide `gofmt -w ./...` in a dedicated formatting-only PR (62 files are not
-      gofmt-clean today), then flip the CI gofmt check from advisory to a hard
-      `make fmt` gate. Kept separate so the diff is reviewable as "formatting only".
+- [x] Tree-wide `gofmt -w ./...` (62 files) in a formatting-only PR, and flipped the
+      CI gofmt check from advisory to a hard `make fmt` gate. *(PR: phase-0 gofmt)*
 - [x] Unify the duplicated direction classifier (`telemetry.classifyDirection` /
       `flowstore.classifyInbound`) into one shared package (`internal/flowdir`) with
       tests — the most load-bearing logic in the system. Both now delegate; the

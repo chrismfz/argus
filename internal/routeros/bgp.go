@@ -3,10 +3,10 @@ package routeros
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
-	"net/url"
 )
 
 // ListBGPSessions returns all BGP sessions from /rest/routing/bgp/session.
@@ -97,7 +97,6 @@ func (c *Client) ListBGPAdvertisements(ctx context.Context, peer string) ([]BGPA
 	}
 	return ads, nil
 }
-
 
 // ── Parsing ───────────────────────────────────────────────────────────────────
 

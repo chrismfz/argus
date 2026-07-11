@@ -139,11 +139,11 @@ func PersistASNRing(db *sql.DB) error {
 	Global.mu.RLock()
 	// Snapshot the ring under read lock so ingest isn't blocked long
 	type asnRow struct {
-		ts                         int64
-		asn                        uint32
-		name                       string
-		bytesIn, bytesOut          uint64
-		flowsIn, flowsOut          uint64
+		ts                int64
+		asn               uint32
+		name              string
+		bytesIn, bytesOut uint64
+		flowsIn, flowsOut uint64
 	}
 	var rows []asnRow
 	for slot := 0; slot < RingSize; slot++ {
@@ -205,10 +205,10 @@ func WarmupASNRingFromDB(db *sql.DB) (int, error) {
 	defer dbRows.Close()
 
 	type asnRow struct {
-		ts, asn                    uint64
-		name                       string
-		bytesIn, bytesOut          uint64
-		flowsIn, flowsOut          uint64
+		ts, asn           uint64
+		name              string
+		bytesIn, bytesOut uint64
+		flowsIn, flowsOut uint64
 	}
 	var buf []asnRow
 	for dbRows.Next() {
@@ -262,11 +262,11 @@ func PersistIfaceRing(db *sql.DB) error {
 	}
 	Global.mu.RLock()
 	type ifaceRow struct {
-		ts                         int64
-		idx                        uint32
-		name                       string
-		bytesIn, bytesOut          uint64
-		flowsIn, flowsOut          uint64
+		ts                int64
+		idx               uint32
+		name              string
+		bytesIn, bytesOut uint64
+		flowsIn, flowsOut uint64
 	}
 	var rows []ifaceRow
 	for slot := 0; slot < RingSize; slot++ {
@@ -328,10 +328,10 @@ func WarmupIfaceRingFromDB(db *sql.DB) (int, error) {
 	defer dbRows.Close()
 
 	type ifaceRow struct {
-		ts, idx                    uint64
-		name                       string
-		bytesIn, bytesOut          uint64
-		flowsIn, flowsOut          uint64
+		ts, idx           uint64
+		name              string
+		bytesIn, bytesOut uint64
+		flowsIn, flowsOut uint64
 	}
 	var buf []ifaceRow
 	for dbRows.Next() {

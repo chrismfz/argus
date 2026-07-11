@@ -1,8 +1,8 @@
 package detection
 
 import (
-	"time"
 	"strings"
+	"time"
 )
 
 type srcWindow struct {
@@ -27,7 +27,9 @@ func (w *srcWindow) add(f Flow, cut time.Time) {
 
 // buildFeatures – uses your Flow fields (packets, bytes, proto/flags, dst ip/port)
 func buildFeatures(flows []Flow, windowSec float64) featureVector {
-	if windowSec <= 0 { windowSec = 1 }
+	if windowSec <= 0 {
+		windowSec = 1
+	}
 	var pkts, bytes uint64
 	uniDst := map[string]struct{}{}
 	uniPorts := map[uint16]struct{}{}
@@ -40,9 +42,8 @@ func buildFeatures(flows []Flow, windowSec float64) featureVector {
 		uniDst[f.DstIP] = struct{}{}
 		uniPorts[f.DstPort] = struct{}{}
 
-
-		        switch strings.ToLower(f.Proto) {
-		        case "tcp":
+		switch strings.ToLower(f.Proto) {
+		case "tcp":
 			tcpPkts += f.Packets
 			if f.TCPFlags&0x02 != 0 { // SYN
 				tcpSyn += f.Packets
@@ -55,11 +56,17 @@ func buildFeatures(flows []Flow, windowSec float64) featureVector {
 	pktsPerSec := float64(pkts) / windowSec
 	bytesPerSec := float64(bytes) / windowSec
 	meanPkt := 0.0
-	if pkts > 0 { meanPkt = float64(bytes) / float64(pkts) }
+	if pkts > 0 {
+		meanPkt = float64(bytes) / float64(pkts)
+	}
 	tcpSynRatio := 0.0
-	if tcpPkts > 0 { tcpSynRatio = float64(tcpSyn) / float64(tcpPkts) }
+	if tcpPkts > 0 {
+		tcpSynRatio = float64(tcpSyn) / float64(tcpPkts)
+	}
 	icmpShare := 0.0
-	if pkts > 0 { icmpShare = float64(icmpPkts) / float64(pkts) }
+	if pkts > 0 {
+		icmpShare = float64(icmpPkts) / float64(pkts)
+	}
 
 	return featureVector{
 		PktsPerSec:   pktsPerSec,

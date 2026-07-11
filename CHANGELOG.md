@@ -17,6 +17,9 @@ Every behavior-changing PR must add an entry under **Unreleased**.
   my-prefix match → NetFlow DIRECTION) with full test coverage.
 
 ### Changed
+- Ran `gofmt -w` across the tree (62 files) and flipped the CI gofmt check from
+  advisory to a hard `make fmt` gate — formatting is now enforced on every PR.
+  No functional change.
 - Unbounded tables are now pruned on the 1-minute cleanup ticker: `detections`
   (by `last_seen`, 90d), `alert_events` (90d, cascades to `alert_deliveries`), and
   `snapshots` (period-aware — daily pruned at 400d; weekly/monthly/yearly/manual

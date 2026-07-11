@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-//	"math/big"
+	//	"math/big"
 	"net"
 )
 
@@ -72,7 +72,7 @@ const MIN_TTL = 52 // RFC defined
 const MAX_TTL = 53 // RFC defined
 const IPV4_IDENT = 54
 const DST_TOS = 55
-const IN_SRC_MAC = 56 // Corrected: Cisco uses IN_SRC_MAC for 56
+const IN_SRC_MAC = 56  // Corrected: Cisco uses IN_SRC_MAC for 56
 const OUT_DST_MAC = 57 // Corrected: Cisco uses OUT_DST_MAC for 57
 const SRC_VLAN = 58
 const DST_VLAN = 59
@@ -91,7 +91,7 @@ const MPLS_LABEL_7 = 76
 const MPLS_LABEL_8 = 77
 const MPLS_LABEL_9 = 78
 const MPLS_LABEL_10 = 79
-const IN_DST_MAC = 80 // Corrected: Cisco uses IN_DST_MAC for 80
+const IN_DST_MAC = 80  // Corrected: Cisco uses IN_DST_MAC for 80
 const OUT_SRC_MAC = 81 // Corrected: Cisco uses OUT_SRC_MAC for 81
 const IF_NAME = 82
 const IF_DESC = 83
@@ -133,8 +133,6 @@ const CUSTOM_TIMESTAMP_START uint16 = 65001
 
 const DIRECTION = FLOW_DIRECTION // Alias for backward compatibility
 
-
-
 // Integer Values
 type IntValue struct {
 	Data  int
@@ -158,26 +156,25 @@ func (i IntValue) ToBytes() []byte {
 
 // Retrieve integer values from a field
 func GetInt(p []byte) Value {
-    var i IntValue
-    i.Bytes = p
-    switch {
-    case len(p) >= 8: // Handle 8-byte integers (UINT64)
-        i.Data = int(binary.BigEndian.Uint64(p))
-        return i
-    case len(p) >= 4: // Handle 4-byte integers (UINT32)
-        i.Data = int(binary.BigEndian.Uint32(p))
-        return i
-    case len(p) >= 2: // Handle 2-byte integers (UINT16)
-        i.Data = int(binary.BigEndian.Uint16(p))
-        return i
-    case len(p) >= 1: // Handle 1-byte integers (UINT8)
-        i.Data = int(uint8(p[0]))
-        return i
-    default:
-        return IntValue{Data: 0, Bytes: p} // Return a zero value for empty slices
-    }
+	var i IntValue
+	i.Bytes = p
+	switch {
+	case len(p) >= 8: // Handle 8-byte integers (UINT64)
+		i.Data = int(binary.BigEndian.Uint64(p))
+		return i
+	case len(p) >= 4: // Handle 4-byte integers (UINT32)
+		i.Data = int(binary.BigEndian.Uint32(p))
+		return i
+	case len(p) >= 2: // Handle 2-byte integers (UINT16)
+		i.Data = int(binary.BigEndian.Uint16(p))
+		return i
+	case len(p) >= 1: // Handle 1-byte integers (UINT8)
+		i.Data = int(uint8(p[0]))
+		return i
+	default:
+		return IntValue{Data: 0, Bytes: p} // Return a zero value for empty slices
+	}
 }
-
 
 // Address Values (IPv4)
 type AddrValue struct {
@@ -215,7 +212,6 @@ func GetAddr(p []byte) Value {
 	a.Bytes = p
 	return a
 }
-
 
 // Address Values (IPv6)
 type Addr6Value struct {
@@ -350,4 +346,3 @@ func (b BytesValue) ToBytes() []byte {
 func GetBytes(p []byte) Value {
 	return BytesValue{Data: p, Bytes: p}
 }
-

@@ -139,11 +139,11 @@ func QueryInterfacesFromDB(db *sql.DB, minutes int) ([]IfaceSeries, error) {
 
 	for rows.Next() {
 		var (
-			ts                         int64
-			idx                        uint32
-			name                       string
-			bytesIn, bytesOut          uint64
-			flowsIn, flowsOut          uint64
+			ts                int64
+			idx               uint32
+			name              string
+			bytesIn, bytesOut uint64
+			flowsIn, flowsOut uint64
 		)
 		if err := rows.Scan(&ts, &idx, &name, &bytesIn, &bytesOut, &flowsIn, &flowsOut); err != nil {
 			continue

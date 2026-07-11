@@ -23,7 +23,7 @@ var Broadcast = make(chan FiredEvent, 128)
 type Dispatcher struct {
 	mu       sync.RWMutex
 	db       *sql.DB
-	contacts []Contact  // live copy reloaded via Reload()
+	contacts []Contact // live copy reloaded via Reload()
 	backends map[string]backendFactory
 }
 

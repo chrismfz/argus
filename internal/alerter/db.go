@@ -12,11 +12,11 @@ import (
 type Contact struct {
 	ID          int64     `json:"id"`
 	Name        string    `json:"name"`
-	Type        string    `json:"type"`        // slack | smtp | log
+	Type        string    `json:"type"` // slack | smtp | log
 	Enabled     bool      `json:"enabled"`
-	Config      string    `json:"config"`      // JSON blob, type-specific
+	Config      string    `json:"config"` // JSON blob, type-specific
 	MinSeverity Severity  `json:"min_severity"`
-	Sources     string    `json:"sources"`     // "" = all, or "bgp,routewatch,detection"
+	Sources     string    `json:"sources"` // "" = all, or "bgp,routewatch,detection"
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }

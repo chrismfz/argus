@@ -19,13 +19,19 @@ type HBOS struct {
 }
 
 func NewHBOS(bins int, eps float64) *HBOS {
-	if bins <= 1 { bins = 10 }
-	if eps <= 0  { eps  = 1e-6 }
+	if bins <= 1 {
+		bins = 10
+	}
+	if eps <= 0 {
+		eps = 1e-6
+	}
 	return &HBOS{bins: bins, eps: eps}
 }
 
 func (h *HBOS) Train(b [][]float64) {
-	if len(b) == 0 { return }
+	if len(b) == 0 {
+		return
+	}
 	d := len(b[0])
 	h.edges = make([][]float64, d)
 	h.counts = make([][]float64, d)
@@ -38,8 +44,12 @@ func (h *HBOS) Train(b [][]float64) {
 	// min/max
 	for _, v := range b {
 		for j, x := range v {
-			if x < minv[j] { minv[j] = x }
-			if x > maxv[j] { maxv[j] = x }
+			if x < minv[j] {
+				minv[j] = x
+			}
+			if x > maxv[j] {
+				maxv[j] = x
+			}
 		}
 	}
 	// build edges & zero counts
@@ -59,8 +69,12 @@ func (h *HBOS) Train(b [][]float64) {
 	for _, v := range b {
 		for j, x := range v {
 			idx := binSearch(h.edges[j], x)
-			if idx < 0 { idx = 0 }
-			if idx >= h.bins { idx = h.bins - 1 }
+			if idx < 0 {
+				idx = 0
+			}
+			if idx >= h.bins {
+				idx = h.bins - 1
+			}
 			h.counts[j][idx]++
 		}
 	}
@@ -76,19 +90,31 @@ func (h *HBOS) Train(b [][]float64) {
 
 // Score: sum_j -log( max(count_j/binwidth, eps) / total )
 func (h *HBOS) Score(v []float64) float64 {
-	if len(h.edges) == 0 || len(v) == 0 { return 0 }
+	if len(h.edges) == 0 || len(v) == 0 {
+		return 0
+	}
 	score := 0.0
 	for j, x := range v {
 		edges := h.edges[j]
 		counts := h.counts[j]
-		if len(edges) < 2 { continue }
+		if len(edges) < 2 {
+			continue
+		}
 		idx := binSearch(edges, x)
-		if idx < 0 { idx = 0 }
-		if idx >= len(counts) { idx = len(counts)-1 }
+		if idx < 0 {
+			idx = 0
+		}
+		if idx >= len(counts) {
+			idx = len(counts) - 1
+		}
 		binWidth := edges[idx+1] - edges[idx]
-		if binWidth <= 0 { binWidth = 1 } // fallback
+		if binWidth <= 0 {
+			binWidth = 1
+		} // fallback
 		density := (counts[idx] / binWidth) / math.Max(h.total, 1)
-		if density < h.eps { density = h.eps }
+		if density < h.eps {
+			density = h.eps
+		}
 		score += -math.Log(density)
 	}
 	return score
@@ -96,45 +122,47 @@ func (h *HBOS) Score(v []float64) float64 {
 
 // Bound(p): return p-quantile of training HBOS scores (e.g. p=0.99)
 func (h *HBOS) Bound(p float64) float64 {
-	if len(h.trainScores) == 0 { return math.Inf(+1) }
-	if p <= 0 { return h.trainScores[0] }
-	if p >= 1 { return h.trainScores[len(h.trainScores)-1] }
+	if len(h.trainScores) == 0 {
+		return math.Inf(+1)
+	}
+	if p <= 0 {
+		return h.trainScores[0]
+	}
+	if p >= 1 {
+		return h.trainScores[len(h.trainScores)-1]
+	}
 	pos := int(p*float64(len(h.trainScores)-1) + 0.5)
 	return h.trainScores[pos]
 }
 
-
-
-
-
 // QuantileOfScore returns the empirical CDF (percentile) of a raw HBOS score
 // with respect to the training distribution, in [0,1]. Higher = more anomalous.
 func (h *HBOS) QuantileOfScore(raw float64) float64 {
-        n := len(h.trainScores)
-        if n == 0 {
-                // no baseline → treat as normal
-                return 0.0
-        }
-        // index of first training score >= raw
-        idx := sort.Search(n, func(i int) bool { return h.trainScores[i] >= raw })
-        // Use plotting-position smoothing (idx-0.5)/n to avoid hard 0/1
-        q := (float64(idx) - 0.5) / float64(n)
-        if q < 0 { q = 0 }
-        if q > 1 { q = 1 }
-        return q
+	n := len(h.trainScores)
+	if n == 0 {
+		// no baseline → treat as normal
+		return 0.0
+	}
+	// index of first training score >= raw
+	idx := sort.Search(n, func(i int) bool { return h.trainScores[i] >= raw })
+	// Use plotting-position smoothing (idx-0.5)/n to avoid hard 0/1
+	q := (float64(idx) - 0.5) / float64(n)
+	if q < 0 {
+		q = 0
+	}
+	if q > 1 {
+		q = 1
+	}
+	return q
 }
 
 // ScoreNorm returns a normalized anomaly score in [0,1] where 1 = most anomalous
 // relative to the baseline. It computes HBOS raw score and maps it to its
 // empirical percentile (quantile). This is ideal for fusion with iForest.
 func (h *HBOS) ScoreNorm(v []float64) float64 {
-        raw := h.Score(v)
-        return h.QuantileOfScore(raw)
+	raw := h.Score(v)
+	return h.QuantileOfScore(raw)
 }
-
-
-
-
 
 func binSearch(edges []float64, x float64) int {
 	// return k such that edges[k] <= x < edges[k+1]
@@ -149,6 +177,8 @@ func binSearch(edges []float64, x float64) int {
 			return m
 		}
 	}
-	if lo < 0 { return 0 }
+	if lo < 0 {
+		return 0
+	}
 	return lo
 }

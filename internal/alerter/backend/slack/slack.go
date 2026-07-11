@@ -41,12 +41,12 @@ func (b *Backend) Send(ctx context.Context, e alerter.Event) error {
 	payload := map[string]interface{}{
 		"attachments": []map[string]interface{}{
 			{
-				"color":      color,
-				"title":      fmt.Sprintf("[%s] %s", severityLabel(e.Severity), e.Title),
-				"text":       e.Body,
-				"footer":     fmt.Sprintf("argus · %s · %s", e.Source, e.Time.UTC().Format("2006-01-02 15:04:05 UTC")),
-				"fields":     buildFields(e.Tags),
-				"mrkdwn_in":  []string{"text"},
+				"color":     color,
+				"title":     fmt.Sprintf("[%s] %s", severityLabel(e.Severity), e.Title),
+				"text":      e.Body,
+				"footer":    fmt.Sprintf("argus · %s · %s", e.Source, e.Time.UTC().Format("2006-01-02 15:04:05 UTC")),
+				"fields":    buildFields(e.Tags),
+				"mrkdwn_in": []string{"text"},
 			},
 		},
 	}

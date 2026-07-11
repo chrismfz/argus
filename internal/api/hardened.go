@@ -31,8 +31,8 @@ import (
 
 const (
 	// Rate limiting — single tier, applies to all non-loopback callers
-	rlWindow     = 60 * time.Second
-	rlMax        = 200 // requests/window
+	rlWindow = 60 * time.Second
+	rlMax    = 200 // requests/window
 
 	// Abuse / ban
 	banWindow    = 60 * time.Second

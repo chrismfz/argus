@@ -40,8 +40,8 @@ import (
 type Watcher struct {
 	server   *gobgpserver.BgpServer
 	upstream bgpstate.UpstreamLabeler // may be nil
-	geo      bgpstate.GeoLookup      // may be nil
-	interval time.Duration           // poll interval for Phase 2 adj-in refresh
+	geo      bgpstate.GeoLookup       // may be nil
+	interval time.Duration            // poll interval for Phase 2 adj-in refresh
 
 	mu      sync.RWMutex
 	entries map[string]*bgpstate.PrefixEntry // keyed by prefix CIDR string
@@ -218,7 +218,6 @@ func (w *Watcher) refresh(ctx context.Context) error {
 		}
 
 	}
-
 
 	if len(next) == 0 {
 		return fmt.Errorf("adj-in refresh returned 0 prefixes from %d peers", len(peers))

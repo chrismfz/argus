@@ -226,8 +226,8 @@ func Start() {
 	mainMux.HandleFunc("/tel/interfaces", WithMainIPOnly(handleTelInterfaces))
 	mainMux.HandleFunc("/tel/iface-sankey", WithMainIPOnly(handleTelIfaceSankey))
 
-	mainMux.HandleFunc("/api/risk",       WithMainIPOnly(handleRiskList))
-	mainMux.HandleFunc("/risk",           WithMainIPOnly(handleRiskPage)) 
+	mainMux.HandleFunc("/api/risk", WithMainIPOnly(handleRiskList))
+	mainMux.HandleFunc("/risk", WithMainIPOnly(handleRiskPage))
 
 	// ── Alerter page ──────────────────────────────────────────────────────
 	mainMux.HandleFunc("/alerts", WithMainIPOnly(func(w http.ResponseWriter, r *http.Request) {
@@ -562,14 +562,13 @@ func buildIPProfileResponse(ctx context.Context, ipStr string, includeTrace bool
 		res["detections"] = history
 	}
 
-if riskEvents, err := fetchIPRiskEvents(ipStr, 50); err != nil {
+	if riskEvents, err := fetchIPRiskEvents(ipStr, 50); err != nil {
 		log.Printf("[WARN] risk_events lookup failed ip=%s err=%v", ipStr, err)
 	} else {
 		res["risk_events"] = riskEvents
 	}
 
 	res["routing"] = buildRoutingContext(ctx, ip, res["prefix"], includeTrace)
-
 
 	res["routing"] = buildRoutingContext(ctx, ip, res["prefix"], includeTrace)
 	res["external_links"] = buildASNExternalLinks(res["asn"])
@@ -966,18 +965,18 @@ func handleRiskList(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	type riskRow struct {
-		Src          string  `json:"src"`
-		EventCount   int64   `json:"event_count"`
-		PeakFused    float64 `json:"peak_fused"`
-		LastSeen     int64   `json:"last_seen"`
-		FirstSeen    int64   `json:"first_seen"`
-		ASN          int64   `json:"asn"`
-		ASNName      string  `json:"asn_name"`
-		CC           string  `json:"cc"`
-		PTR          string  `json:"ptr"`
-		LatestShape  string  `json:"latest_shape"`
-		LatestDst    string  `json:"latest_dst"`
-		LatestExCount int64  `json:"latest_ex_count"`
+		Src           string  `json:"src"`
+		EventCount    int64   `json:"event_count"`
+		PeakFused     float64 `json:"peak_fused"`
+		LastSeen      int64   `json:"last_seen"`
+		FirstSeen     int64   `json:"first_seen"`
+		ASN           int64   `json:"asn"`
+		ASNName       string  `json:"asn_name"`
+		CC            string  `json:"cc"`
+		PTR           string  `json:"ptr"`
+		LatestShape   string  `json:"latest_shape"`
+		LatestDst     string  `json:"latest_dst"`
+		LatestExCount int64   `json:"latest_ex_count"`
 	}
 
 	out := make([]riskRow, 0)
@@ -995,16 +994,16 @@ func handleRiskList(w http.ResponseWriter, r *http.Request) {
 			log.Printf("[WARN] handleRiskList scan failed: %v", err)
 			continue
 		}
-		row.EventCount   = eventCount.Int64
-		row.PeakFused    = peakFused.Float64
-		row.LastSeen     = lastSeen.Int64
-		row.FirstSeen    = firstSeen.Int64
-		row.ASN          = asn.Int64
-		row.ASNName      = asnName.String
-		row.CC           = cc.String
-		row.PTR          = ptr.String
-		row.LatestShape  = latestShape.String
-		row.LatestDst    = latestDst.String
+		row.EventCount = eventCount.Int64
+		row.PeakFused = peakFused.Float64
+		row.LastSeen = lastSeen.Int64
+		row.FirstSeen = firstSeen.Int64
+		row.ASN = asn.Int64
+		row.ASNName = asnName.String
+		row.CC = cc.String
+		row.PTR = ptr.String
+		row.LatestShape = latestShape.String
+		row.LatestDst = latestDst.String
 		row.LatestExCount = latestExCount.Int64
 		out = append(out, row)
 	}

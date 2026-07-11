@@ -61,9 +61,9 @@ type ASNSummaryResponse struct {
 
 // ASNTimelineResponse is returned by GET /api/asn/{asn}/timeline.
 type ASNTimelineResponse struct {
-	Window  string          `json:"window"`
-	Points  []TimelinePoint `json:"points"`
-	Ifaces  []IfaceSplit    `json:"ifaces"`
+	Window string          `json:"window"`
+	Points []TimelinePoint `json:"points"`
+	Ifaces []IfaceSplit    `json:"ifaces"`
 }
 
 // ASNDetailResponse is returned by GET /api/asn/{asn}/detail.
@@ -107,7 +107,7 @@ func HandleASNTimeline(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		windowStr := r.URL.Query().Get("window")
-		window    := parseWindow(r)
+		window := parseWindow(r)
 
 		points, err := QueryTimeline(db, asn, window)
 		if err != nil {
@@ -141,8 +141,8 @@ func HandleASNDetail(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		windowStr := r.URL.Query().Get("window")
-		window    := parseWindow(r)
-		dir       := r.URL.Query().Get("dir") // "in" | "out" | "both" (default)
+		window := parseWindow(r)
+		dir := r.URL.Query().Get("dir") // "in" | "out" | "both" (default)
 		if dir == "" {
 			dir = "both"
 		}

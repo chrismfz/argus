@@ -14,7 +14,7 @@ import (
 // Config is the RouterOS REST API configuration.
 type Config struct {
 	Enabled        bool   `yaml:"enabled"`
-	Address        string `yaml:"address"`         // "http://84.54.49.1" or "https://84.54.49.1"
+	Address        string `yaml:"address"` // "http://84.54.49.1" or "https://84.54.49.1"
 	Username       string `yaml:"username"`
 	Password       string `yaml:"password"`
 	InsecureTLS    bool   `yaml:"insecure_tls"`    // accept self-signed certs
@@ -123,41 +123,40 @@ func (c *Client) post(ctx context.Context, path string, body interface{}, dest i
 	return nil
 }
 
-
 // postSlow is like post but uses a longer HTTP timeout for slow commands
 // like traceroute that can take 20-30s to complete.
 func (c *Client) postSlow(ctx context.Context, path string, body interface{}, dest interface{}) error {
-    slowClient := &http.Client{
-        Timeout:   25 * time.Second,
-        Transport: c.http.Transport,
-    }
+	slowClient := &http.Client{
+		Timeout:   25 * time.Second,
+		Transport: c.http.Transport,
+	}
 
-    var buf bytes.Buffer
-    if body != nil {
-        if err := json.NewEncoder(&buf).Encode(body); err != nil {
-            return err
-        }
-    }
-    req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-        c.cfg.Address+"/rest/"+path, &buf)
-    if err != nil {
-        return err
-    }
-    req.SetBasicAuth(c.cfg.Username, c.cfg.Password)
-    req.Header.Set("Content-Type", "application/json")
-    req.Header.Set("Accept", "application/json")
+	var buf bytes.Buffer
+	if body != nil {
+		if err := json.NewEncoder(&buf).Encode(body); err != nil {
+			return err
+		}
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		c.cfg.Address+"/rest/"+path, &buf)
+	if err != nil {
+		return err
+	}
+	req.SetBasicAuth(c.cfg.Username, c.cfg.Password)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
 
-    resp, err := slowClient.Do(req)
-    if err != nil {
-        return fmt.Errorf("POST /rest/%s: %w", path, err)
-    }
-    defer resp.Body.Close()
+	resp, err := slowClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("POST /rest/%s: %w", path, err)
+	}
+	defer resp.Body.Close()
 
-    if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-        return fmt.Errorf("routeros REST POST /rest/%s: HTTP %d", path, resp.StatusCode)
-    }
-    if dest != nil {
-        return json.NewDecoder(resp.Body).Decode(dest)
-    }
-    return nil
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("routeros REST POST /rest/%s: HTTP %d", path, resp.StatusCode)
+	}
+	if dest != nil {
+		return json.NewDecoder(resp.Body).Decode(dest)
+	}
+	return nil
 }

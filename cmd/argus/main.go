@@ -13,10 +13,9 @@ import (
 	"syscall"
 	"time"
 
-
 	"argus/internal/maxmind"
-	_ "modernc.org/sqlite"
 	"github.com/fsnotify/fsnotify"
+	_ "modernc.org/sqlite"
 
 	"argus/internal/api"
 	"argus/internal/bgp"
@@ -30,23 +29,22 @@ import (
 	"argus/internal/sqlite"
 	"argus/internal/telemetry"
 
-        "argus/internal/alerter"
-        _ "argus/internal/alerter/backend/logbackend"
-        _ "argus/internal/alerter/backend/slack"
-        _ "argus/internal/alerter/backend/smtp"
+	"argus/internal/alerter"
+	_ "argus/internal/alerter/backend/logbackend"
+	_ "argus/internal/alerter/backend/slack"
+	_ "argus/internal/alerter/backend/smtp"
 
-	"argus/internal/pathfinder"
-	"argus/internal/routeros"
 	"argus/internal/bgpmon"
+	"argus/internal/pathfinder"
 	"argus/internal/rib"
+	"argus/internal/routeros"
 
-	"github.com/chrismfz/goauth"
 	"argus/internal/flowstore"
-
+	"github.com/chrismfz/goauth"
 )
 
 var debug bool
-var Version   = "dev"
+var Version = "dev"
 var BuildTime = "unknown"
 
 func dlog(msg string, args ...interface{}) {
@@ -87,7 +85,7 @@ func main() {
 	defer cancel()
 	go handleSignals(cancel)
 
-// ── Auth CLI — short-circuit before config/server init ───────────────────
+	// ── Auth CLI — short-circuit before config/server init ───────────────────
 	// Usage:  argus auth <command> [flags]
 	// The server does not need to be running.
 	if len(os.Args) > 1 && os.Args[1] == "auth" {
@@ -95,7 +93,6 @@ func main() {
 		runAuthCLI()
 		return
 	}
-
 
 	// ── CLI flags ─────────────────────────────────────────────────────────────
 	for i := 1; i < len(os.Args); i++ {
@@ -169,7 +166,6 @@ func main() {
 			cfg.CFM.Enabled, cfg.CFM.URL, len(cfg.CFM.Token))
 	}
 
-
 	// ── SQLite ────────────────────────────────────────────────────────────────
 	// WAL lets many readers run concurrently with a single writer, so the read
 	// endpoints (e.g. /blackhole-list) no longer queue behind a busy writer.
@@ -216,44 +212,42 @@ func main() {
 				if err := detection.CleanupExpiredBlackholes(db); err != nil {
 					log.Printf("[WARN] Periodic blackhole cleanup error: %v", err)
 				}
-    // Purge risk_events older than 7 days
-    if err := detection.PurgeOldRiskEvents(db, 7*24*time.Hour); err != nil {
-        log.Printf("[WARN] Periodic risk_events purge error: %v", err)
-    }
-    // Prune blackhole_events: 90 days retention, hard cap 10k rows
-    if err := detection.PruneBlackholeEvents(db, 90*24*time.Hour, 10000); err != nil {
-        log.Printf("[WARN] Periodic blackhole_events prune error: %v", err)
-    }
-    // Prune detections: 90 days retention (by last_seen)
-    if err := detection.PruneDetections(db, 90*24*time.Hour); err != nil {
-        log.Printf("[WARN] Periodic detections prune error: %v", err)
-    }
-    // Prune alert_events: 90 days retention (cascades to deliveries)
-    if err := alerter.PruneEvents(db, 90*24*time.Hour); err != nil {
-        log.Printf("[WARN] Periodic alert_events prune error: %v", err)
-    }
-    // Prune daily snapshots: 400 days retention (weekly/monthly/yearly/manual kept)
-    if err := telemetry.PruneSnapshots(db, 400*24*time.Hour); err != nil {
-        log.Printf("[WARN] Periodic snapshots prune error: %v", err)
-    }
+				// Purge risk_events older than 7 days
+				if err := detection.PurgeOldRiskEvents(db, 7*24*time.Hour); err != nil {
+					log.Printf("[WARN] Periodic risk_events purge error: %v", err)
+				}
+				// Prune blackhole_events: 90 days retention, hard cap 10k rows
+				if err := detection.PruneBlackholeEvents(db, 90*24*time.Hour, 10000); err != nil {
+					log.Printf("[WARN] Periodic blackhole_events prune error: %v", err)
+				}
+				// Prune detections: 90 days retention (by last_seen)
+				if err := detection.PruneDetections(db, 90*24*time.Hour); err != nil {
+					log.Printf("[WARN] Periodic detections prune error: %v", err)
+				}
+				// Prune alert_events: 90 days retention (cascades to deliveries)
+				if err := alerter.PruneEvents(db, 90*24*time.Hour); err != nil {
+					log.Printf("[WARN] Periodic alert_events prune error: %v", err)
+				}
+				// Prune daily snapshots: 400 days retention (weekly/monthly/yearly/manual kept)
+				if err := telemetry.PruneSnapshots(db, 400*24*time.Hour); err != nil {
+					log.Printf("[WARN] Periodic snapshots prune error: %v", err)
+				}
 
 			}
 		}
 	}()
 
-
-    // ── Alerter ───────────────────────────────────────────────────────────────
-    if err := alerter.InitSchema(db); err != nil {
-        log.Printf("[alerter] schema init failed: %v", err)
-    } else {
-        d := alerter.New(db)
-        if err := d.Reload(); err != nil {
-            log.Printf("[alerter] initial contact load failed: %v", err)
-        }
-        alerter.Global = d
-        log.Printf("[alerter] ready (%d contacts loaded)", len(d.Snapshot()))
-    }
-
+	// ── Alerter ───────────────────────────────────────────────────────────────
+	if err := alerter.InitSchema(db); err != nil {
+		log.Printf("[alerter] schema init failed: %v", err)
+	} else {
+		d := alerter.New(db)
+		if err := d.Reload(); err != nil {
+			log.Printf("[alerter] initial contact load failed: %v", err)
+		}
+		alerter.Global = d
+		log.Printf("[alerter] ready (%d contacts loaded)", len(d.Snapshot()))
+	}
 
 	// ── MaxMind preflight ─────────────────────────────────────────────────────
 	// Block until all .mmdb files exist. Downloads only what is missing.
@@ -276,14 +270,12 @@ func main() {
 	mmLifecycle.ApplyConfig(ctx, &cfg.MaxMind)
 	defer mmLifecycle.Stop()
 
-
-
 	// ── Enrichment ────────────────────────────────────────────────────────────
 	enrichers, err := enrich.Init(cfg)
 	if err != nil {
 		log.Fatalf("Failed to initialize enrichment modules: %v", err)
 	}
-	geo      := enrichers.Geo
+	geo := enrichers.Geo
 	resolver := enrichers.DNS
 
 	// ── My prefixes ───────────────────────────────────────────────────────────
@@ -307,66 +299,64 @@ func main() {
 		log.Printf("[telemetry] schema init failed: %v", err)
 	}
 
-// derive our own ASN name from MaxMind using first prefix IP
-myName := ""
-if len(myNets) > 0 {
-    myName = geo.GetASNName(myNets[0].IP.String())
-}
-telemetry.Init(uint32(cfg.MyASN), myName, myNets, cfg.UpstreamInterfaces)
+	// derive our own ASN name from MaxMind using first prefix IP
+	myName := ""
+	if len(myNets) > 0 {
+		myName = geo.GetASNName(myNets[0].IP.String())
+	}
+	telemetry.Init(uint32(cfg.MyASN), myName, myNets, cfg.UpstreamInterfaces)
 
-if err := telemetry.InitRingSchema(db); err != nil {
-    log.Printf("[telemetry] ring schema init failed: %v", err)
-} else {
-    n, err := telemetry.WarmupRingFromDB(db)
-    if err != nil {
-        log.Printf("[telemetry] ring warmup failed: %v", err)
-    } else if n > 0 {
-        log.Printf("[telemetry] ring warmed up from DB: %d buckets (%.1f hours)",
-            n, float64(n)/60.0)
-    }
-}
+	if err := telemetry.InitRingSchema(db); err != nil {
+		log.Printf("[telemetry] ring schema init failed: %v", err)
+	} else {
+		n, err := telemetry.WarmupRingFromDB(db)
+		if err != nil {
+			log.Printf("[telemetry] ring warmup failed: %v", err)
+		} else if n > 0 {
+			log.Printf("[telemetry] ring warmed up from DB: %d buckets (%.1f hours)",
+				n, float64(n)/60.0)
+		}
+	}
 
-if err := telemetry.InitASNRingSchema(db); err != nil {
-    log.Printf("[telemetry] ASN ring schema init failed: %v", err)
-} else {
-    n, err := telemetry.WarmupASNRingFromDB(db)
-    if err != nil {
-        log.Printf("[telemetry] ASN ring warmup failed: %v", err)
-    } else if n > 0 {
-        log.Printf("[telemetry] ASN ring warmed up: %d slot×ASN entries", n)
-    }
-}
- 
-if err := telemetry.InitIfaceRingSchema(db); err != nil {
-    log.Printf("[telemetry] iface ring schema init failed: %v", err)
-} else {
-    n, err := telemetry.WarmupIfaceRingFromDB(db)
-    if err != nil {
-        log.Printf("[telemetry] iface ring warmup failed: %v", err)
-    } else if n > 0 {
-        log.Printf("[telemetry] iface ring warmed up: %d slot×iface entries", n)
-    }
-}
+	if err := telemetry.InitASNRingSchema(db); err != nil {
+		log.Printf("[telemetry] ASN ring schema init failed: %v", err)
+	} else {
+		n, err := telemetry.WarmupASNRingFromDB(db)
+		if err != nil {
+			log.Printf("[telemetry] ASN ring warmup failed: %v", err)
+		} else if n > 0 {
+			log.Printf("[telemetry] ASN ring warmed up: %d slot×ASN entries", n)
+		}
+	}
+
+	if err := telemetry.InitIfaceRingSchema(db); err != nil {
+		log.Printf("[telemetry] iface ring schema init failed: %v", err)
+	} else {
+		n, err := telemetry.WarmupIfaceRingFromDB(db)
+		if err != nil {
+			log.Printf("[telemetry] iface ring warmup failed: %v", err)
+		} else if n > 0 {
+			log.Printf("[telemetry] iface ring warmed up: %d slot×iface entries", n)
+		}
+	}
 
 	telemetry.StartScheduler(ctx, db)
 	log.Printf("[telemetry] aggregator ready (myASN=%d nets=%d)", cfg.MyASN, len(myNets))
 
-
-// ── FlowStore ─────────────────────────────────────────────────────────────
-if listener != nil {
-    if err := flowstore.Init(db, uint32(cfg.MyASN), myNets, cfg.UpstreamInterfaces, listener.Ranger, geo); err != nil {
-        log.Printf("[flowstore] init failed: %v", err)
-    } else {
-        log.Printf("[flowstore] ready")
-    }
-} else {
-    if err := flowstore.Init(db, uint32(cfg.MyASN), myNets, cfg.UpstreamInterfaces, nil, geo); err != nil {
-        log.Printf("[flowstore] init failed: %v", err)
-    } else {
-        log.Printf("[flowstore] ready")
-    }
-}
-
+	// ── FlowStore ─────────────────────────────────────────────────────────────
+	if listener != nil {
+		if err := flowstore.Init(db, uint32(cfg.MyASN), myNets, cfg.UpstreamInterfaces, listener.Ranger, geo); err != nil {
+			log.Printf("[flowstore] init failed: %v", err)
+		} else {
+			log.Printf("[flowstore] ready")
+		}
+	} else {
+		if err := flowstore.Init(db, uint32(cfg.MyASN), myNets, cfg.UpstreamInterfaces, nil, geo); err != nil {
+			log.Printf("[flowstore] init failed: %v", err)
+		} else {
+			log.Printf("[flowstore] ready")
+		}
+	}
 
 	// ── Protection list ───────────────────────────────────────────────────────
 	protPath := filepath.Join("etc", "exclude.detections.conf")
@@ -437,8 +427,6 @@ if listener != nil {
 		}
 	}
 
-
-
 	// ── SNMP ──────────────────────────────────────────────────────────────────
 	var ifNameCache *enrich.IFNameCache
 	if config.EnrichEnabled(cfg, "snmp") && cfg.SNMP.Enabled {
@@ -496,15 +484,15 @@ if listener != nil {
 	}
 
 	// ── Flow pipeline ─────────────────────────────────────────────────────────
-      batcher := flow.NewInsertFlowBatcher(
-          nil,  // no inserter needed
-          200,  // batch size (or cfg.Enrich.BatchSize)
-          1000*time.Millisecond, // flush interval (or cfg.Enrich.FlushIntervalMs)
-          listener.Ranger,
-          ifNameCache,
-          cfg.BGP.Listener.StoreASPath,
-          geo,
-      )
+	batcher := flow.NewInsertFlowBatcher(
+		nil,                   // no inserter needed
+		200,                   // batch size (or cfg.Enrich.BatchSize)
+		1000*time.Millisecond, // flush interval (or cfg.Enrich.FlushIntervalMs)
+		listener.Ranger,
+		ifNameCache,
+		cfg.BGP.Listener.StoreASPath,
+		geo,
+	)
 	defer batcher.Close()
 
 	log.Print("[INFO] Starting NetFlow collectors...")
@@ -526,14 +514,14 @@ if listener != nil {
 					dlog("Flow: Proto=%v Src=%v Dst=%v",
 						raw[fields.PROTOCOL], raw[fields.IPV4_SRC_ADDR], raw[fields.IPV4_DST_ADDR])
 
-// publish raw record before any conversion
-telemetry.RawTap.Publish("mikrotik", func() map[uint16]string {
-    m := make(map[uint16]string, len(raw))
-    for k, v := range raw {
-        m[k] = v.ToString()
-    }
-    return m
-}())
+					// publish raw record before any conversion
+					telemetry.RawTap.Publish("mikrotik", func() map[uint16]string {
+						m := make(map[uint16]string, len(raw))
+						for k, v := range raw {
+							m[k] = v.ToString()
+						}
+						return m
+					}())
 
 					fr := flow.ConvertToFlowRecord(raw)
 					batcher.Add(fr)
@@ -596,8 +584,8 @@ telemetry.RawTap.Publish("mikrotik", func() map[uint16]string {
 		}
 
 		if cfg.Detection.Anomaly.Enabled {
-   anom, _ := detection.StartAnomalyStack(ctx, cfg, engine, store, configPath)
-    anom.SetDB(db)
+			anom, _ := detection.StartAnomalyStack(ctx, cfg, engine, store, configPath)
+			anom.SetDB(db)
 		}
 
 		go engine.Run(ctx)
@@ -606,88 +594,79 @@ telemetry.RawTap.Publish("mikrotik", func() map[uint16]string {
 		log.Print("[INFO] Detection engine disabled")
 	}
 
+	// ── RouterOS API client ───────────────────────────────────────────────
+	var rosClient *routeros.Client
+	var um *pathfinder.UpstreamMap // <- add this here, outside the Pathfinder block
 
+	if config.AppConfig.RouterOS.Enabled {
+		rosCfg := routeros.Config{
+			Address:        config.AppConfig.RouterOS.Address,
+			Username:       config.AppConfig.RouterOS.Username,
+			Password:       config.AppConfig.RouterOS.Password,
+			InsecureTLS:    config.AppConfig.RouterOS.InsecureTLS,
+			TimeoutSeconds: config.AppConfig.RouterOS.TimeoutSeconds,
+		}
+		rosClient, err = routeros.Dial(rosCfg)
+		if err != nil {
+			log.Printf("[RouterOS] REST connection failed (non-fatal): %v", err)
+			rosClient = nil
+		} else {
+			log.Printf("[RouterOS] REST client ready (%s)", config.AppConfig.RouterOS.Address)
+			api.PathfinderROSClient = rosClient
+		}
+	}
 
+	// ── Pathfinder ────────────────────────────────────────────────────────
+	{
+		// remove: var um *pathfinder.UpstreamMap
 
+		if rosClient != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			addrs, err := rosClient.ListIPAddresses(ctx)
+			cancel()
+			if err == nil {
+				nextHopMap := routeros.BuildNextHopMap(addrs)
+				log.Printf("[Pathfinder] auto-discovered %d interface subnets for upstream resolution", len(addrs))
+				for k, v := range config.AppConfig.Pathfinder.NextHopMap {
+					nextHopMap[k] = v
+				}
+				um = pathfinder.NewUpstreamMap(
+					config.AppConfig.Pathfinder.CommunityMap,
+					config.AppConfig.Pathfinder.TransitASNMap,
+					nextHopMap,
+					config.AppConfig.MyASN,
+				)
+			} else {
+				log.Printf("[Pathfinder] RouterOS IP address fetch failed, using config only: %v", err)
+			}
+		}
 
-// ── RouterOS API client ───────────────────────────────────────────────
-var rosClient *routeros.Client
-var um *pathfinder.UpstreamMap   // <- add this here, outside the Pathfinder block
+		if um == nil {
+			um = pathfinder.NewUpstreamMap(
+				config.AppConfig.Pathfinder.CommunityMap,
+				config.AppConfig.Pathfinder.TransitASNMap,
+				config.AppConfig.Pathfinder.NextHopMap,
+				config.AppConfig.MyASN,
+			)
+		}
 
-if config.AppConfig.RouterOS.Enabled {
-    rosCfg := routeros.Config{
-        Address:        config.AppConfig.RouterOS.Address,
-        Username:       config.AppConfig.RouterOS.Username,
-        Password:       config.AppConfig.RouterOS.Password,
-        InsecureTLS:    config.AppConfig.RouterOS.InsecureTLS,
-        TimeoutSeconds: config.AppConfig.RouterOS.TimeoutSeconds,
-    }
-    rosClient, err = routeros.Dial(rosCfg)
-    if err != nil {
-        log.Printf("[RouterOS] REST connection failed (non-fatal): %v", err)
-        rosClient = nil
-    } else {
-        log.Printf("[RouterOS] REST client ready (%s)", config.AppConfig.RouterOS.Address)
-        api.PathfinderROSClient = rosClient
-    }
-}
+		if listener != nil {
+			api.PathfinderResolver = pathfinder.NewResolver(listener.Server, um)
+		} else {
+			log.Printf("[Pathfinder] BGP listener not ready, resolver unavailable")
+		}
 
-// ── Pathfinder ────────────────────────────────────────────────────────
-{
-    // remove: var um *pathfinder.UpstreamMap
+		api.PathfinderROSClient = rosClient
+		log.Printf("[Pathfinder] resolver ready")
+	}
 
-    if rosClient != nil {
-        ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-        addrs, err := rosClient.ListIPAddresses(ctx)
-        cancel()
-        if err == nil {
-            nextHopMap := routeros.BuildNextHopMap(addrs)
-            log.Printf("[Pathfinder] auto-discovered %d interface subnets for upstream resolution", len(addrs))
-            for k, v := range config.AppConfig.Pathfinder.NextHopMap {
-                nextHopMap[k] = v
-            }
-            um = pathfinder.NewUpstreamMap(
-                config.AppConfig.Pathfinder.CommunityMap,
-                config.AppConfig.Pathfinder.TransitASNMap,
-                nextHopMap,
-                config.AppConfig.MyASN,
-            )
-        } else {
-            log.Printf("[Pathfinder] RouterOS IP address fetch failed, using config only: %v", err)
-        }
-    }
-
-    if um == nil {
-        um = pathfinder.NewUpstreamMap(
-            config.AppConfig.Pathfinder.CommunityMap,
-            config.AppConfig.Pathfinder.TransitASNMap,
-            config.AppConfig.Pathfinder.NextHopMap,
-            config.AppConfig.MyASN,
-        )
-    }
-
-    if listener != nil {
-        api.PathfinderResolver = pathfinder.NewResolver(listener.Server, um)
-    } else {
-        log.Printf("[Pathfinder] BGP listener not ready, resolver unavailable")
-    }
-
-    api.PathfinderROSClient = rosClient
-    log.Printf("[Pathfinder] resolver ready")
-}
-
-// ── RIB Watcher ──────────────────────────────────────────────────────────
-if listener != nil {
-    ribWatcher := rib.New(listener.Server, um, enrichers.Geo) // <- pass um, not nil
-    go ribWatcher.Run(ctx)
-    api.RIB = ribWatcher
-    log.Printf("[rib] watcher started — adj-in polling active")
-}
-
-
-
-
-
+	// ── RIB Watcher ──────────────────────────────────────────────────────────
+	if listener != nil {
+		ribWatcher := rib.New(listener.Server, um, enrichers.Geo) // <- pass um, not nil
+		go ribWatcher.Run(ctx)
+		api.RIB = ribWatcher
+		log.Printf("[rib] watcher started — adj-in polling active")
+	}
 
 	// ── BGP Monitor ──────────────────────────────────────────────────────────
 	if rosClient != nil {
@@ -703,55 +682,49 @@ if listener != nil {
 		log.Printf("[bgpmon] disabled — RouterOS not connected")
 	}
 
+	// ── goauth ────────────────────────────────────────────────────────────────
+	if cfg.Auth.DBPath != "" {
+		cookieName := cfg.Auth.CookieName
+		if cookieName == "" {
+			cookieName = "__Host-argus-sid"
+		}
+		sessionTTL := cfg.Auth.SessionTTL
+		if sessionTTL == 0 {
+			sessionTTL = 8 * time.Hour
+		}
+		idleTimeout := cfg.Auth.IdleTimeout
+		if idleTimeout == 0 {
+			idleTimeout = 30 * time.Minute
+		}
+		authMgr, err := goauth.New(goauth.Config{
+			DBPath:        cfg.Auth.DBPath,
+			SessionDBPath: cfg.Auth.SessionDBPath,
+			SessionTTL:    sessionTTL,
+			IdleTimeout:   idleTimeout,
+			CookieName:    cookieName,
+			SecureCookie:  cfg.Auth.SecureCookie,
 
-
-
-    // ── goauth ────────────────────────────────────────────────────────────────
-    if cfg.Auth.DBPath != "" {
-        cookieName := cfg.Auth.CookieName
-        if cookieName == "" {
-            cookieName = "__Host-argus-sid"
-        }
-        sessionTTL := cfg.Auth.SessionTTL
-        if sessionTTL == 0 {
-            sessionTTL = 8 * time.Hour
-        }
-        idleTimeout := cfg.Auth.IdleTimeout
-        if idleTimeout == 0 {
-            idleTimeout = 30 * time.Minute
-        }
-        authMgr, err := goauth.New(goauth.Config{
-            DBPath:        cfg.Auth.DBPath,
-            SessionDBPath: cfg.Auth.SessionDBPath,
-            SessionTTL:    sessionTTL,
-            IdleTimeout:   idleTimeout,
-            CookieName:    cookieName,
-            SecureCookie:  cfg.Auth.SecureCookie,
-
-            // MFA / WebAuthn. MFAEncryptionKey is required by goauth; when
-            // left empty here goauth falls back to GOAUTH_MFA_ENCRYPTION_KEY.
-            MFAEncryptionKey:      cfg.Auth.MFAEncryptionKey,
-            MFAIssuer:             cfg.Auth.MFAIssuer,
-            WebAuthnRPID:          cfg.Auth.WebAuthnRPID,
-            WebAuthnRPDisplayName: cfg.Auth.WebAuthnRPDisplayName,
-            WebAuthnOrigins:       cfg.Auth.WebAuthnOrigins,
-        })
-        if err != nil {
-            log.Fatalf("[AUTH] failed to init: %v", err)
-        }
-        api.Auth = authMgr
-        defer authMgr.Close()
-        if cfg.Auth.SessionDBPath != "" {
-            log.Printf("[AUTH] session store: %s (auth db: %s)", cfg.Auth.SessionDBPath, cfg.Auth.DBPath)
-        } else {
-            log.Printf("[AUTH] session store: %s", cfg.Auth.DBPath)
-        }
-    } else {
-        log.Printf("[AUTH] db_path not configured — browser auth disabled")
-    }
- 
-
-
+			// MFA / WebAuthn. MFAEncryptionKey is required by goauth; when
+			// left empty here goauth falls back to GOAUTH_MFA_ENCRYPTION_KEY.
+			MFAEncryptionKey:      cfg.Auth.MFAEncryptionKey,
+			MFAIssuer:             cfg.Auth.MFAIssuer,
+			WebAuthnRPID:          cfg.Auth.WebAuthnRPID,
+			WebAuthnRPDisplayName: cfg.Auth.WebAuthnRPDisplayName,
+			WebAuthnOrigins:       cfg.Auth.WebAuthnOrigins,
+		})
+		if err != nil {
+			log.Fatalf("[AUTH] failed to init: %v", err)
+		}
+		api.Auth = authMgr
+		defer authMgr.Close()
+		if cfg.Auth.SessionDBPath != "" {
+			log.Printf("[AUTH] session store: %s (auth db: %s)", cfg.Auth.SessionDBPath, cfg.Auth.DBPath)
+		} else {
+			log.Printf("[AUTH] session store: %s", cfg.Auth.DBPath)
+		}
+	} else {
+		log.Printf("[AUTH] db_path not configured — browser auth disabled")
+	}
 
 	// ── API ───────────────────────────────────────────────────────────────────
 	go func() {

@@ -1,13 +1,13 @@
 package cfmapi
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
-	"context"
 )
 
 type Client struct {
@@ -17,8 +17,10 @@ type Client struct {
 }
 
 func (c *Client) http() *http.Client {
-	if c.HTTP != nil { return c.HTTP }
-	return &http.Client{ Timeout: 10 * time.Second }
+	if c.HTTP != nil {
+		return c.HTTP
+	}
+	return &http.Client{Timeout: 10 * time.Second}
 }
 
 func (c *Client) doPOST(path string, form url.Values) ([]byte, error) {
@@ -30,7 +32,9 @@ func (c *Client) doPOST(path string, form url.Values) ([]byte, error) {
 	req.Header.Set("X-Agent-Version", "Argus")
 
 	resp, err := c.http().Do(req)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= 300 {
@@ -63,9 +67,6 @@ func (c *Client) ReportUnblock(ip, source, why string) error {
 	_, err := c.doPOST("/api/blocklist/unblock", p)
 	return err
 }
-
-
-
 
 func (c *Client) Heartbeat(ctx context.Context, version, userAgent string) error {
 	if c == nil || c.BaseURL == "" || c.Token == "" {
@@ -102,5 +103,3 @@ func (c *Client) Heartbeat(ctx context.Context, version, userAgent string) error
 	}
 	return nil
 }
-
-

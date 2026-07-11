@@ -24,10 +24,10 @@ func TestClassify(t *testing.T) {
 	c := New(upstream, myNets)
 
 	tests := []struct {
-		name                       string
-		inIface, outIface          uint32
-		src, dst                   string
-		fd                         uint8
+		name                         string
+		inIface, outIface            uint32
+		src, dst                     string
+		fd                           uint8
 		wantIn, wantSrcMy, wantDstMy bool
 	}{
 		// Tier 1: interface index wins, prefix flags stay false.

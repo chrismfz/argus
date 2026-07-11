@@ -17,9 +17,9 @@ import (
 	"github.com/osrg/gobgp/v3/pkg/apiutil"
 	bgp "github.com/osrg/gobgp/v3/pkg/packet/bgp"
 	"github.com/osrg/gobgp/v3/pkg/server"
+	_ "google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
-	_ "google.golang.org/protobuf/encoding/protojson"
 )
 
 // Optional: debug logging toggle
@@ -28,11 +28,11 @@ var PathCount int
 
 // BGPListener handles the embedded BGP server
 type BGPListener struct {
-	Server    *server.BgpServer
-	Ctx       context.Context
-	Cfg       config.BGPListenerConfig
-	Ranger    cidranger.Ranger
-	PathCount int
+	Server       *server.BgpServer
+	Ctx          context.Context
+	Cfg          config.BGPListenerConfig
+	Ranger       cidranger.Ranger
+	PathCount    int
 	LocalAddress string
 }
 
@@ -48,84 +48,73 @@ func NewBGPListener(cfg config.BGPListenerConfig) *BGPListener {
 	}
 }
 
-
-
-
-
-
 func (b *BGPListener) Start() error {
-    log.Println("[BGP] Starting embedded BGP listener")
+	log.Println("[BGP] Starting embedded BGP listener")
 
-    // 1) Determine our BGP Identifier: use RouterID if set, otherwise ListenIP
-    routerID := b.Cfg.RouterID
-    if routerID == "" {
-        routerID = b.Cfg.ListenIP
-    }
+	// 1) Determine our BGP Identifier: use RouterID if set, otherwise ListenIP
+	routerID := b.Cfg.RouterID
+	if routerID == "" {
+		routerID = b.Cfg.ListenIP
+	}
 
-    // 2) Start GoBGP itself
-    if err := b.Server.StartBgp(b.Ctx, &api.StartBgpRequest{
-        Global: &api.Global{
-            Asn:        b.Cfg.LocalASN,  // your 4-byte ASN
-            RouterId:   routerID,        // BGP Identifier
-            ListenPort: 179,
-        },
-    }); err != nil {
-        return fmt.Errorf("failed to start BGP: %w", err)
-    }
-    log.Printf("[BGP] Listening for peers at %s (ASN: %d, Router-ID: %s)",
-        b.Cfg.ListenIP, b.Cfg.LocalASN, routerID)
+	// 2) Start GoBGP itself
+	if err := b.Server.StartBgp(b.Ctx, &api.StartBgpRequest{
+		Global: &api.Global{
+			Asn:        b.Cfg.LocalASN, // your 4-byte ASN
+			RouterId:   routerID,       // BGP Identifier
+			ListenPort: 179,
+		},
+	}); err != nil {
+		return fmt.Errorf("failed to start BGP: %w", err)
+	}
+	log.Printf("[BGP] Listening for peers at %s (ASN: %d, Router-ID: %s)",
+		b.Cfg.ListenIP, b.Cfg.LocalASN, routerID)
 
-    // 3) Add the MikroTik as an eBGP peer
-    if err := b.Server.AddPeer(b.Ctx, &api.AddPeerRequest{
-        Peer: &api.Peer{
-            Conf: &api.PeerConf{
-                NeighborAddress: b.Cfg.PeerIP,   // MikroTik’s IP from config
-                PeerAsn:         b.Cfg.RemoteASN,// MikroTik’s ASN
-                LocalAsn:        b.Cfg.LocalASN, // your ASN
-            },
-            Transport: &api.Transport{
-                PassiveMode:  false,            // GoBGP will actively dial out
-                LocalAddress: b.Cfg.ListenIP,   // bind from your VM’s IP
-            },
-            EbgpMultihop: &api.EbgpMultihop{
-                Enabled:     true,
-                MultihopTtl: 26,
-            },
-            AfiSafis: []*api.AfiSafi{
-                {
-                    Config: &api.AfiSafiConfig{
-                        Family: &api.Family{
-                            Afi:  api.Family_AFI_IP,
-                            Safi: api.Family_SAFI_UNICAST,
-                        },
-                    },
-                },
-                {
-                    Config: &api.AfiSafiConfig{
-                        Family: &api.Family{
-                            Afi:  api.Family_AFI_IP6,
-                            Safi: api.Family_SAFI_UNICAST,
-                        },
-                    },
-                },
-            },
-        },
-    }); err != nil {
-        return fmt.Errorf("failed to add BGP peer: %w", err)
-    }
-    log.Printf("[BGP] Added eBGP peer %s (remote ASN: %d) from local ASN %d",
-        b.Cfg.PeerIP, b.Cfg.RemoteASN, b.Cfg.LocalASN)
+	// 3) Add the MikroTik as an eBGP peer
+	if err := b.Server.AddPeer(b.Ctx, &api.AddPeerRequest{
+		Peer: &api.Peer{
+			Conf: &api.PeerConf{
+				NeighborAddress: b.Cfg.PeerIP,    // MikroTik’s IP from config
+				PeerAsn:         b.Cfg.RemoteASN, // MikroTik’s ASN
+				LocalAsn:        b.Cfg.LocalASN,  // your ASN
+			},
+			Transport: &api.Transport{
+				PassiveMode:  false,          // GoBGP will actively dial out
+				LocalAddress: b.Cfg.ListenIP, // bind from your VM’s IP
+			},
+			EbgpMultihop: &api.EbgpMultihop{
+				Enabled:     true,
+				MultihopTtl: 26,
+			},
+			AfiSafis: []*api.AfiSafi{
+				{
+					Config: &api.AfiSafiConfig{
+						Family: &api.Family{
+							Afi:  api.Family_AFI_IP,
+							Safi: api.Family_SAFI_UNICAST,
+						},
+					},
+				},
+				{
+					Config: &api.AfiSafiConfig{
+						Family: &api.Family{
+							Afi:  api.Family_AFI_IP6,
+							Safi: api.Family_SAFI_UNICAST,
+						},
+					},
+				},
+			},
+		},
+	}); err != nil {
+		return fmt.Errorf("failed to add BGP peer: %w", err)
+	}
+	log.Printf("[BGP] Added eBGP peer %s (remote ASN: %d) from local ASN %d",
+		b.Cfg.PeerIP, b.Cfg.RemoteASN, b.Cfg.LocalASN)
 
-    go b.watchUpdates()
-    go b.watchPeers()
-    return nil
+	go b.watchUpdates()
+	go b.watchPeers()
+	return nil
 }
-
-
-
-
-
-
 
 // getPrefixFromNlri now uses proto.Unmarshal for API Any with extensive debugging
 func getPrefixFromNlri(nlri *anypb.Any) (*net.IPNet, error) {
@@ -206,138 +195,130 @@ func getPrefixFromNlri(nlri *anypb.Any) (*net.IPNet, error) {
 }
 
 func (b *BGPListener) watchUpdates() {
-    var f *os.File
-    if config.AppConfig != nil && config.AppConfig.BGP.Listener.DumpEnabled {
-        var err error
-        f, err = os.Create("bgp_dump.jsonl")
-        if err != nil {
-            log.Fatalf("cannot open dump file: %v", err)
-        }
-        defer f.Close()
-    }
+	var f *os.File
+	if config.AppConfig != nil && config.AppConfig.BGP.Listener.DumpEnabled {
+		var err error
+		f, err = os.Create("bgp_dump.jsonl")
+		if err != nil {
+			log.Fatalf("cannot open dump file: %v", err)
+		}
+		defer f.Close()
+	}
 
-    log.Println("[BGP] Starting update watcher")
-    var totalPaths int
+	log.Println("[BGP] Starting update watcher")
+	var totalPaths int
 
-    err := b.Server.WatchEvent(b.Ctx, &api.WatchEventRequest{
-        Table: &api.WatchEventRequest_Table{
-            Filters: []*api.WatchEventRequest_Table_Filter{{
-                Type: api.WatchEventRequest_Table_Filter_BEST,
-                Init: true, // fetch current RIB
-            }},
-        },
-    }, func(res *api.WatchEventResponse) {
-        if table := res.GetTable(); table != nil {
-            for _, path := range table.Paths {
-                nlriAny := path.GetNlri()
-                if nlriAny == nil {
-                    continue
-                }
+	err := b.Server.WatchEvent(b.Ctx, &api.WatchEventRequest{
+		Table: &api.WatchEventRequest_Table{
+			Filters: []*api.WatchEventRequest_Table_Filter{{
+				Type: api.WatchEventRequest_Table_Filter_BEST,
+				Init: true, // fetch current RIB
+			}},
+		},
+	}, func(res *api.WatchEventResponse) {
+		if table := res.GetTable(); table != nil {
+			for _, path := range table.Paths {
+				nlriAny := path.GetNlri()
+				if nlriAny == nil {
+					continue
+				}
 
-                prefix, err := getPrefixFromNlri(nlriAny)
-                if err != nil {
-                    continue
-                }
+				prefix, err := getPrefixFromNlri(nlriAny)
+				if err != nil {
+					continue
+				}
 
-                // --- decode attributes (AS path gated by config) ---
-                var (
-                    asPath      []string
-                    localPref   uint32
-                    communities []uint32
-                )
+				// --- decode attributes (AS path gated by config) ---
+				var (
+					asPath      []string
+					localPref   uint32
+					communities []uint32
+				)
 
-                attrs, aerr := apiutil.UnmarshalPathAttributes(path.Pattrs)
-                if aerr == nil {
-                    for _, attr := range attrs {
-                        switch v := attr.(type) {
-                        case *bgp.PathAttributeCommunities:
-                            for _, c := range v.Value {
-                                communities = append(communities, c)
-                            }
+				attrs, aerr := apiutil.UnmarshalPathAttributes(path.Pattrs)
+				if aerr == nil {
+					for _, attr := range attrs {
+						switch v := attr.(type) {
+						case *bgp.PathAttributeCommunities:
+							for _, c := range v.Value {
+								communities = append(communities, c)
+							}
 
-        case *bgp.PathAttributeAsPath:
-            // ✅ ΠΑΝΤΑ κάνουμε parse το AS path για να βρούμε origin ASN
-            for _, seg := range v.Value {
-                switch p := seg.(type) {
-                case *bgp.AsPathParam:
-                    for _, asn := range p.AS {
-                        asPath = append(asPath, fmt.Sprintf("%d", asn))
-                    }
-                case *bgp.As4PathParam:
-                    for _, asn := range p.AS {
-                        asPath = append(asPath, fmt.Sprintf("%d", asn))
-                    }
-                }
-            }
+						case *bgp.PathAttributeAsPath:
+							// ✅ ΠΑΝΤΑ κάνουμε parse το AS path για να βρούμε origin ASN
+							for _, seg := range v.Value {
+								switch p := seg.(type) {
+								case *bgp.AsPathParam:
+									for _, asn := range p.AS {
+										asPath = append(asPath, fmt.Sprintf("%d", asn))
+									}
+								case *bgp.As4PathParam:
+									for _, asn := range p.AS {
+										asPath = append(asPath, fmt.Sprintf("%d", asn))
+									}
+								}
+							}
 
+						case *bgp.PathAttributeLocalPref:
+							localPref = v.Value
+						default:
+							// ignore others
+						}
+					}
+				}
 
-                        case *bgp.PathAttributeLocalPref:
-                            localPref = v.Value
-                        default:
-                            // ignore others
-                        }
-                    }
-                }
+				// origin ASN from last AS in path (if present)
+				var originASN uint32
+				if len(asPath) > 0 {
+					fmt.Sscanf(asPath[len(asPath)-1], "%d", &originASN)
+				}
 
-                // origin ASN from last AS in path (if present)
-                var originASN uint32
-                if len(asPath) > 0 {
-                    fmt.Sscanf(asPath[len(asPath)-1], "%d", &originASN)
-                }
+				entry := BGPEnrichedEntry{
+					Net:       *prefix,
+					LocalPref: localPref,
+					ASN:       originASN,
+				}
 
-                entry := BGPEnrichedEntry{
-                    Net:       *prefix,
-                    LocalPref: localPref,
-                    ASN:       originASN,
-                }
+				if config.AppConfig != nil && config.AppConfig.BGP.Listener.StoreASPath {
+					entry.ASPath = asPath
+				}
 
-    if config.AppConfig != nil && config.AppConfig.BGP.Listener.StoreASPath {
-        entry.ASPath = asPath
-    }
+				if err := b.Ranger.Insert(entry); err == nil {
+					totalPaths++
+					b.PathCount = totalPaths
+					PathCount = totalPaths
+				}
 
-                if err := b.Ranger.Insert(entry); err == nil {
-                    totalPaths++
-                    b.PathCount = totalPaths
-                    PathCount = totalPaths
-                }
+				// optional dump
+				if f != nil {
+					rawPattrs := make([]string, len(path.Pattrs))
+					for i, attrAny := range path.Pattrs {
+						rawPattrs[i] = hex.EncodeToString(attrAny.Value)
+					}
+					dump := struct {
+						NLRI      string   `json:"nlri"`
+						RawPattrs []string `json:"raw_pattrs"`
+						ASPath    []string `json:"as_path"`
+						LocalPref uint32   `json:"local_pref"`
+					}{
+						NLRI:      prefix.String(),
+						RawPattrs: rawPattrs,
+						ASPath:    asPath,
+						LocalPref: localPref,
+					}
+					if line, jerr := json.Marshal(dump); jerr == nil {
+						_, _ = f.Write(append(line, '\n'))
+					}
+				}
+			}
+		}
+	})
+	if err != nil {
+		log.Printf("[BGP] WatchEvent error (updates): %v", err)
+	}
 
-                // optional dump
-                if f != nil {
-                    rawPattrs := make([]string, len(path.Pattrs))
-                    for i, attrAny := range path.Pattrs {
-                        rawPattrs[i] = hex.EncodeToString(attrAny.Value)
-                    }
-                    dump := struct {
-                        NLRI      string   `json:"nlri"`
-                        RawPattrs []string `json:"raw_pattrs"`
-                        ASPath    []string `json:"as_path"`
-                        LocalPref uint32   `json:"local_pref"`
-                    }{
-                        NLRI:      prefix.String(),
-                        RawPattrs: rawPattrs,
-                        ASPath:    asPath,
-                        LocalPref: localPref,
-                    }
-                    if line, jerr := json.Marshal(dump); jerr == nil {
-                        _, _ = f.Write(append(line, '\n'))
-                    }
-                }
-            }
-        }
-    })
-    if err != nil {
-        log.Printf("[BGP] WatchEvent error (updates): %v", err)
-    }
-
-    log.Printf("[BGP] Initial table sync complete. Total prefixes received: %d", totalPaths)
+	log.Printf("[BGP] Initial table sync complete. Total prefixes received: %d", totalPaths)
 }
-
-
-
-
-
-
-
 
 func (b *BGPListener) watchPeers() {
 	log.Println("[BGP] Starting peer event watcher")
@@ -349,13 +330,13 @@ func (b *BGPListener) watchPeers() {
 			log.Printf("[BGP] Peer event: ASN %d, Addr %s, State %s",
 				p.Conf.PeerAsn, p.Conf.NeighborAddress, p.State.SessionState)
 
-            // Trigger the detailed logging when the peer becomes ESTABLISHED
-            if p.State.SessionState == api.PeerState_ESTABLISHED {
-                log.Printf("[BGP] Peer %s ESTABLISHED. Logging detailed info...", p.Conf.NeighborAddress)
-                b.logEstablishedPeerDetails(p.Conf.NeighborAddress)
-		b.LocalAddress = p.Transport.LocalAddress
-	        log.Printf("[BGP]   Local Address (our IP): %s", b.LocalAddress)
-            }
+			// Trigger the detailed logging when the peer becomes ESTABLISHED
+			if p.State.SessionState == api.PeerState_ESTABLISHED {
+				log.Printf("[BGP] Peer %s ESTABLISHED. Logging detailed info...", p.Conf.NeighborAddress)
+				b.logEstablishedPeerDetails(p.Conf.NeighborAddress)
+				b.LocalAddress = p.Transport.LocalAddress
+				log.Printf("[BGP]   Local Address (our IP): %s", b.LocalAddress)
+			}
 		}
 	}); err != nil {
 		log.Printf("[BGP] WatchEvent error (peers): %v", err)
@@ -409,7 +390,7 @@ func (b *BGPListener) logEstablishedPeerDetails(peerAddress string) {
 		if p.Timers != nil && p.Timers.State != nil {
 			// Uptime
 			if p.Timers.State.Uptime != nil { // Check if the Timestamp pointer is not nil
-				uptimeTime := p.Timers.State.Uptime.AsTime() // Convert to time.Time
+				uptimeTime := p.Timers.State.Uptime.AsTime()                                // Convert to time.Time
 				log.Printf("[BGP]   Uptime: %s", time.Since(uptimeTime).Round(time.Second)) // Calculate duration since uptime
 			} else {
 				log.Printf("[BGP]   Uptime: Not available (or nil)")
@@ -417,7 +398,7 @@ func (b *BGPListener) logEstablishedPeerDetails(peerAddress string) {
 
 			// Downtime
 			if p.Timers.State.Downtime != nil { // Check if the Timestamp pointer is not nil
-				downtimeTime := p.Timers.State.Downtime.AsTime() // Convert to time.Time
+				downtimeTime := p.Timers.State.Downtime.AsTime()                                                // Convert to time.Time
 				log.Printf("[BGP]   Last Downtime: %s", downtimeTime.Local().Format("2006-01-02 15:04:05 MST")) // Format for readability
 			} else {
 				log.Printf("[BGP]   Last Downtime: Not available (or nil)")
@@ -426,13 +407,10 @@ func (b *BGPListener) logEstablishedPeerDetails(peerAddress string) {
 			log.Printf("[BGP]   Timers State information not available.")
 		}
 
-
-if p.Transport != nil {
-    b.LocalAddress = p.Transport.LocalAddress
-    log.Printf("[BGP]   Local Address (our IP): %s", b.LocalAddress)
-}
-
-
+		if p.Transport != nil {
+			b.LocalAddress = p.Transport.LocalAddress
+			log.Printf("[BGP]   Local Address (our IP): %s", b.LocalAddress)
+		}
 
 		// Capabilities are in p.State.RemoteCap and p.State.LocalCap
 		remoteCaps := make([]string, 0)
@@ -485,31 +463,27 @@ if p.Transport != nil {
 	}
 }
 
-
-
 func GetPathCount() int {
 	return PathCount
 }
 
-
-
 // In bgp package
 func (b *BGPListener) WaitReady(ctx context.Context, minPrefixes int, timeout time.Duration) bool {
-    deadline := time.After(timeout)
-    tick := time.NewTicker(2 * time.Second)
-    defer tick.Stop()
-    for {
-        select {
-        case <-ctx.Done():
-            return false
-        case <-deadline:
-            log.Printf("[BGP] warm-up timeout — proceeding with %d prefixes", b.PathCount)
-            return false
-        case <-tick.C:
-            if b.PathCount >= minPrefixes {
-                log.Printf("[BGP] warm-up done, %d prefixes loaded", b.PathCount)
-                return true
-            }
-        }
-    }
+	deadline := time.After(timeout)
+	tick := time.NewTicker(2 * time.Second)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return false
+		case <-deadline:
+			log.Printf("[BGP] warm-up timeout — proceeding with %d prefixes", b.PathCount)
+			return false
+		case <-tick.C:
+			if b.PathCount >= minPrefixes {
+				log.Printf("[BGP] warm-up done, %d prefixes loaded", b.PathCount)
+				return true
+			}
+		}
+	}
 }

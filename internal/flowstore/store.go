@@ -1,16 +1,21 @@
 // Package flowstore accumulates per-ASN flow metrics in memory and
 // periodically flushes them to SQLite. Two flush cadences:
 //
-//   - Every 5 minutes → flowstore_timeline     (bytes/packets/flows + iface split)
-//   - Every 1 hour    → flowstore_top_ips,
+//   - Every 5 minutes  → flowstore_timeline     (bytes/packets/flows + iface split)
+//   - Every 30 minutes → the "detail" tables, aligned to 1800s buckets:
+//     flowstore_top_ips,
 //     flowstore_top_prefixes,
 //     flowstore_proto,
 //     flowstore_country,
 //     flowstore_ports,
 //     flowstore_tcp_flags
 //
+// (The detail tables were historically called "hourly" — the cadence has been
+// 30 minutes for a long time; identifiers now say "detail" to stop the lie.)
+//
 // A permanent flowstore_asn_meta table tracks first/last seen and lifetime
-// byte totals for every ASN encountered.
+// byte totals for every ASN encountered. Caps and retention windows come from
+// Settings (wired from the `flowstore:` config section).
 package flowstore
 
 import (
@@ -51,17 +56,72 @@ type FlowEvent struct {
 // Global is the package-level Store singleton, initialised by Init.
 var Global *Store
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// ── Settings ──────────────────────────────────────────────────────────────────
 
-const (
-	topIPs    = 50    // top IP pairs kept per (hour, asn, dir) bucket
-	topPfx    = 20    // top BGP prefixes kept per bucket
-	topPorts  = 10    // top dst ports kept per bucket
-	ipCap     = 10000 // max unique IP pairs tracked per hour bucket
-	pfxCap    = 1000  // max unique prefixes tracked per hour bucket
-	portCap   = 500   // max unique ports tracked per hour bucket
-	retention = 7     // days to keep flowstore data
-)
+// Settings carries the aggregation caps and retention windows, wired from
+// config (config.FlowstoreConfig). Zero values are normalised to the defaults
+// below; negative values mean "unlimited" (caps) or "keep forever" (retentions).
+type Settings struct {
+	RetentionDays         int // days to keep the detail tables (top IPs/prefixes/ports/…)
+	TimelineRetentionDays int // days to keep the 5-min timeline tables
+	TopIPs                int // IP pairs written per (bucket, asn, dir)
+	TopPrefixes           int
+	TopPorts              int
+	MaxTrackedIPs         int // unique IP pairs tracked in RAM per bucket
+	MaxTrackedPrefixes    int
+	MaxTrackedPorts       int
+}
+
+// DefaultSettings are the pre-Phase-1 hardcoded values.
+func DefaultSettings() Settings {
+	return Settings{
+		RetentionDays:         7,
+		TimelineRetentionDays: 30,
+		TopIPs:                50,
+		TopPrefixes:           20,
+		TopPorts:              10,
+		MaxTrackedIPs:         10000,
+		MaxTrackedPrefixes:    1000,
+		MaxTrackedPorts:       500,
+	}
+}
+
+// withDefaults fills zero fields so direct callers (tests, future embedders)
+// get sane behaviour even without config normalisation.
+func (st Settings) withDefaults() Settings {
+	d := DefaultSettings()
+	def := func(v *int, dv int) {
+		if *v == 0 {
+			*v = dv
+		}
+	}
+	def(&st.RetentionDays, d.RetentionDays)
+	def(&st.TimelineRetentionDays, d.TimelineRetentionDays)
+	def(&st.TopIPs, d.TopIPs)
+	def(&st.TopPrefixes, d.TopPrefixes)
+	def(&st.TopPorts, d.TopPorts)
+	def(&st.MaxTrackedIPs, d.MaxTrackedIPs)
+	def(&st.MaxTrackedPrefixes, d.MaxTrackedPrefixes)
+	def(&st.MaxTrackedPorts, d.MaxTrackedPorts)
+	return st
+}
+
+// underCap reports whether a map with n entries may accept another one under
+// cap. Negative cap = unlimited.
+func underCap(n, cap int) bool {
+	return cap < 0 || n < cap
+}
+
+// queryLimits returns the effective Settings for the read-side query helpers,
+// which are free functions without a Store receiver. Falls back to defaults
+// when the singleton is not initialised (tests, early startup). Negative
+// top-N values flow into SQL as `LIMIT -1`, which SQLite treats as unlimited.
+func queryLimits() Settings {
+	if Global != nil {
+		return Global.limits
+	}
+	return DefaultSettings()
+}
 
 // ── Key types ─────────────────────────────────────────────────────────────────
 
@@ -71,8 +131,8 @@ type tlKey struct {
 	dir string // "in" | "out"
 }
 
-type hourKey struct {
-	ts  int64 // hour-aligned unix epoch
+type detailKey struct {
+	ts  int64 // 30-min-aligned unix epoch (1800s buckets)
 	asn uint32
 	dir string // "in" | "out"
 }
@@ -112,8 +172,8 @@ type tlVal struct {
 	ifaces map[string]uint64 // ifaceName → bytes
 }
 
-// hourAccum holds all hourly accumulators for one (asn, dir) bucket.
-type hourAccum struct {
+// detailAccum holds all 30-min detail accumulators for one (asn, dir) bucket.
+type detailAccum struct {
 	asnName string
 	ips     map[ipKey]*ipCounter // top IPs
 	pfx     map[string]*counter  // top BGP prefixes
@@ -154,8 +214,8 @@ type Store struct {
 	// 5-min timeline accumulators — flushed and reset every 5 min.
 	tl map[tlKey]*tlVal
 
-	// Hourly accumulators — flushed and reset every hour.
-	hours map[hourKey]*hourAccum
+	// 30-min detail accumulators — flushed and reset every 30 minutes.
+	details map[detailKey]*detailAccum
 
 	// Permanent ASN metadata — never reset, written as deltas on each 5-min flush.
 	meta map[uint32]*metaAccum
@@ -165,6 +225,7 @@ type Store struct {
 	dir    *flowdir.Classifier
 	ranger cidranger.Ranger // for BGP prefix lookup on peer IPs
 	geo    *enrich.GeoIP
+	limits Settings // caps + retention, normalised via withDefaults
 }
 
 // ── Initialisation ────────────────────────────────────────────────────────────
@@ -178,20 +239,22 @@ func Init(
 	upstreamIfaces []uint32,
 	ranger cidranger.Ranger,
 	geo *enrich.GeoIP,
+	settings Settings,
 ) error {
 	if err := initSchema(db); err != nil {
 		return err
 	}
 
 	s := &Store{
-		tl:     make(map[tlKey]*tlVal),
-		hours:  make(map[hourKey]*hourAccum),
-		meta:   make(map[uint32]*metaAccum),
-		db:     db,
-		myASN:  myASN,
-		dir:    flowdir.New(upstreamIfaces, myNets),
-		ranger: ranger,
-		geo:    geo,
+		tl:      make(map[tlKey]*tlVal),
+		details: make(map[detailKey]*detailAccum),
+		meta:    make(map[uint32]*metaAccum),
+		db:      db,
+		myASN:   myASN,
+		dir:     flowdir.New(upstreamIfaces, myNets),
+		ranger:  ranger,
+		geo:     geo,
+		limits:  settings.withDefaults(),
 	}
 
 	if err := s.warmupMeta(); err != nil {
@@ -206,10 +269,10 @@ func Init(
 // loop runs the three periodic tickers.
 func (s *Store) loop() {
 	tick5m := time.NewTicker(5 * time.Minute)
-	tick1h := time.NewTicker(30 * time.Minute)
+	tickDetail := time.NewTicker(30 * time.Minute)
 	tick24h := time.NewTicker(24 * time.Hour)
 	defer tick5m.Stop()
-	defer tick1h.Stop()
+	defer tickDetail.Stop()
 	defer tick24h.Stop()
 
 	for {
@@ -218,9 +281,9 @@ func (s *Store) loop() {
 			if err := s.flush5m(); err != nil {
 				log.Printf("[flowstore] flush5m: %v", err)
 			}
-		case <-tick1h.C:
-			if err := s.flushHourly(); err != nil {
-				log.Printf("[flowstore] flushHourly: %v", err)
+		case <-tickDetail.C:
+			if err := s.flushDetail(); err != nil {
+				log.Printf("[flowstore] flushDetail: %v", err)
 			}
 		case <-tick24h.C:
 			if err := s.prune(); err != nil {
@@ -266,7 +329,7 @@ func (s *Store) Accumulate(rec *FlowEvent) {
 
 	now := time.Now()
 	ts5 := (now.Unix() / 300) * 300
-	ts1h := (now.Unix() / 1800) * 1800
+	tsDetail := (now.Unix() / 1800) * 1800
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -304,11 +367,11 @@ func (s *Store) Accumulate(rec *FlowEvent) {
 		tv.ifaces[ifaceName] += rec.Bytes
 	}
 
-	// ── hourly accumulators ───────────────────────────────────────────────────
-	hk := hourKey{ts1h, peerASN, dir}
-	ha := s.hours[hk]
+	// ── 30-min detail accumulators ────────────────────────────────────────────
+	hk := detailKey{tsDetail, peerASN, dir}
+	ha := s.details[hk]
 	if ha == nil {
-		ha = &hourAccum{
+		ha = &detailAccum{
 			asnName: peerASNName,
 			ips:     make(map[ipKey]*ipCounter),
 			pfx:     make(map[string]*counter),
@@ -316,14 +379,14 @@ func (s *Store) Accumulate(rec *FlowEvent) {
 			country: make(map[string]*counter),
 			ports:   make(map[uint16]*counter),
 		}
-		s.hours[hk] = ha
+		s.details[hk] = ha
 	}
 
 	// Top IPs
 	ik := ipKey{peerIP, localIP, rec.Proto, rec.DstPort}
 	if iv := ha.ips[ik]; iv != nil {
 		iv.add(rec.Bytes, rec.Packets)
-	} else if len(ha.ips) < ipCap {
+	} else if underCap(len(ha.ips), s.limits.MaxTrackedIPs) {
 		ha.ips[ik] = &ipCounter{
 			country: s.geoCountry(peerIP),
 			counter: counter{rec.Bytes, rec.Packets, 1},
@@ -334,7 +397,7 @@ func (s *Store) Accumulate(rec *FlowEvent) {
 	if pfx := s.lookupPrefix(peerIP); pfx != "" {
 		if pv := ha.pfx[pfx]; pv != nil {
 			pv.add(rec.Bytes, rec.Packets)
-		} else if len(ha.pfx) < pfxCap {
+		} else if underCap(len(ha.pfx), s.limits.MaxTrackedPrefixes) {
 			ha.pfx[pfx] = &counter{rec.Bytes, rec.Packets, 1}
 		}
 	}
@@ -359,7 +422,7 @@ func (s *Store) Accumulate(rec *FlowEvent) {
 	if rec.DstPort > 0 {
 		if pv := ha.ports[rec.DstPort]; pv != nil {
 			pv.add(rec.Bytes, rec.Packets)
-		} else if len(ha.ports) < portCap {
+		} else if underCap(len(ha.ports), s.limits.MaxTrackedPorts) {
 			ha.ports[rec.DstPort] = &counter{rec.Bytes, rec.Packets, 1}
 		}
 	}

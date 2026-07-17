@@ -245,17 +245,17 @@ func (s *Store) drainMetaDeltas() map[uint32]metaDelta {
 	return out
 }
 
-// ── flushHourly ───────────────────────────────────────────────────────────────
+// ── flushDetail ───────────────────────────────────────────────────────────────
 
-// flushHourly drains the hourly accumulators and writes top-N records to
-// the detail tables. Called every hour.
-func (s *Store) flushHourly() error {
+// flushDetail drains the 30-min detail accumulators and writes top-N records
+// to the detail tables. Called every 30 minutes.
+func (s *Store) flushDetail() error {
 	s.mu.Lock()
-	hours := s.hours
-	s.hours = make(map[hourKey]*hourAccum)
+	details := s.details
+	s.details = make(map[detailKey]*detailAccum)
 	s.mu.Unlock()
 
-	if len(hours) == 0 {
+	if len(details) == 0 {
 		return nil
 	}
 
@@ -265,24 +265,24 @@ func (s *Store) flushHourly() error {
 	}
 	defer tx.Rollback() //nolint:errcheck
 
-	for hk, ha := range hours {
-		if err := writeTopIPs(tx, hk, ha); err != nil {
-			log.Printf("[flowstore] flushHourly ips asn=%d: %v", hk.asn, err)
+	for hk, ha := range details {
+		if err := writeTopIPs(tx, hk, ha, s.limits.TopIPs); err != nil {
+			log.Printf("[flowstore] flushDetail ips asn=%d: %v", hk.asn, err)
 		}
-		if err := writeTopPrefixes(tx, hk, ha); err != nil {
-			log.Printf("[flowstore] flushHourly pfx asn=%d: %v", hk.asn, err)
+		if err := writeTopPrefixes(tx, hk, ha, s.limits.TopPrefixes); err != nil {
+			log.Printf("[flowstore] flushDetail pfx asn=%d: %v", hk.asn, err)
 		}
 		if err := writeProto(tx, hk, ha); err != nil {
-			log.Printf("[flowstore] flushHourly proto asn=%d: %v", hk.asn, err)
+			log.Printf("[flowstore] flushDetail proto asn=%d: %v", hk.asn, err)
 		}
 		if err := writeCountry(tx, hk, ha); err != nil {
-			log.Printf("[flowstore] flushHourly country asn=%d: %v", hk.asn, err)
+			log.Printf("[flowstore] flushDetail country asn=%d: %v", hk.asn, err)
 		}
-		if err := writePorts(tx, hk, ha); err != nil {
-			log.Printf("[flowstore] flushHourly ports asn=%d: %v", hk.asn, err)
+		if err := writePorts(tx, hk, ha, s.limits.TopPorts); err != nil {
+			log.Printf("[flowstore] flushDetail ports asn=%d: %v", hk.asn, err)
 		}
 		if err := writeTCPFlags(tx, hk, ha); err != nil {
-			log.Printf("[flowstore] flushHourly flags asn=%d: %v", hk.asn, err)
+			log.Printf("[flowstore] flushDetail flags asn=%d: %v", hk.asn, err)
 		}
 	}
 
@@ -296,7 +296,7 @@ type ipEntry struct {
 	v *ipCounter
 }
 
-func writeTopIPs(tx *sql.Tx, hk hourKey, ha *hourAccum) error {
+func writeTopIPs(tx *sql.Tx, hk detailKey, ha *detailAccum, limit int) error {
 	if len(ha.ips) == 0 {
 		return nil
 	}
@@ -307,8 +307,8 @@ func writeTopIPs(tx *sql.Tx, hk hourKey, ha *hourAccum) error {
 	sort.Slice(entries, func(i, j int) bool {
 		return entries[i].v.bytes > entries[j].v.bytes
 	})
-	if len(entries) > topIPs {
-		entries = entries[:topIPs]
+	if limit >= 0 && len(entries) > limit {
+		entries = entries[:limit]
 	}
 	stmt, err := tx.Prepare(`
 		INSERT OR REPLACE INTO flowstore_top_ips
@@ -337,7 +337,7 @@ type pfxEntry struct {
 	c   *counter
 }
 
-func writeTopPrefixes(tx *sql.Tx, hk hourKey, ha *hourAccum) error {
+func writeTopPrefixes(tx *sql.Tx, hk detailKey, ha *detailAccum, limit int) error {
 	if len(ha.pfx) == 0 {
 		return nil
 	}
@@ -348,8 +348,8 @@ func writeTopPrefixes(tx *sql.Tx, hk hourKey, ha *hourAccum) error {
 	sort.Slice(entries, func(i, j int) bool {
 		return entries[i].c.bytes > entries[j].c.bytes
 	})
-	if len(entries) > topPfx {
-		entries = entries[:topPfx]
+	if limit >= 0 && len(entries) > limit {
+		entries = entries[:limit]
 	}
 	stmt, err := tx.Prepare(`
 		INSERT OR REPLACE INTO flowstore_top_prefixes
@@ -371,7 +371,7 @@ func writeTopPrefixes(tx *sql.Tx, hk hourKey, ha *hourAccum) error {
 	return nil
 }
 
-func writeProto(tx *sql.Tx, hk hourKey, ha *hourAccum) error {
+func writeProto(tx *sql.Tx, hk detailKey, ha *detailAccum) error {
 	if len(ha.proto) == 0 {
 		return nil
 	}
@@ -395,7 +395,7 @@ func writeProto(tx *sql.Tx, hk hourKey, ha *hourAccum) error {
 	return nil
 }
 
-func writeCountry(tx *sql.Tx, hk hourKey, ha *hourAccum) error {
+func writeCountry(tx *sql.Tx, hk detailKey, ha *detailAccum) error {
 	if len(ha.country) == 0 {
 		return nil
 	}
@@ -424,7 +424,7 @@ type portEntry struct {
 	c    *counter
 }
 
-func writePorts(tx *sql.Tx, hk hourKey, ha *hourAccum) error {
+func writePorts(tx *sql.Tx, hk detailKey, ha *detailAccum, limit int) error {
 	if len(ha.ports) == 0 {
 		return nil
 	}
@@ -435,8 +435,8 @@ func writePorts(tx *sql.Tx, hk hourKey, ha *hourAccum) error {
 	sort.Slice(entries, func(i, j int) bool {
 		return entries[i].c.bytes > entries[j].c.bytes
 	})
-	if len(entries) > topPorts {
-		entries = entries[:topPorts]
+	if limit >= 0 && len(entries) > limit {
+		entries = entries[:limit]
 	}
 	stmt, err := tx.Prepare(`
 		INSERT OR REPLACE INTO flowstore_ports
@@ -458,7 +458,7 @@ func writePorts(tx *sql.Tx, hk hourKey, ha *hourAccum) error {
 	return nil
 }
 
-func writeTCPFlags(tx *sql.Tx, hk hourKey, ha *hourAccum) error {
+func writeTCPFlags(tx *sql.Tx, hk detailKey, ha *detailAccum) error {
 	if ha.tcpFlows == 0 {
 		return nil
 	}
@@ -477,26 +477,36 @@ func writeTCPFlags(tx *sql.Tx, hk hourKey, ha *hourAccum) error {
 
 // ── Prune ─────────────────────────────────────────────────────────────────────
 
-// prune deletes rows older than `retention` days from all time-series tables.
-// flowstore_asn_meta is intentionally kept forever.
+// prune deletes old rows from the time-series tables. The 5-min timeline
+// tables and the 30-min detail tables have independent retention windows
+// (timeline is cheap — keep it longer). Negative retention = keep forever.
+// flowstore_asn_meta is intentionally never pruned.
 func (s *Store) prune() error {
-	cutoff := time.Now().Unix() - int64(retention)*86400
-	tables := []string{
+	s.pruneTables(s.limits.TimelineRetentionDays, []string{
 		"flowstore_timeline",
 		"flowstore_timeline_iface",
+	})
+	s.pruneTables(s.limits.RetentionDays, []string{
 		"flowstore_top_ips",
 		"flowstore_top_prefixes",
 		"flowstore_proto",
 		"flowstore_country",
 		"flowstore_ports",
 		"flowstore_tcp_flags",
+	})
+	return nil
+}
+
+func (s *Store) pruneTables(retentionDays int, tables []string) {
+	if retentionDays < 0 {
+		return
 	}
+	cutoff := time.Now().Unix() - int64(retentionDays)*86400
 	for _, t := range tables {
 		if _, err := s.db.Exec(`DELETE FROM `+t+` WHERE ts < ?`, cutoff); err != nil {
 			log.Printf("[flowstore] prune %s: %v", t, err)
 		}
 	}
-	return nil
 }
 
 // ── Warmup ────────────────────────────────────────────────────────────────────

@@ -518,9 +518,22 @@ All endpoints require `Authorization: Bearer <token>` header and source IP in `a
 **SQLite** (`detections.sqlite`) — single file, no setup required:
 - `detections` — rule hit counts per IP, persistent across restarts
 - `blackholes` — active blackhole records with TTL and enrichment metadata
+- `blackhole_events` — full announce/withdraw/expire audit trail
 - `snapshots` — telemetry snapshots (daily/weekly/monthly/yearly + manual)
+- `flowstore_*` — per-ASN aggregates: 5-min timeline + 30-min detail tables
+  (top IPs, prefixes, ports, protocols, countries, TCP flags)
+- `telemetry_*_buckets` — per-minute global/ASN/interface time series
 
 **In-memory ring buffer** — 1440 one-minute buckets (24h) for telemetry metrics. Snapshots persist to SQLite at midnight automatically.
+
+**Retention & caps are configurable** (see the `flowstore:`, `telemetry:`, and
+`retention:` sections in `etc/config.yaml.example`). Unset values keep the
+historical defaults — flowstore detail 7d / timeline 30d with top-50 IPs,
+top-20 prefixes, top-10 ports per 30-min bucket; telemetry buckets 30d;
+detections/alert/blackhole history 90d; daily snapshots 400d. Set a value
+negative to keep data forever (retentions) or write everything tracked
+(top-N caps). argus logs its effective settings and current SQLite footprint
+at startup so you can size retention against your disk.
 
 **Log files:**
 | File | Contents |

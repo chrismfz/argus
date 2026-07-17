@@ -69,9 +69,10 @@ engine) → SQLite + dashboard + BGP blackhole actions.
    and runs actions (BGP/DNS/SQLite/CFM) lock-free — keep it that way.
 5. **SQLite discipline.** WAL mode, batched transactions on tickers (existing pattern
    in `flowstore/persist.go`), `busy_timeout`, and prune every table you create —
-   unbounded tables are bugs. All prune functions live behind the 1-minute cleanup
-   ticker in `cmd/argus/main.go` and take a retention parameter (currently called
-   with hardcoded defaults — Phase 1 lifts them to config).
+   unbounded tables are bugs. Prune functions live behind the 1-minute cleanup ticker
+   in `cmd/argus/main.go` with retentions from the `retention:` config section
+   (`config.RetentionConfig`). Convention: unset/0 = default, negative = keep
+   forever / unlimited — new knobs must honour the same semantics.
 6. **UI pages are self-contained HTML** in `internal/api/static/`, embedded via
    `embed.go`. No frameworks, no build step. Shared bits go in small plain JS/CSS files
    (like `nav-search.js`). Match the existing dark dashboard style.
@@ -91,15 +92,15 @@ engine) → SQLite + dashboard + BGP blackhole actions.
 
 ## Known gotchas (verified, as of 2026-07)
 
-- flowstore "hourly" tables actually flush every **30 minutes** (`tick1h` = 30m,
-  buckets aligned to 1800s). Naming is misleading.
-- Telemetry bucket retention is hardcoded to 30 days in `telemetry/persistence.go`
-  despite the function taking a parameter.
+- flowstore's detail tables flush every **30 minutes** (1800s buckets). They were
+  historically called "hourly"; Go identifiers now say "detail" but the on-disk
+  table names (`flowstore_top_ips` etc.) keep their original names.
 - `detection` `slack` rule action is not implemented — it logs a one-time "not
   implemented" warning (real wiring is ROADMAP Phase 4, Alerting v2).
-- Test coverage is growing but still thin: `internal/api`, `internal/detection`,
-  `internal/flowdir`, `internal/flowstore`, `internal/telemetry` have tests; enrich,
-  bgp, config, collectors cores are still untested — add tests when you touch them.
+- Test coverage is growing but still thin: `internal/api`, `internal/config`,
+  `internal/detection`, `internal/flowdir`, `internal/flowstore`,
+  `internal/telemetry` have tests; enrich, bgp, collectors cores are still
+  untested — add tests when you touch them.
 - Package-level singletons everywhere (`flowstore.Global`, `telemetry.Global`,
   `enrich.Global`, `config.AppConfig`, API package globals). Prefer passing deps;
   don't add new globals.

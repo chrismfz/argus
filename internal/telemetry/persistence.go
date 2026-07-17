@@ -378,7 +378,11 @@ func WarmupIfaceRingFromDB(db *sql.DB) (int, error) {
 // ── Prune ─────────────────────────────────────────────────────────────────────
 
 // PruneOldBuckets deletes rows older than retentionDays from all three tables.
+// Negative retention disables pruning (keep forever).
 func PruneOldBuckets(db *sql.DB, retentionDays int) error {
+	if retentionDays < 0 {
+		return nil
+	}
 	cutoff := time.Now().Unix() - int64(retentionDays)*86400
 	for _, table := range []string{
 		"telemetry_buckets",

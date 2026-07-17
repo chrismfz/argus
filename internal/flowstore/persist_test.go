@@ -23,53 +23,96 @@ func openTestDB(t *testing.T) *sql.DB {
 	return db
 }
 
-func countTimeline(t *testing.T, db *sql.DB) int {
+func countRows(t *testing.T, db *sql.DB, table string) int {
 	t.Helper()
 	var n int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM flowstore_timeline`).Scan(&n); err != nil {
-		t.Fatalf("count: %v", err)
+	if err := db.QueryRow(`SELECT COUNT(*) FROM ` + table).Scan(&n); err != nil {
+		t.Fatalf("count %s: %v", table, err)
 	}
 	return n
 }
 
-// TestPruneDropsOldRows verifies retention: timeline rows older than `retention`
-// days are deleted, recent ones survive.
-func TestPruneDropsOldRows(t *testing.T) {
+// TestPruneSplitRetention verifies the independent retention windows: detail
+// tables prune at RetentionDays while the 5-min timeline keeps rows for the
+// longer TimelineRetentionDays.
+func TestPruneSplitRetention(t *testing.T) {
 	db := openTestDB(t)
-	s := &Store{db: db}
+	s := &Store{db: db, limits: Settings{
+		RetentionDays:         7,
+		TimelineRetentionDays: 30,
+	}.withDefaults()}
 
 	now := time.Now().Unix()
-	old := now - int64(retention+1)*86400 // just past the retention window
-	recent := now - 3600                  // an hour ago
+	day := int64(86400)
 
-	insert := func(ts int64, dir string) {
+	insTimeline := func(ts int64) {
 		if _, err := db.Exec(
-			`INSERT INTO flowstore_timeline (ts, asn, dir, bytes) VALUES (?, ?, ?, ?)`,
-			ts, 65000, dir, 1000,
+			`INSERT INTO flowstore_timeline (ts, asn, dir, bytes) VALUES (?, 65000, 'in', 1)`, ts,
 		); err != nil {
-			t.Fatalf("insert: %v", err)
+			t.Fatalf("insert timeline: %v", err)
 		}
 	}
-	insert(old, "in")
-	insert(recent, "in")
-
-	if got := countTimeline(t, db); got != 2 {
-		t.Fatalf("precondition: expected 2 rows, got %d", got)
+	insDetail := func(ts int64) {
+		if _, err := db.Exec(
+			`INSERT INTO flowstore_ports (ts, asn, dir, dst_port, bytes) VALUES (?, 65000, 'in', 443, 1)`, ts,
+		); err != nil {
+			t.Fatalf("insert detail: %v", err)
+		}
 	}
+
+	insTimeline(now - 31*day) // past timeline retention → pruned
+	insTimeline(now - 10*day) // past detail retention, inside timeline → KEPT
+	insTimeline(now - day)    // recent → kept
+	insDetail(now - 10*day)   // past detail retention → pruned
+	insDetail(now - day)      // recent → kept
 
 	if err := s.prune(); err != nil {
 		t.Fatalf("prune: %v", err)
 	}
 
-	if got := countTimeline(t, db); got != 1 {
-		t.Fatalf("after prune: expected 1 surviving row, got %d", got)
+	if got := countRows(t, db, "flowstore_timeline"); got != 2 {
+		t.Fatalf("timeline: expected 2 surviving rows (10d-old must be kept), got %d", got)
+	}
+	if got := countRows(t, db, "flowstore_ports"); got != 1 {
+		t.Fatalf("detail: expected 1 surviving row, got %d", got)
+	}
+}
+
+// TestPruneKeepForever verifies negative retention disables pruning entirely.
+func TestPruneKeepForever(t *testing.T) {
+	db := openTestDB(t)
+	s := &Store{db: db, limits: Settings{
+		RetentionDays:         -1,
+		TimelineRetentionDays: -1,
+	}.withDefaults()}
+
+	old := time.Now().Unix() - 400*86400
+	if _, err := db.Exec(`INSERT INTO flowstore_timeline (ts, asn, dir, bytes) VALUES (?, 65000, 'in', 1)`, old); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO flowstore_ports (ts, asn, dir, dst_port, bytes) VALUES (?, 65000, 'in', 443, 1)`, old); err != nil {
+		t.Fatalf("insert: %v", err)
 	}
 
-	var survivingTs int64
-	if err := db.QueryRow(`SELECT ts FROM flowstore_timeline`).Scan(&survivingTs); err != nil {
-		t.Fatalf("scan surviving: %v", err)
+	if err := s.prune(); err != nil {
+		t.Fatalf("prune: %v", err)
 	}
-	if survivingTs != recent {
-		t.Fatalf("wrong row survived: got ts=%d, want the recent ts=%d", survivingTs, recent)
+	if countRows(t, db, "flowstore_timeline")+countRows(t, db, "flowstore_ports") != 2 {
+		t.Fatal("negative retention must keep all rows")
+	}
+}
+
+// TestSettingsWithDefaults confirms zero → default and negative passes through.
+func TestSettingsWithDefaults(t *testing.T) {
+	got := Settings{}.withDefaults()
+	if got != DefaultSettings() {
+		t.Fatalf("zero Settings must resolve to defaults, got %+v", got)
+	}
+	neg := Settings{TopIPs: -1, RetentionDays: -1}.withDefaults()
+	if neg.TopIPs != -1 || neg.RetentionDays != -1 {
+		t.Fatalf("negative values must pass through, got %+v", neg)
+	}
+	if neg.TopPorts != 10 || neg.TimelineRetentionDays != 30 {
+		t.Fatalf("unset fields must still default, got %+v", neg)
 	}
 }

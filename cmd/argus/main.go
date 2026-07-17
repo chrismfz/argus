@@ -41,6 +41,7 @@ import (
 
 	"argus/internal/flowstore"
 	"github.com/chrismfz/goauth"
+	"github.com/yl2chen/cidranger"
 )
 
 var debug bool
@@ -61,6 +62,22 @@ Options:
   -c, --config FILE    Path to config file (default: auto-detect)
   --debug              Enable debug output
   -v, --version        Show version`)
+}
+
+// logDiskBudget logs the current on-disk SQLite footprint at startup so
+// operators can judge whether the configured retention windows fit their disk.
+// (Effective retention/cap settings are logged by config.LogStartup.)
+func logDiskBudget() {
+	var total int64
+	for _, f := range []string{"detections.sqlite", "detections.sqlite-wal", "detections.sqlite-shm"} {
+		if st, err := os.Stat(f); err == nil {
+			total += st.Size()
+		}
+	}
+	if total > 0 {
+		log.Printf("[CFG] storage: current SQLite footprint %.1f MB (grows with retention settings — see README § Storage)",
+			float64(total)/(1024*1024))
+	}
 }
 
 func handleSignals(cancel context.CancelFunc) {
@@ -212,24 +229,22 @@ func main() {
 				if err := detection.CleanupExpiredBlackholes(db); err != nil {
 					log.Printf("[WARN] Periodic blackhole cleanup error: %v", err)
 				}
-				// Purge risk_events older than 7 days
-				if err := detection.PurgeOldRiskEvents(db, 7*24*time.Hour); err != nil {
+				// Retention windows come from the `retention:` config section
+				// (defaults preserve the historical values; negative = keep forever).
+				if err := detection.PurgeOldRiskEvents(db, cfg.Retention.RiskEvents); err != nil {
 					log.Printf("[WARN] Periodic risk_events purge error: %v", err)
 				}
-				// Prune blackhole_events: 90 days retention, hard cap 10k rows
-				if err := detection.PruneBlackholeEvents(db, 90*24*time.Hour, 10000); err != nil {
+				if err := detection.PruneBlackholeEvents(db, cfg.Retention.BlackholeEvents, cfg.Retention.BlackholeEventsMaxRow); err != nil {
 					log.Printf("[WARN] Periodic blackhole_events prune error: %v", err)
 				}
-				// Prune detections: 90 days retention (by last_seen)
-				if err := detection.PruneDetections(db, 90*24*time.Hour); err != nil {
+				if err := detection.PruneDetections(db, cfg.Retention.Detections); err != nil {
 					log.Printf("[WARN] Periodic detections prune error: %v", err)
 				}
-				// Prune alert_events: 90 days retention (cascades to deliveries)
-				if err := alerter.PruneEvents(db, 90*24*time.Hour); err != nil {
+				if err := alerter.PruneEvents(db, cfg.Retention.AlertEvents); err != nil {
 					log.Printf("[WARN] Periodic alert_events prune error: %v", err)
 				}
-				// Prune daily snapshots: 400 days retention (weekly/monthly/yearly/manual kept)
-				if err := telemetry.PruneSnapshots(db, 400*24*time.Hour); err != nil {
+				// Only 'daily' snapshots are pruned; weekly/monthly/yearly/manual are kept.
+				if err := telemetry.PruneSnapshots(db, cfg.Retention.SnapshotsDaily); err != nil {
 					log.Printf("[WARN] Periodic snapshots prune error: %v", err)
 				}
 
@@ -340,23 +355,30 @@ func main() {
 		}
 	}
 
-	telemetry.StartScheduler(ctx, db)
+	telemetry.StartScheduler(ctx, db, cfg.Telemetry.BucketRetentionDays)
 	log.Printf("[telemetry] aggregator ready (myASN=%d nets=%d)", cfg.MyASN, len(myNets))
 
 	// ── FlowStore ─────────────────────────────────────────────────────────────
-	if listener != nil {
-		if err := flowstore.Init(db, uint32(cfg.MyASN), myNets, cfg.UpstreamInterfaces, listener.Ranger, geo); err != nil {
-			log.Printf("[flowstore] init failed: %v", err)
-		} else {
-			log.Printf("[flowstore] ready")
-		}
-	} else {
-		if err := flowstore.Init(db, uint32(cfg.MyASN), myNets, cfg.UpstreamInterfaces, nil, geo); err != nil {
-			log.Printf("[flowstore] init failed: %v", err)
-		} else {
-			log.Printf("[flowstore] ready")
-		}
+	fsSettings := flowstore.Settings{
+		RetentionDays:         cfg.Flowstore.RetentionDays,
+		TimelineRetentionDays: cfg.Flowstore.TimelineRetentionDays,
+		TopIPs:                cfg.Flowstore.TopIPs,
+		TopPrefixes:           cfg.Flowstore.TopPrefixes,
+		TopPorts:              cfg.Flowstore.TopPorts,
+		MaxTrackedIPs:         cfg.Flowstore.MaxTrackedIPs,
+		MaxTrackedPrefixes:    cfg.Flowstore.MaxTrackedPrefixes,
+		MaxTrackedPorts:       cfg.Flowstore.MaxTrackedPorts,
 	}
+	var flowRanger cidranger.Ranger
+	if listener != nil {
+		flowRanger = listener.Ranger
+	}
+	if err := flowstore.Init(db, uint32(cfg.MyASN), myNets, cfg.UpstreamInterfaces, flowRanger, geo, fsSettings); err != nil {
+		log.Printf("[flowstore] init failed: %v", err)
+	} else {
+		log.Printf("[flowstore] ready")
+	}
+	logDiskBudget()
 
 	// ── Protection list ───────────────────────────────────────────────────────
 	protPath := filepath.Join("etc", "exclude.detections.conf")

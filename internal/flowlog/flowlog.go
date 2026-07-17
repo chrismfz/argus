@@ -40,21 +40,22 @@ type Config struct {
 
 // Row is one enriched flow record. Defined here (not in the flow package) so
 // flowlog has no import cycle; the batcher maps *flow.FlowRecord → Row.
+// JSON tags shape the /debug/flowlog API consumed by the Flow Explorer UI.
 type Row struct {
-	Ts       int64 // unix seconds (flow end)
-	SrcIP    string
-	DstIP    string
-	SrcPort  uint16
-	DstPort  uint16
-	Proto    uint8
-	TCPFlags uint8
-	Bytes    uint64
-	Packets  uint64
-	InIface  uint32
-	OutIface uint32
-	SrcAS    uint32
-	DstAS    uint32
-	Dir      string // "in" | "out" | ""
+	Ts       int64  `json:"ts"` // unix seconds (flow end)
+	SrcIP    string `json:"src_ip"`
+	DstIP    string `json:"dst_ip"`
+	SrcPort  uint16 `json:"src_port"`
+	DstPort  uint16 `json:"dst_port"`
+	Proto    uint8  `json:"proto"`
+	TCPFlags uint8  `json:"tcp_flags"`
+	Bytes    uint64 `json:"bytes"`
+	Packets  uint64 `json:"packets"`
+	InIface  uint32 `json:"in_iface"`
+	OutIface uint32 `json:"out_iface"`
+	SrcAS    uint32 `json:"src_as"`
+	DstAS    uint32 `json:"dst_as"`
+	Dir      string `json:"dir"` // "in" | "out" | ""
 }
 
 // Logger owns the flow-log database and its background writer + pruner.

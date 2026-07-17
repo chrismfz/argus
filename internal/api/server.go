@@ -329,6 +329,10 @@ func Start() {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write(dashboardHTML)
 	}))
+	mainMux.HandleFunc("/flows", WithMainIPOnly(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(flowsHTML)
+	}))
 	mainMux.HandleFunc("/static/nav-search.js", WithMainIPOnly(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
 		w.Write(navSearchJS)

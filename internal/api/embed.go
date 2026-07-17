@@ -29,5 +29,8 @@ var asnHTML []byte
 //go:embed static/ip.html
 var ipHTML []byte
 
+//go:embed static/flows.html
+var flowsHTML []byte
+
 //go:embed static/nav-search.js
 var navSearchJS []byte

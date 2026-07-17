@@ -63,6 +63,9 @@ Self-contained, embedded HTML served directly from the argus binary. No Grafana,
 - **History** — per-ASN historical comparison across daily/weekly/monthly/yearly snapshots
 - **Snapshots** — manual snapshots with notes; automatic midnight snapshots stored in SQLite
 - **Upstreams** — per-upstream-interface throughput charts (Synapsecom, GR-IX, failover), upstream × ASN Sankey
+- **Flows** — Flow Explorer over the raw flow log (filters, time-range chips,
+  traffic-over-time + top-talkers charts, CSV export) and Daily History charts
+  (per-IP daily in/out, per-ASN stacked top talkers) from the Tier-2 rollups
 - **⚡ Live Flows** — real-time flow debug table with direction analysis, IP/ASN filter, mismatch highlighting
 - **🔬 Raw Fields** — raw NetFlow field inspector (field ID → raw value), freeze-on-hover, sample rate control
 

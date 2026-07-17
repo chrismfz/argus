@@ -255,6 +255,9 @@ ip_profile:
 flowstore:
   retention_days: 7            # 30-min detail tables (top IPs/prefixes/ports, proto, country, TCP flags)
   timeline_retention_days: 30  # 5-min per-ASN timeline (cheap — safe to raise)
+  daily_retention_days: 730    # Tier-2 daily rollups: each complete day's detail is rolled up
+                               #   (top IPs/prefixes/ports/countries/proto per ASN + per-IP totals)
+                               #   before the detail is pruned, and kept this long (2 years). -1 = forever
   top_ips: 50                  # IP pairs written per (30-min bucket, ASN, direction); -1 = all tracked
   top_prefixes: 20
   top_ports: 10

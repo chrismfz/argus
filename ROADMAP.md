@@ -123,13 +123,17 @@ Tiered rollups — degrade gracefully instead of falling off a cliff:
       the 1-min prune tick (transient overshoot under bursts + WAL on top); prune
       deletes by insertion order not strictly by timestamp; IPv6 lookups are exact
       string matches (no canonicalisation) — revisit if they bite.
-- [ ] **Tier 1: 5-min detail** (current tables) — retention e.g. 14–30 days.
-- [ ] **Tier 2: daily rollups** of the detail tables (top IPs/prefixes/ports/countries
-      per ASN per day) — retention 1–2 years. Cheap: computed at prune time from
-      Tier 1 before deletion.
-- [ ] **Tier 3: forever** — `flowstore_asn_meta` lifetime totals (already exists).
-- [ ] Per-IP daily rollup independent of ASN top-N (so a quiet IP's history is not
-      lost just because it never made a top-50 bucket) — feeds the `ip.html` profile page.
+- [x] **Tier 1: 5-min detail** (current tables) — retention now configurable
+      (`retention_days` / `timeline_retention_days`, Phase 1).
+- [x] **Tier 2: daily rollups** of the detail tables (top IPs/prefixes/ports/countries/
+      proto per ASN per day) — `internal/flowstore/rollup.go`, kept `daily_retention_days`
+      (default 730). Rolled at the 24h tick (and startup catch-up) BEFORE the detail
+      prune, idempotent per complete day. `GET /debug/rollup?asn=…`. *(PR: phase-2 rollups)*
+- [x] **Tier 3: forever** — `flowstore_asn_meta` lifetime totals (already existed).
+- [x] Per-IP daily rollup independent of ASN top-N (`flowstore_daily_ip_totals`) so a
+      quiet IP's history survives even if it never made a top-N bucket. Query
+      `GET /debug/rollup?ip=…`; ready to feed the `ip.html` profile page (Phase 3 UI).
+      *(PR: phase-2 rollups)*
 - [ ] Evaluate DuckDB/Parquet sidecar for Tier 0 **only if** SQLite shows real limits
       at target volumes. Not before.
 

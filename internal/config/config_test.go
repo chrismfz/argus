@@ -26,7 +26,7 @@ func TestStorageDefaults(t *testing.T) {
 	cfg := loadFromYAML(t, "my_asn: 65000\n")
 
 	fs := cfg.Flowstore
-	if fs.RetentionDays != 7 || fs.TimelineRetentionDays != 30 {
+	if fs.RetentionDays != 7 || fs.TimelineRetentionDays != 30 || fs.DailyRetentionDays != 730 {
 		t.Fatalf("flowstore retention defaults wrong: %+v", fs)
 	}
 	if fs.TopIPs != 50 || fs.TopPrefixes != 20 || fs.TopPorts != 10 {

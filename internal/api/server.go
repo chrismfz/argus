@@ -335,6 +335,7 @@ func Start() {
 	}))
 	mainMux.HandleFunc("/debug/flows", WithMainIPOnly(handleFlowsDebug))
 	mainMux.HandleFunc("/debug/flowlog", WithMainIPOnly(handleFlowLog))
+	mainMux.HandleFunc("/debug/rollup", WithMainIPOnly(handleDailyRollup))
 	mainMux.HandleFunc("/tel/flows/stream", WithMainIPOnly(handleFlowsStream))
 	mainMux.HandleFunc("/debug/rawflows", WithMainIPOnly(handleRawFlowsDebug))
 	mainMux.HandleFunc("/tel/rawflows/stream", WithMainIPOnly(handleRawFlowsStream))

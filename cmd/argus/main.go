@@ -364,6 +364,7 @@ func main() {
 	fsSettings := flowstore.Settings{
 		RetentionDays:         cfg.Flowstore.RetentionDays,
 		TimelineRetentionDays: cfg.Flowstore.TimelineRetentionDays,
+		DailyRetentionDays:    cfg.Flowstore.DailyRetentionDays,
 		TopIPs:                cfg.Flowstore.TopIPs,
 		TopPrefixes:           cfg.Flowstore.TopPrefixes,
 		TopPorts:              cfg.Flowstore.TopPorts,

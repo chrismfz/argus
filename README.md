@@ -522,6 +522,12 @@ All endpoints require `Authorization: Bearer <token>` header and source IP in `a
 - `snapshots` — telemetry snapshots (daily/weekly/monthly/yearly + manual)
 - `flowstore_*` — per-ASN aggregates: 5-min timeline + 30-min detail tables
   (top IPs, prefixes, ports, protocols, countries, TCP flags)
+- `flowstore_daily_*` — Tier-2 daily rollups: each complete day's detail is
+  rolled up (top IPs/prefixes/ports/countries/proto per ASN, plus a per-IP daily
+  total that survives even for IPs that never topped an ASN bucket) and kept far
+  longer (`daily_retention_days`, default 2 years) so per-ASN history degrades
+  gracefully instead of vanishing at the 7-day detail cliff. Inspect via
+  `GET /debug/rollup?ip=<ip>` or `?asn=<n>&days=<n>`
 - `telemetry_*_buckets` — per-minute global/ASN/interface time series
 
 **Raw flow log** (`flows.sqlite`, optional — off by default) — the forensic

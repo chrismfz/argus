@@ -64,6 +64,7 @@ var Global *Store
 type Settings struct {
 	RetentionDays         int // days to keep the detail tables (top IPs/prefixes/ports/…)
 	TimelineRetentionDays int // days to keep the 5-min timeline tables
+	DailyRetentionDays    int // days to keep the Tier-2 daily rollups (default 730 = 2y)
 	TopIPs                int // IP pairs written per (bucket, asn, dir)
 	TopPrefixes           int
 	TopPorts              int
@@ -72,11 +73,13 @@ type Settings struct {
 	MaxTrackedPorts       int
 }
 
-// DefaultSettings are the pre-Phase-1 hardcoded values.
+// DefaultSettings are the pre-Phase-1 hardcoded values (plus the Phase-2 daily
+// rollup retention).
 func DefaultSettings() Settings {
 	return Settings{
 		RetentionDays:         7,
 		TimelineRetentionDays: 30,
+		DailyRetentionDays:    730,
 		TopIPs:                50,
 		TopPrefixes:           20,
 		TopPorts:              10,
@@ -97,6 +100,7 @@ func (st Settings) withDefaults() Settings {
 	}
 	def(&st.RetentionDays, d.RetentionDays)
 	def(&st.TimelineRetentionDays, d.TimelineRetentionDays)
+	def(&st.DailyRetentionDays, d.DailyRetentionDays)
 	def(&st.TopIPs, d.TopIPs)
 	def(&st.TopPrefixes, d.TopPrefixes)
 	def(&st.TopPorts, d.TopPorts)
@@ -244,6 +248,9 @@ func Init(
 	if err := initSchema(db); err != nil {
 		return err
 	}
+	if err := initRollupSchema(db); err != nil {
+		return err
+	}
 
 	s := &Store{
 		tl:      make(map[tlKey]*tlVal),
@@ -259,6 +266,12 @@ func Init(
 
 	if err := s.warmupMeta(); err != nil {
 		log.Printf("[flowstore] meta warmup failed: %v", err)
+	}
+
+	// Catch up any complete days that ended while argus was down, before the
+	// first scheduled rollup 24h from now.
+	if err := s.rollupDaily(); err != nil {
+		log.Printf("[flowstore] startup rollup: %v", err)
 	}
 
 	Global = s
@@ -286,9 +299,15 @@ func (s *Store) loop() {
 				log.Printf("[flowstore] flushDetail: %v", err)
 			}
 		case <-tick24h.C:
+			// Roll completed days into the Tier-2 daily tables BEFORE the detail
+			// prune deletes them, then prune both detail and daily tables.
+			if err := s.rollupDaily(); err != nil {
+				log.Printf("[flowstore] rollup: %v", err)
+			}
 			if err := s.prune(); err != nil {
 				log.Printf("[flowstore] prune: %v", err)
 			}
+			s.pruneDaily()
 		}
 	}
 }

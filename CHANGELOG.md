@@ -7,6 +7,19 @@ Every behavior-changing PR must add an entry under **Unreleased**.
 
 ## [Unreleased]
 
+### Added
+- **Phase 2 (Tier 2) — daily rollups** (`internal/flowstore/rollup.go`). Each
+  complete day's 30-min detail is aggregated into `flowstore_daily_*` tables (top
+  IPs/prefixes/ports/countries/proto per ASN, plus a per-IP daily total that
+  survives even for IPs that never topped an ASN bucket) BEFORE the detail is
+  pruned, and kept `daily_retention_days` (default 730 = 2 years, config knob).
+  So per-ASN history degrades gracefully instead of vanishing at the 7-day detail
+  cliff. Rollup runs at the 24h prune tick and on startup (downtime catch-up), is
+  idempotent per complete day, and only rolls fully-ended days. Read via
+  `GET /debug/rollup?ip=<ip>` (per-IP daily history) or `?asn=<n>&days=<n>` (ASN
+  daily top-IPs). Tests cover aggregation, top-N cut, per-IP totals, idempotency,
+  incomplete-day skipping, and retention pruning. UI wiring is Phase 3.
+
 ### Fixed
 - **flowlog hardening** (from an independent review of the Tier-0 flow log):
   - Prune now measures **live data** (`page_count − freelist_count`), not total

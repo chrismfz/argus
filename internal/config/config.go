@@ -216,6 +216,7 @@ type FlowLogConfig struct {
 type FlowstoreConfig struct {
 	RetentionDays         int `yaml:"retention_days"`          // detail tables (top IPs/prefixes/ports/…), default 7
 	TimelineRetentionDays int `yaml:"timeline_retention_days"` // 5-min timeline tables, default 30
+	DailyRetentionDays    int `yaml:"daily_retention_days"`    // Tier-2 daily rollups, default 730 (2 years)
 	TopIPs                int `yaml:"top_ips"`                 // IP pairs written per (bucket, asn, dir), default 50
 	TopPrefixes           int `yaml:"top_prefixes"`            // default 20
 	TopPorts              int `yaml:"top_ports"`               // default 10
@@ -370,6 +371,7 @@ func applyStorageDefaults(cfg *Config) {
 	fs := &cfg.Flowstore
 	defInt(&fs.RetentionDays, 7)
 	defInt(&fs.TimelineRetentionDays, 30)
+	defInt(&fs.DailyRetentionDays, 730)
 	defInt(&fs.TopIPs, 50)
 	defInt(&fs.TopPrefixes, 20)
 	defInt(&fs.TopPorts, 10)
@@ -448,8 +450,8 @@ func EnrichEnabled(cfg *Config, name string) bool {
 // LogStartup prints the effective configuration at startup.
 func LogStartup(cfg *Config) {
 	fs, tel, r := cfg.Flowstore, cfg.Telemetry, cfg.Retention
-	log.Printf("[CFG] storage: flowstore(detail=%dd timeline=%dd top{ips:%d,pfx:%d,ports:%d} track{ips:%d,pfx:%d,ports:%d}) telemetry_buckets=%dd",
-		fs.RetentionDays, fs.TimelineRetentionDays,
+	log.Printf("[CFG] storage: flowstore(detail=%dd timeline=%dd daily=%dd top{ips:%d,pfx:%d,ports:%d} track{ips:%d,pfx:%d,ports:%d}) telemetry_buckets=%dd",
+		fs.RetentionDays, fs.TimelineRetentionDays, fs.DailyRetentionDays,
 		fs.TopIPs, fs.TopPrefixes, fs.TopPorts,
 		fs.MaxTrackedIPs, fs.MaxTrackedPrefixes, fs.MaxTrackedPorts,
 		tel.BucketRetentionDays)

@@ -67,12 +67,16 @@ func QueryASNDailyTopIPs(db *sql.DB, asn uint32, maxDays int) ([]DailyIPRow, err
 	if maxDays <= 0 {
 		maxDays = 30
 	}
+	if maxDays > 400 {
+		maxDays = 400 // bound the scan / response size
+	}
 	cutoff := dayStart(time.Now().UTC().Unix()) - int64(maxDays)*daySeconds
 	rows, err := db.Query(`
 		SELECT day, dir, peer_ip, local_ip, proto, dst_port, country, bytes, packets, flows
 		FROM flowstore_daily_ips
 		WHERE asn = ? AND day >= ?
-		ORDER BY day DESC, bytes DESC`, asn, cutoff)
+		ORDER BY day DESC, bytes DESC
+		LIMIT 50000`, asn, cutoff)
 	if err != nil {
 		return nil, err
 	}

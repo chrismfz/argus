@@ -19,6 +19,12 @@ Every behavior-changing PR must add an entry under **Unreleased**.
   `GET /debug/rollup?ip=<ip>` (per-IP daily history) or `?asn=<n>&days=<n>` (ASN
   daily top-IPs). Tests cover aggregation, top-N cut, per-IP totals, idempotency,
   incomplete-day skipping, and retention pruning. UI wiring is Phase 3.
+  Hardened after an independent pre-merge review: the detail prune is skipped
+  when a rollup errors (so an un-rolled day's detail is never deleted); the scan
+  window is decoupled from detail retention with a 60-day floor (catches downtime
+  gaps) and an explicit `flowstore_rollup_done` marker (settled/empty days are
+  rolled once, never re-scanned); a grace period lets the final detail bucket
+  flush before a day is marked done; and the ASN daily query is bounded.
 
 ### Fixed
 - **flowlog hardening** (from an independent review of the Tier-0 flow log):

@@ -43,7 +43,7 @@ func TestRollupAggregatesAndCaps(t *testing.T) {
 	s := &Store{db: db, limits: Settings{TopIPs: 50}.withDefaults()}
 
 	// Use yesterday so rollupDaily treats it as a complete day.
-	day := dayStart(time.Now().UTC().Unix()) - daySeconds
+	day := dayStart(time.Now().UTC().Unix()) - 2*daySeconds
 	b0 := day + 0*1800     // first 30-min bucket
 	b1 := day + 1*1800     // second bucket (same day)
 	other := day + 12*3600 // noon, same day
@@ -98,7 +98,7 @@ func TestRollupAggregatesAndCaps(t *testing.T) {
 func TestRollupIdempotent(t *testing.T) {
 	db := openRollupDB(t)
 	s := &Store{db: db, limits: DefaultSettings()}
-	day := dayStart(time.Now().UTC().Unix()) - daySeconds
+	day := dayStart(time.Now().UTC().Unix()) - 2*daySeconds
 	insTopIP(t, db, day+1800, 100, "in", "203.0.113.5", 443, 1000)
 
 	if err := s.rollupDaily(); err != nil {
@@ -120,6 +120,63 @@ func TestRollupIdempotent(t *testing.T) {
 	db.QueryRow(`SELECT bytes FROM flowstore_daily_ip_totals WHERE day=? AND peer_ip='203.0.113.5'`, day).Scan(&total)
 	if total != 1000 {
 		t.Fatalf("rollupOneDay not idempotent: total=%d", total)
+	}
+}
+
+// TestRollupWindowExceedsRetention is the F2 regression: the rollup scan window
+// must NOT be tied to detail retention, so a day older than RetentionDays (e.g.
+// detail that survived a downtime gap) is still rolled before it can be pruned.
+// With the old window = min(RetentionDays, 60), a 15-day-old day at retention=7
+// was silently skipped.
+func TestRollupWindowExceedsRetention(t *testing.T) {
+	db := openRollupDB(t)
+	s := &Store{db: db, limits: Settings{RetentionDays: 7}.withDefaults()}
+
+	day := dayStart(time.Now().UTC().Unix()) - 15*daySeconds // older than 7d retention
+	insTopIP(t, db, day+1800, 100, "in", "203.0.113.5", 443, 1234)
+
+	if err := s.rollupDaily(); err != nil {
+		t.Fatalf("rollupDaily: %v", err)
+	}
+	var total int64
+	err := db.QueryRow(`SELECT bytes FROM flowstore_daily_ip_totals
+		WHERE day=? AND peer_ip='203.0.113.5'`, day).Scan(&total)
+	if err != nil {
+		t.Fatalf("15-day-old day was not rolled (window tied to retention?): %v", err)
+	}
+	if total != 1234 {
+		t.Fatalf("rolled value wrong: %d", total)
+	}
+}
+
+// TestRollupEmptyDayMarkedOnce is the F5/F6 regression: a day with no detail is
+// still marked done (via the marker table) and not re-rolled every tick.
+func TestRollupEmptyDayMarkedOnce(t *testing.T) {
+	db := openRollupDB(t)
+	s := &Store{db: db, limits: Settings{RetentionDays: 7}.withDefaults()}
+
+	if err := s.rollupDaily(); err != nil {
+		t.Fatalf("rollupDaily: %v", err)
+	}
+	var markers int
+	db.QueryRow(`SELECT COUNT(*) FROM flowstore_rollup_done`).Scan(&markers)
+	if markers == 0 {
+		t.Fatal("expected settled days to be marked done even with no detail")
+	}
+	// A settled empty day is marked done.
+	day := dayStart(time.Now().UTC().Unix()) - 3*daySeconds
+	var one int
+	if err := db.QueryRow(`SELECT 1 FROM flowstore_rollup_done WHERE day=?`, day).Scan(&one); err != nil {
+		t.Fatalf("empty settled day not marked done: %v", err)
+	}
+	// Re-running does not change the marker count (no re-roll churn).
+	if err := s.rollupDaily(); err != nil {
+		t.Fatalf("rollupDaily 2: %v", err)
+	}
+	var markers2 int
+	db.QueryRow(`SELECT COUNT(*) FROM flowstore_rollup_done`).Scan(&markers2)
+	if markers2 != markers {
+		t.Fatalf("marker count changed on re-run (%d -> %d): empty days re-scanned?", markers, markers2)
 	}
 }
 

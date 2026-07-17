@@ -20,7 +20,20 @@ import (
 	"time"
 )
 
-const daySeconds = 86400
+const (
+	daySeconds = 86400
+	// rollupMinWindowDays is the floor on how far back rollupDaily scans for
+	// un-rolled days — enough to catch a multi-week downtime gap regardless of
+	// how short the detail retention is.
+	rollupMinWindowDays = 60
+	// rollupMaxWindowDays caps the scan (and the initial backfill against a DB
+	// that already holds a lot of detail). The done-marker makes re-scanning this
+	// window cheap (mostly skips).
+	rollupMaxWindowDays = 400
+	// rollupGraceSeconds delays rolling a just-ended day so the 30-min detail
+	// flush has time to persist its final bucket before the day is marked done.
+	rollupGraceSeconds = 3600
+)
 
 func initRollupSchema(db *sql.DB) error {
 	_, err := db.Exec(`
@@ -101,6 +114,11 @@ func initRollupSchema(db *sql.DB) error {
 		PRIMARY KEY (day, peer_ip, dir)
 	);
 	CREATE INDEX IF NOT EXISTS idx_fsdiptot_ip ON flowstore_daily_ip_totals(peer_ip, day DESC);
+
+	-- Explicit "day rolled" marker. Presence means the day was rolled (possibly
+	-- to zero rows), so empty/quiet days are not re-scanned every tick and a day
+	-- is never rolled twice even after its daily rows are pruned.
+	CREATE TABLE IF NOT EXISTS flowstore_rollup_done (day INTEGER PRIMARY KEY);
 	`)
 	return err
 }
@@ -108,23 +126,37 @@ func initRollupSchema(db *sql.DB) error {
 // dayStart returns the UTC-midnight epoch for the day containing ts.
 func dayStart(ts int64) int64 { return (ts / daySeconds) * daySeconds }
 
-// rollupDue rolls every complete day still inside the detail-retention window
-// that has not been rolled yet. "Complete" means the day has fully ended
-// (day+86400 <= today's start), so its detail rows are final. Runs before the
-// detail prune, and again at startup to catch up after downtime.
-func (s *Store) rollupDaily() error {
-	todayStart := dayStart(time.Now().UTC().Unix())
-
-	// Oldest day whose detail still exists. Detail prune keeps RetentionDays;
-	// a negative retention means "keep forever", so cap the scan window to a
-	// sane bound to avoid an unbounded backfill.
-	windowDays := s.limits.RetentionDays
-	if windowDays < 0 || windowDays > 60 {
-		windowDays = 60
+// rollupWindowDays scales the scan window to cover both a multi-week downtime
+// gap (floor) and the detail retention (so no prunable day is ever outside the
+// rollup window), capped so the initial backfill stays bounded.
+func (s *Store) rollupWindowDays() int {
+	w := s.limits.RetentionDays
+	if w < 0 { // detail kept forever — still backfill a generous window
+		w = rollupMaxWindowDays
 	}
-	oldest := todayStart - int64(windowDays)*daySeconds
+	if w < rollupMinWindowDays {
+		w = rollupMinWindowDays
+	}
+	if w > rollupMaxWindowDays {
+		w = rollupMaxWindowDays
+	}
+	return w
+}
 
-	for day := oldest; day < todayStart; day += daySeconds {
+// rollupDaily rolls every settled day in the scan window that has not been
+// rolled yet. A day is "settled" once it ended at least rollupGraceSeconds ago,
+// so its final 30-min detail bucket has been flushed. The window is a fixed
+// rollupWindowDays back (not tied to detail retention) so a downtime gap up to
+// that many days is still caught before its detail is pruned. Runs before the
+// detail prune, and at startup to catch up after downtime.
+//
+// It returns an error on the first day that fails to roll; the caller MUST skip
+// the detail prune for that tick so an un-rolled day's detail is not deleted.
+func (s *Store) rollupDaily() error {
+	now := time.Now().UTC().Unix()
+	oldest := dayStart(now) - int64(s.rollupWindowDays())*daySeconds
+
+	for day := oldest; day+daySeconds <= now-rollupGraceSeconds; day += daySeconds {
 		done, err := s.dayRolled(day)
 		if err != nil {
 			return err
@@ -139,24 +171,19 @@ func (s *Store) rollupDaily() error {
 	return nil
 }
 
-// dayRolled reports whether a day already has rollup rows. Because each day is
-// rolled inside a single transaction, presence is a reliable "fully done" mark.
+// dayRolled reports whether a day was already rolled, via the explicit marker
+// (set inside rollupOneDay's transaction) — reliable even for zero-row days.
 func (s *Store) dayRolled(day int64) (bool, error) {
 	var one int
-	err := s.db.QueryRow(`SELECT 1 FROM flowstore_daily_ips WHERE day = ? LIMIT 1`, day).Scan(&one)
-	if err == sql.ErrNoRows {
-		// No IP rows — but a day could legitimately have traffic without top IPs?
-		// In practice every rolled day has IP rows; if a day truly had none, also
-		// check ip_totals so we don't re-roll an empty day forever.
-		err = s.db.QueryRow(`SELECT 1 FROM flowstore_daily_ip_totals WHERE day = ? LIMIT 1`, day).Scan(&one)
-		if err == sql.ErrNoRows {
-			return false, nil
-		}
-	}
-	if err != nil {
+	err := s.db.QueryRow(`SELECT 1 FROM flowstore_rollup_done WHERE day = ?`, day).Scan(&one)
+	switch err {
+	case nil:
+		return true, nil
+	case sql.ErrNoRows:
+		return false, nil
+	default:
 		return false, err
 	}
-	return true, nil
 }
 
 func (s *Store) rollupOneDay(day int64) error {
@@ -196,6 +223,11 @@ func (s *Store) rollupOneDay(day int64) error {
 		return err
 	}
 	if err := rollIPTotals(tx, day, start, end); err != nil {
+		return err
+	}
+	// Mark the day done in the same transaction, so the whole rollup is
+	// atomically absent-or-complete and the day is never re-scanned.
+	if _, err := tx.Exec(`INSERT OR REPLACE INTO flowstore_rollup_done (day) VALUES (?)`, day); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -415,13 +447,24 @@ func rollIPTotals(tx *sql.Tx, day, start, end int64) error {
 }
 
 // pruneDaily deletes daily rollup rows older than DailyRetentionDays. Negative
-// retention keeps them forever.
+// retention keeps them forever. Done-markers are pruned separately, only once a
+// day falls outside the scan window — so a day whose data is pruned (e.g. a
+// short daily retention) is NOT re-rolled while still inside the window.
 func (s *Store) pruneDaily() {
+	today := dayStart(time.Now().UTC().Unix())
+
+	// Marker prune: only for days older than the largest possible scan window,
+	// so removing a marker can never cause a re-roll. Keeps the table bounded.
+	markerCutoff := today - int64(rollupMaxWindowDays+1)*daySeconds
+	if _, err := s.db.Exec(`DELETE FROM flowstore_rollup_done WHERE day < ?`, markerCutoff); err != nil {
+		log.Printf("[flowstore] prune flowstore_rollup_done: %v", err)
+	}
+
 	retentionDays := s.limits.DailyRetentionDays
 	if retentionDays < 0 {
-		return
+		return // keep the rollup data forever
 	}
-	cutoff := dayStart(time.Now().UTC().Unix()) - int64(retentionDays)*daySeconds
+	cutoff := today - int64(retentionDays)*daySeconds
 	for _, t := range []string{
 		"flowstore_daily_ips", "flowstore_daily_prefixes", "flowstore_daily_ports",
 		"flowstore_daily_country", "flowstore_daily_proto", "flowstore_daily_ip_totals",

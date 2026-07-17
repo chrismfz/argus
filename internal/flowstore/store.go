@@ -300,13 +300,16 @@ func (s *Store) loop() {
 			}
 		case <-tick24h.C:
 			// Roll completed days into the Tier-2 daily tables BEFORE the detail
-			// prune deletes them, then prune both detail and daily tables.
+			// prune deletes them. If the rollup errored on any day, SKIP the
+			// detail prune this tick — otherwise prune() could delete detail for a
+			// day that was never rolled (silent, permanent data loss). Detail
+			// retention has days of margin, so retrying next tick is safe.
 			if err := s.rollupDaily(); err != nil {
-				log.Printf("[flowstore] rollup: %v", err)
-			}
-			if err := s.prune(); err != nil {
+				log.Printf("[flowstore] rollup failed, skipping detail prune this tick: %v", err)
+			} else if err := s.prune(); err != nil {
 				log.Printf("[flowstore] prune: %v", err)
 			}
+			// Daily-table prune is independent of the detail/rollup state.
 			s.pruneDaily()
 		}
 	}

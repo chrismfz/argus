@@ -204,7 +204,7 @@ type Config struct {
 type FlowLogConfig struct {
 	Enabled    bool    `yaml:"enabled"`     // default false (opt-in)
 	DBPath     string  `yaml:"db_path"`     // default "flows.sqlite" (dedicated file)
-	MaxGB      float64 `yaml:"max_gb"`      // size cap; oldest rows pruned past it, default 20; <=0 = no cap
+	MaxGB      float64 `yaml:"max_gb"`      // size budget; oldest rows pruned past it. unset/0 = default 20; NEGATIVE = unbounded
 	SampleRate int     `yaml:"sample_rate"` // write 1 of every N flows, default 1 (every flow)
 	BufferSize int     `yaml:"buffer_size"` // in-memory queue depth; flows dropped (counted) when full, default 65536
 	BatchSize  int     `yaml:"batch_size"`  // rows per insert transaction, default 1000

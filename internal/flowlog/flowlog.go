@@ -20,6 +20,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -63,6 +64,10 @@ type Logger struct {
 	cfg   Config
 	seq   atomic.Uint64 // sampling counter
 	drops atomic.Uint64 // flows dropped because the buffer was full
+
+	stop      chan struct{} // closed by Close() to tell the loops to finish
+	writerFin chan struct{} // closed by writeLoop when it has drained + exited
+	closeOnce sync.Once
 }
 
 const schema = `
@@ -100,12 +105,9 @@ func Init(ctx context.Context, cfg Config) (*Logger, error) {
 		cfg.BatchSize = 1000
 	}
 
-	// auto_vacuum=INCREMENTAL must be set before the schema is created for the
-	// pruner's PRAGMA incremental_vacuum to return freed pages to the OS.
 	dsn := "file:" + cfg.DBPath + "?mode=rwc" +
 		"&_pragma=journal_mode(WAL)" +
 		"&_pragma=synchronous(NORMAL)" +
-		"&_pragma=auto_vacuum(INCREMENTAL)" +
 		"&_pragma=busy_timeout(5000)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
@@ -118,11 +120,16 @@ func Init(ctx context.Context, cfg Config) (*Logger, error) {
 	}
 
 	l := &Logger{
-		db:  db,
-		ch:  make(chan Row, cfg.BufferSize),
-		cfg: cfg,
+		db:        db,
+		ch:        make(chan Row, cfg.BufferSize),
+		cfg:       cfg,
+		stop:      make(chan struct{}),
+		writerFin: make(chan struct{}),
 	}
-	go l.writeLoop(ctx)
+	// The writer stops ONLY on Close() (not on ctx) so that flows flushed by the
+	// batcher during its own shutdown — which happens before Close() via defer
+	// LIFO ordering in main — are still drained. The pruner may stop on either.
+	go l.writeLoop()
 	go l.pruneLoop(ctx)
 	Global = l
 	return l, nil
@@ -146,7 +153,8 @@ func (l *Logger) Enqueue(r Row) {
 	}
 }
 
-func (l *Logger) writeLoop(ctx context.Context) {
+func (l *Logger) writeLoop() {
+	defer close(l.writerFin)
 	batch := make([]Row, 0, l.cfg.BatchSize)
 	flushTick := time.NewTicker(1 * time.Second)
 	defer flushTick.Stop()
@@ -163,8 +171,10 @@ func (l *Logger) writeLoop(ctx context.Context) {
 
 	for {
 		select {
-		case <-ctx.Done():
-			// Drain what is already queued, then flush and exit.
+		case <-l.stop:
+			// Drain everything still queued, flush, and exit. Close() blocks on
+			// writerFin before it touches the DB, so this always completes
+			// before db.Close() — no lost final batch, no "database is closed".
 			for {
 				select {
 				case r := <-l.ch:
@@ -215,15 +225,20 @@ func (l *Logger) writeBatch(batch []Row) error {
 }
 
 func (l *Logger) pruneLoop(ctx context.Context) {
-	t := time.NewTicker(5 * time.Minute)
+	// 1-minute cadence bounds how far the file can overshoot MaxBytes between
+	// checks (the size check is a couple of cheap PRAGMAs). The cap is still a
+	// soft, lagging bound — see prune() and the config docs.
+	t := time.NewTicker(1 * time.Minute)
 	defer t.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-l.stop:
+			return
 		case <-t.C:
 			if d := l.drops.Swap(0); d > 0 {
-				log.Printf("[flowlog] dropped %d flows since last check (writer behind / buffer full)", d)
+				log.Printf("[flowlog] dropped %d flows in the last minute (writer behind / buffer full)", d)
 			}
 			if err := l.prune(); err != nil {
 				log.Printf("[flowlog] prune failed: %v", err)
@@ -232,9 +247,27 @@ func (l *Logger) pruneLoop(ctx context.Context) {
 	}
 }
 
-// sizeBytes returns the on-disk size of the main database file (excluding the
-// WAL, which checkpoints back into it).
-func (l *Logger) sizeBytes() (int64, error) {
+// usedBytes returns the size of the LIVE data — total pages minus the freelist
+// — so the pruner does not mistake reusable free pages (left by earlier deletes)
+// for live data. Using total page_count here would inflate the per-row estimate
+// after a burst and cause massive over-deletion.
+func (l *Logger) usedBytes() (int64, error) {
+	var pageCount, freeCount, pageSize int64
+	if err := l.db.QueryRow(`PRAGMA page_count`).Scan(&pageCount); err != nil {
+		return 0, err
+	}
+	if err := l.db.QueryRow(`PRAGMA freelist_count`).Scan(&freeCount); err != nil {
+		return 0, err
+	}
+	if err := l.db.QueryRow(`PRAGMA page_size`).Scan(&pageSize); err != nil {
+		return 0, err
+	}
+	return (pageCount - freeCount) * pageSize, nil
+}
+
+// fileBytes returns the total on-disk size of the main database file (live +
+// free pages, excluding the WAL). Used for reporting, not for the prune target.
+func (l *Logger) fileBytes() (int64, error) {
 	var pageCount, pageSize int64
 	if err := l.db.QueryRow(`PRAGMA page_count`).Scan(&pageCount); err != nil {
 		return 0, err
@@ -245,23 +278,25 @@ func (l *Logger) sizeBytes() (int64, error) {
 	return pageCount * pageSize, nil
 }
 
-// prune bounds the flow log to roughly MaxBytes. It does NOT try to shrink the
-// file — instead it deletes the oldest rows so the live data fits in ~90% of the
-// budget, and lets SQLite reuse the freed pages for subsequent inserts. The
-// file therefore stabilises at a high-water mark near MaxBytes rather than
-// growing without bound. (This sidesteps the WAL + incremental_vacuum
-// unreliability of file truncation; incremental_vacuum is still issued as a
-// best-effort return of pages to the OS when auto_vacuum is in effect.)
+// prune bounds the flow log's LIVE data to ~90% of MaxBytes. It does not shrink
+// the file: deleted rows leave free pages that SQLite reuses for later inserts,
+// so the file stabilises at a high-water mark near MaxBytes rather than growing
+// forever. Deletes are chunked so a single statement never holds the write lock
+// long enough to make the concurrent writer's INSERT time out (busy_timeout).
+//
+// The cap is a soft, lagging, main-file-only bound: between prune ticks the file
+// can overshoot by up to one tick's worth of ingest, and the -wal file adds
+// transient space on top. Size against your disk accordingly.
 func (l *Logger) prune() error {
-	if l.cfg.MaxBytes <= 0 {
+	if l.cfg.MaxBytes <= 0 { // negative/zero MaxBytes = no cap
 		return nil
 	}
-	size, err := l.sizeBytes()
+	used, err := l.usedBytes()
 	if err != nil {
 		return err
 	}
-	if size <= l.cfg.MaxBytes {
-		return nil
+	if used <= l.cfg.MaxBytes {
+		return nil // live data fits; any free pages will be reused, not grown past
 	}
 	var rowCount int64
 	if err := l.db.QueryRow(`SELECT COUNT(*) FROM flows`).Scan(&rowCount); err != nil {
@@ -270,31 +305,50 @@ func (l *Logger) prune() error {
 	if rowCount == 0 {
 		return nil
 	}
-	// Bytes per row including its index entries.
-	bytesPerRow := float64(size) / float64(rowCount)
+	bytesPerRow := float64(used) / float64(rowCount) // live bytes incl. index entries
 	targetRows := int64(float64(l.cfg.MaxBytes) * 0.9 / bytesPerRow)
 	toDelete := rowCount - targetRows
 	if toDelete <= 0 {
 		return nil
 	}
-	res, err := l.db.Exec(
-		`DELETE FROM flows WHERE rowid IN (SELECT rowid FROM flows ORDER BY rowid LIMIT ?)`, toDelete)
-	if err != nil {
-		return err
+
+	const chunk = 20000
+	var deleted int64
+	for toDelete > 0 {
+		n := toDelete
+		if n > chunk {
+			n = chunk
+		}
+		res, err := l.db.Exec(
+			`DELETE FROM flows WHERE rowid IN (SELECT rowid FROM flows ORDER BY rowid LIMIT ?)`, n)
+		if err != nil {
+			return err
+		}
+		got, _ := res.RowsAffected()
+		if got == 0 {
+			break
+		}
+		deleted += got
+		toDelete -= got
 	}
-	n, _ := res.RowsAffected()
-	// Best-effort: return freed pages to the OS (no-op / harmless if auto_vacuum
-	// is not incremental on this file).
-	_, _ = l.db.Exec(`PRAGMA incremental_vacuum`)
-	log.Printf("[flowlog] pruned %d oldest flows to stay near %.2f GB (was %.2f GB, %d rows)",
-		n, float64(l.cfg.MaxBytes)/(1<<30), float64(size)/(1<<30), rowCount)
+	file, _ := l.fileBytes()
+	log.Printf("[flowlog] pruned %d oldest flows: live now ~%.2f GB (cap %.2f GB, file %.2f GB, %d rows)",
+		deleted, float64(l.cfg.MaxBytes)*0.9/(1<<30), float64(l.cfg.MaxBytes)/(1<<30),
+		float64(file)/(1<<30), rowCount-deleted)
 	return nil
 }
 
-// Close stops accepting writes; the writer drains via context cancellation.
+// Close stops the writer, waits for it to drain everything still queued, and
+// only then closes the database. It is safe to call more than once. Because the
+// writer stops on Close (not on the app context) and main defers Close AFTER the
+// batcher's own Close, all in-flight flows are captured before shutdown.
 func (l *Logger) Close() error {
 	if l == nil {
 		return nil
 	}
+	l.closeOnce.Do(func() {
+		close(l.stop)
+		<-l.writerFin // block until the writer has drained + flushed
+	})
 	return l.db.Close()
 }

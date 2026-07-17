@@ -96,11 +96,13 @@ func (l *Logger) Query(f Filter) ([]Row, error) {
 	return out, rows.Err()
 }
 
-// Stats returns the row count and on-disk size, for the debug/status endpoint.
+// Stats returns the row count and total on-disk file size, for the debug/status
+// endpoint. Both errors are returned so the caller can surface them rather than
+// reporting a misleading empty log.
 func (l *Logger) Stats() (rowCount int64, bytes int64, err error) {
 	if err = l.db.QueryRow(`SELECT COUNT(*) FROM flows`).Scan(&rowCount); err != nil {
 		return
 	}
-	bytes, err = l.sizeBytes()
+	bytes, err = l.fileBytes()
 	return
 }

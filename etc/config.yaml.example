@@ -275,7 +275,7 @@ telemetry:
 flowlog:
   enabled: false           # opt-in — this is the one subsystem that can write a lot
   db_path: flows.sqlite    # dedicated file (own WAL/lock, separate from detections.sqlite)
-  max_gb: 20               # size budget; oldest flows pruned past it; <=0 = unbounded (careful)
+  max_gb: 20               # size budget for LIVE data; oldest flows pruned past it. 0 = default (20); negative = unbounded (careful)
   sample_rate: 1           # write 1 of every N flows (raise to trade completeness for disk/CPU)
   buffer_size: 65536       # in-memory queue; flows dropped (counted) when full
   batch_size: 1000         # rows per insert transaction

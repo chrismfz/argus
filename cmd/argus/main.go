@@ -26,6 +26,8 @@ import (
 	"argus/internal/enrich"
 	"argus/internal/fields"
 	"argus/internal/flow"
+	"argus/internal/flowdir"
+	"argus/internal/flowlog"
 	"argus/internal/sqlite"
 	"argus/internal/telemetry"
 
@@ -505,7 +507,26 @@ func main() {
 		enrich.StartPTRResolver(cfg, geo, debug)
 	}
 
+	// ── Flow log (Phase 2 Tier 0, opt-in) ─────────────────────────────────────
+	if cfg.FlowLog.Enabled {
+		fl, err := flowlog.Init(ctx, flowlog.Config{
+			DBPath:     cfg.FlowLog.DBPath,
+			MaxBytes:   int64(cfg.FlowLog.MaxGB * (1 << 30)),
+			SampleRate: cfg.FlowLog.SampleRate,
+			BufferSize: cfg.FlowLog.BufferSize,
+			BatchSize:  cfg.FlowLog.BatchSize,
+		})
+		if err != nil {
+			log.Printf("[flowlog] init failed: %v", err)
+		} else {
+			defer fl.Close()
+			log.Printf("[flowlog] enabled: db=%s cap=%.1fGB sample=1/%d",
+				cfg.FlowLog.DBPath, cfg.FlowLog.MaxGB, cfg.FlowLog.SampleRate)
+		}
+	}
+
 	// ── Flow pipeline ─────────────────────────────────────────────────────────
+	flowDir := flowdir.New(cfg.UpstreamInterfaces, myNets)
 	batcher := flow.NewInsertFlowBatcher(
 		nil,                   // no inserter needed
 		200,                   // batch size (or cfg.Enrich.BatchSize)
@@ -514,6 +535,7 @@ func main() {
 		ifNameCache,
 		cfg.BGP.Listener.StoreASPath,
 		geo,
+		flowDir,
 	)
 	defer batcher.Close()
 

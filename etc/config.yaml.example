@@ -265,6 +265,21 @@ flowstore:
 telemetry:
   bucket_retention_days: 30    # per-minute global/ASN/interface bucket tables
 
+# ── Raw flow log (Phase 2, Tier 0) — the forensic "what did IP X do at 03:00?" store ──
+# OFF by default. When enabled, every enriched flow (5-tuple + bytes/packets/
+# ifaces/ASNs/direction) is appended to a DEDICATED SQLite file, pruned by SIZE
+# (not age): argus keeps the most recent max_gb of flows and reuses freed space,
+# so the file stabilises near max_gb instead of growing forever. Writes never
+# block ingest — if the writer falls behind, flows are dropped and counted.
+# Query it at /debug/flowlog?ip=1.2.3.4 (IP-only, like the other /debug endpoints).
+flowlog:
+  enabled: false           # opt-in — this is the one subsystem that can write a lot
+  db_path: flows.sqlite    # dedicated file (own WAL/lock, separate from detections.sqlite)
+  max_gb: 20               # size budget; oldest flows pruned past it; <=0 = unbounded (careful)
+  sample_rate: 1           # write 1 of every N flows (raise to trade completeness for disk/CPU)
+  buffer_size: 65536       # in-memory queue; flows dropped (counted) when full
+  batch_size: 1000         # rows per insert transaction
+
 retention:
   detections: 2160h            # detections table, by last_seen (90 days)
   alert_events: 2160h          # alert history (+ deliveries via FK)

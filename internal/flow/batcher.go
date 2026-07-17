@@ -7,6 +7,8 @@ import (
 
 	"argus/internal/bgp"
 	"argus/internal/enrich"
+	"argus/internal/flowdir"
+	"argus/internal/flowlog"
 	"argus/internal/flowstore"
 	"argus/internal/telemetry"
 	"github.com/yl2chen/cidranger"
@@ -21,6 +23,7 @@ type FlowEnricher struct {
 	ranger      cidranger.Ranger
 	geo         *enrich.GeoIP
 	ifNames     *enrich.IFNameCache
+	dir         *flowdir.Classifier // for the flow-log direction column (may be nil)
 	storeASPath bool
 
 	mu       sync.Mutex
@@ -39,6 +42,7 @@ func NewInsertFlowBatcher(
 	ifNames *enrich.IFNameCache,
 	storeASPath bool,
 	geo *enrich.GeoIP,
+	dir *flowdir.Classifier,
 ) *FlowEnricher {
 	b := &FlowEnricher{
 		batchSize:   batchSize,
@@ -46,6 +50,7 @@ func NewInsertFlowBatcher(
 		ranger:      ranger,
 		geo:         geo,
 		ifNames:     ifNames,
+		dir:         dir,
 		storeASPath: storeASPath,
 		buffer:      make([]*FlowRecord, 0, batchSize),
 		ticker:      time.NewTicker(flushEvery),
@@ -162,6 +167,37 @@ func (b *FlowEnricher) enrichAndFeed(batch []*FlowRecord) {
 				DstPort:             rec.DstPort,
 				Bytes:               rec.Bytes,
 				Packets:             rec.Packets,
+			})
+		}
+	}
+
+	// ── Flow-log tap (Phase 2 Tier 0) ──────────────────────────────────────
+	// Non-blocking: Enqueue samples + drops on a full buffer, never blocks.
+	if flowlog.Global != nil {
+		for _, rec := range batch {
+			dir := ""
+			if b.dir != nil {
+				if b.dir.Classify(rec.InputInterface, rec.OutputInterface, rec.SrcHost, rec.DstHost, rec.FlowDirection).Inbound {
+					dir = "in"
+				} else {
+					dir = "out"
+				}
+			}
+			flowlog.Global.Enqueue(flowlog.Row{
+				Ts:       rec.TimestampEnd.Unix(),
+				SrcIP:    rec.SrcHost,
+				DstIP:    rec.DstHost,
+				SrcPort:  rec.SrcPort,
+				DstPort:  rec.DstPort,
+				Proto:    rec.Proto,
+				TCPFlags: rec.TCPFlags,
+				Bytes:    rec.Bytes,
+				Packets:  rec.Packets,
+				InIface:  rec.InputInterface,
+				OutIface: rec.OutputInterface,
+				SrcAS:    rec.PeerSrcAS,
+				DstAS:    rec.PeerDstAS,
+				Dir:      dir,
 			})
 		}
 	}

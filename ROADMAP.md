@@ -109,11 +109,14 @@ Semantics: unset/0 = default, negative = unlimited (caps) / keep forever (retent
 
 Tiered rollups — degrade gracefully instead of falling off a cliff:
 
-- [ ] **Tier 0 (optional, default off): size-capped raw flow log.** Enriched 5-tuple
-      flow records appended to a dedicated SQLite DB file (or hourly-partitioned
-      files), pruned **by size** (`max_gb: 20`), not by age. This single feature
-      answers the forensic "what did X do at 03:00?" question. Include src/dst IP,
-      ports, proto, flags, bytes, packets, ifaces, ASNs, timestamps.
+- [x] **Tier 0 (optional, default off): size-capped raw flow log.** `internal/flowlog`
+      appends every enriched 5-tuple (src/dst IP, ports, proto, flags, bytes, packets,
+      ifaces, ASNs, direction, ts) to a dedicated `flows.sqlite`, pruned **by size**
+      (`max_gb`, default 20) not age — the file stabilises at a high-water mark by
+      reusing freed pages. Non-blocking write path (bounded channel, batched writer,
+      drop-if-full+counted). Config `flowlog:`, `GET /debug/flowlog?ip=…` JSON endpoint,
+      tests (round-trip, sampling, size-bounding, drop path). *(PR: phase-2 flowlog)*
+      **Next:** the Flow Explorer UI page (Phase 3) to surface it.
 - [ ] **Tier 1: 5-min detail** (current tables) — retention e.g. 14–30 days.
 - [ ] **Tier 2: daily rollups** of the detail tables (top IPs/prefixes/ports/countries
       per ASN per day) — retention 1–2 years. Cheap: computed at prune time from

@@ -297,7 +297,15 @@ function fmtBytes (b) {
 const fmtInt  = n => (+n || 0).toLocaleString('en-US')
 const fmtTime = ts => { const d = new Date(ts * 1000)
   return d.toLocaleDateString('en-CA') + ' ' + d.toTimeString().slice(0, 8) }
-const fmtDay  = ts => new Date(ts * 1000).toLocaleDateString('en-CA')
+// Daily-rollup buckets are cut at UTC midnight — render their labels in UTC
+// too, or a UTC-05:00 operator would see every bar shifted onto the wrong date.
+// (Per-flow fmtTime stays local: those are instants, not day buckets.)
+const fmtDay  = ts => new Date(ts * 1000).toISOString().slice(0, 10)
+// Defence in depth for the ECharts tooltip formatters, which return HTML:
+// peer-IP strings can only be net.IP.String() output today (no HTML metachars),
+// but that invariant lives far away in the collector — escape anyway.
+const esc = s => String(s).replace(/[&<>"']/g,
+  c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 const PROTO   = { 1: 'ICMP', 6: 'TCP', 17: 'UDP', 58: 'ICMP6' }
 
 function app () { return {
@@ -394,7 +402,7 @@ function app () { return {
     o.tooltip.formatter = ps => {
       const t = fmtTime(labels[ps[0].dataIndex])
       return t + '<br>' + ps.map(p =>
-        p.marker + ' ' + p.seriesName + ': <b>' + fmtBytes(p.value) + '</b>').join('<br>')
+        p.marker + ' ' + esc(p.seriesName) + ': <b>' + fmtBytes(p.value) + '</b>').join('<br>')
     }
     o.series = [
       { name: 'In',  type: 'bar', stack: 't', data: tIn,  itemStyle: { color: C_IN,  ...seg }, barCategoryGap: '25%' },
@@ -415,7 +423,7 @@ function app () { return {
     o.grid.left = 4
     o.grid.right = 62                         // room for the direct value labels
     o.tooltip.trigger = 'item'
-    o.tooltip.formatter = p => p.name + ': <b>' + fmtBytes(p.value) + '</b>'
+    o.tooltip.formatter = p => esc(p.name) + ': <b>' + fmtBytes(p.value) + '</b>'
     o.yAxis = { type: 'category', data: top.map(t => t[0]),
       axisLine: { show: false }, axisTick: { show: false },
       axisLabel: { color: INK, fontSize: 11, fontFamily: 'ui-monospace,monospace' } }
@@ -473,7 +481,7 @@ function app () { return {
         const o = baseOption()
         o.xAxis = axisX(days, fmtDay); o.yAxis = axisYBytes()
         o.tooltip.formatter = ps => fmtDay(days[ps[0].dataIndex]) + '<br>' + ps.map(p =>
-          p.marker + ' ' + p.seriesName + ': <b>' + fmtBytes(p.value) + '</b>').join('<br>')
+          p.marker + ' ' + esc(p.seriesName) + ': <b>' + fmtBytes(p.value) + '</b>').join('<br>')
         o.series = [
           { name: 'In',  type: 'bar', data: days.map(d => byDay[d].in),
             itemStyle: { color: C_IN,  borderRadius: [3, 3, 0, 0] }, barMaxWidth: 22 },
@@ -495,11 +503,12 @@ function app () { return {
         this.h.asnHasData = rows.length > 0
         // Rank IPs by total bytes across the whole window; top-5 keep a fixed
         // categorical color, the rest fold into a neutral "other".
-        const ipTot = {}, byDayIP = {}
+        const ipTot = {}, byDayIP = {}, dayTot = {}
         for (const r of rows) {
           ipTot[r.peer_ip] = (ipTot[r.peer_ip] || 0) + r.bytes
           const k = r.day + '|' + r.peer_ip
           byDayIP[k] = (byDayIP[k] || 0) + r.bytes
+          dayTot[r.day] = (dayTot[r.day] || 0) + r.bytes
         }
         const top5 = Object.entries(ipTot).sort((a, b) => b[1] - a[1]).slice(0, 5).map(e => e[0])
         const days = [...new Set(rows.map(r => r.day))].sort((a, b) => a - b)
@@ -509,16 +518,17 @@ function app () { return {
           itemStyle: { color: CAT6[i], ...seg },
           data: days.map(day => byDayIP[day + '|' + ip] || 0),
         }))
+        // "other" = day total minus the top-5 — O(days), not a rescan of rows.
         series.push({ name: 'other', type: 'bar', stack: 'd', barMaxWidth: 26,
           itemStyle: { color: C_OTHER, ...seg, borderRadius: [3, 3, 0, 0] },
-          data: days.map(day => rows.filter(r => r.day === day && !top5.includes(r.peer_ip))
-                                    .reduce((a, r) => a + r.bytes, 0)) })
+          data: days.map(day => Math.max(0, (dayTot[day] || 0) -
+            top5.reduce((a, ip) => a + (byDayIP[day + '|' + ip] || 0), 0))) })
         const o = baseOption()
         o.xAxis = axisX(days, fmtDay); o.yAxis = axisYBytes()
         o.legend.textStyle.fontFamily = 'ui-monospace,monospace'
         o.tooltip.formatter = ps => fmtDay(days[ps[0].dataIndex]) + '<br>' + ps
           .filter(p => p.value > 0)
-          .map(p => p.marker + ' ' + p.seriesName + ': <b>' + fmtBytes(p.value) + '</b>').join('<br>')
+          .map(p => p.marker + ' ' + esc(p.seriesName) + ': <b>' + fmtBytes(p.value) + '</b>').join('<br>')
         o.series = series
         this.$nextTick(() => this.chart('chart-asnhist').setOption(o, true))
       }).catch(e => { this.h.asnLoading = false; this.h.asnError = String(e) })

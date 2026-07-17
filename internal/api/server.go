@@ -334,6 +334,7 @@ func Start() {
 		w.Write(navSearchJS)
 	}))
 	mainMux.HandleFunc("/debug/flows", WithMainIPOnly(handleFlowsDebug))
+	mainMux.HandleFunc("/debug/flowlog", WithMainIPOnly(handleFlowLog))
 	mainMux.HandleFunc("/tel/flows/stream", WithMainIPOnly(handleFlowsStream))
 	mainMux.HandleFunc("/debug/rawflows", WithMainIPOnly(handleRawFlowsDebug))
 	mainMux.HandleFunc("/tel/rawflows/stream", WithMainIPOnly(handleRawFlowsStream))

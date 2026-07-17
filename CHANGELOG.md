@@ -8,6 +8,17 @@ Every behavior-changing PR must add an entry under **Unreleased**.
 ## [Unreleased]
 
 ### Added
+- **Phase 2 (Tier 0) — optional raw flow log** (`internal/flowlog`, off by default).
+  When `flowlog.enabled: true`, every enriched flow (5-tuple + bytes/packets/ifaces/
+  ASNs/direction) is appended to a dedicated `flows.sqlite` and pruned **by size**
+  (`max_gb`, default 20) rather than age — the forensic store that answers "what did
+  IP X do at 03:00?". Write path never blocks ingest (bounded channel + batched
+  writer + drop-if-full, counted); its own WAL file so it never contends on the
+  detection DB. Config section `flowlog:` (`enabled`, `db_path`, `max_gb`,
+  `sample_rate`, `buffer_size`, `batch_size`) with the usual default semantics.
+  Read it via `GET /debug/flowlog` (stats) / `?ip=…&since=…&proto=…&port=…&dir=…`
+  (filtered flows, JSON, IP-only). Tests cover round-trip/query filters, sampling,
+  the drop path, and size-bounding/stabilisation. A Flow Explorer UI comes in Phase 3.
 - **Phase 1 — configurable retention & caps.** New config sections `flowstore:`,
   `telemetry:`, and `retention:` expose every aggregation cap and retention window
   that was previously hardcoded (flowstore top-N/track caps + detail retention,

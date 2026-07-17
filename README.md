@@ -524,6 +524,18 @@ All endpoints require `Authorization: Bearer <token>` header and source IP in `a
   (top IPs, prefixes, ports, protocols, countries, TCP flags)
 - `telemetry_*_buckets` — per-minute global/ASN/interface time series
 
+**Raw flow log** (`flows.sqlite`, optional — off by default) — the forensic
+store. When `flowlog.enabled: true`, every enriched flow (5-tuple + bytes,
+packets, interfaces, ASNs, direction) is appended to a dedicated SQLite file and
+pruned **by size** (`max_gb`, default 20) rather than age — argus keeps the most
+recent N GB of every flow and reuses freed space, so the file stabilises near the
+budget instead of growing forever. This is what answers *"what did IP X do at
+03:00 last Tuesday?"* — a question the aggregated tables (top-N, rolled up)
+cannot. Writes never block ingest: if the writer falls behind, flows are dropped
+and counted. Inspect it at `GET /debug/flowlog?ip=<ip>` (IP-only, JSON), e.g.
+`/debug/flowlog?ip=1.2.3.4&since=1721000000&limit=200` — or just `/debug/flowlog`
+for row count and on-disk size.
+
 **In-memory ring buffer** — 1440 one-minute buckets (24h) for telemetry metrics. Snapshots persist to SQLite at midnight automatically.
 
 **Retention & caps are configurable** (see the `flowstore:`, `telemetry:`, and

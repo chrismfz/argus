@@ -48,6 +48,34 @@ func TestStorageDefaults(t *testing.T) {
 	if r.BlackholeEvents != 90*24*time.Hour || r.BlackholeEventsMaxRow != 10000 {
 		t.Fatalf("blackhole_events defaults wrong: %+v", r)
 	}
+
+	fl := cfg.FlowLog
+	if fl.Enabled {
+		t.Fatalf("flow log must be disabled by default")
+	}
+	if fl.DBPath != "flows.sqlite" || fl.MaxGB != 20 || fl.SampleRate != 1 {
+		t.Fatalf("flowlog defaults wrong: %+v", fl)
+	}
+	if fl.BufferSize != 65536 || fl.BatchSize != 1000 {
+		t.Fatalf("flowlog buffer/batch defaults wrong: %+v", fl)
+	}
+}
+
+func TestFlowLogOverrides(t *testing.T) {
+	cfg := loadFromYAML(t, `
+flowlog:
+  enabled: true
+  db_path: /var/lib/argus/flows.sqlite
+  max_gb: 50
+  sample_rate: 10
+`)
+	fl := cfg.FlowLog
+	if !fl.Enabled || fl.DBPath != "/var/lib/argus/flows.sqlite" || fl.MaxGB != 50 || fl.SampleRate != 10 {
+		t.Fatalf("flowlog overrides lost: %+v", fl)
+	}
+	if fl.BufferSize != 65536 || fl.BatchSize != 1000 {
+		t.Fatalf("unset flowlog fields must still default: %+v", fl)
+	}
 }
 
 // TestStorageOverrides verifies YAML values (including duration strings and

@@ -194,6 +194,20 @@ type Config struct {
 	Flowstore FlowstoreConfig `yaml:"flowstore"`
 	Telemetry TelemetryConfig `yaml:"telemetry"`
 	Retention RetentionConfig `yaml:"retention"`
+	FlowLog   FlowLogConfig   `yaml:"flowlog"`
+}
+
+// FlowLogConfig controls the optional raw flow log (ROADMAP Phase 2, Tier 0):
+// an enriched 5-tuple record per flow written to a dedicated SQLite file and
+// pruned by size, not age — the forensic "what did IP X do at 03:00?" store.
+// Disabled by default; it is the only argus feature that can write a lot.
+type FlowLogConfig struct {
+	Enabled    bool    `yaml:"enabled"`     // default false (opt-in)
+	DBPath     string  `yaml:"db_path"`     // default "flows.sqlite" (dedicated file)
+	MaxGB      float64 `yaml:"max_gb"`      // size cap; oldest rows pruned past it, default 20; <=0 = no cap
+	SampleRate int     `yaml:"sample_rate"` // write 1 of every N flows, default 1 (every flow)
+	BufferSize int     `yaml:"buffer_size"` // in-memory queue depth; flows dropped (counted) when full, default 65536
+	BatchSize  int     `yaml:"batch_size"`  // rows per insert transaction, default 1000
 }
 
 // FlowstoreConfig controls how much per-ASN aggregate data survives to SQLite.
@@ -372,6 +386,19 @@ func applyStorageDefaults(cfg *Config) {
 	defDur(&r.RiskEvents, 7*24*time.Hour)
 	defDur(&r.BlackholeEvents, 90*24*time.Hour)
 	defInt(&r.BlackholeEventsMaxRow, 10000)
+
+	// FlowLog — only normalise the operational knobs; Enabled stays as set
+	// (default false) and MaxGB<=0 is a valid "no cap" so it is left alone.
+	fl := &cfg.FlowLog
+	if fl.DBPath == "" {
+		fl.DBPath = "flows.sqlite"
+	}
+	if fl.MaxGB == 0 {
+		fl.MaxGB = 20
+	}
+	defInt(&fl.SampleRate, 1)
+	defInt(&fl.BufferSize, 65536)
+	defInt(&fl.BatchSize, 1000)
 }
 
 func (gc Config) GetCollectors() []collectors.Frontend {

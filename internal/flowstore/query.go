@@ -184,7 +184,7 @@ func QueryTopIPs(db *sql.DB, asn uint32, window time.Duration, dir string) ([]IP
 			GROUP BY peer_ip, local_ip, proto, dst_port, country, dir
 			ORDER BY bytes DESC
 			LIMIT ?
-		`, asn, cutoff, dir, topIPs)
+		`, asn, cutoff, dir, queryLimits().TopIPs)
 	} else {
 		rows, err = db.Query(`
 			SELECT peer_ip, local_ip, proto, dst_port, country, dir,
@@ -194,7 +194,7 @@ func QueryTopIPs(db *sql.DB, asn uint32, window time.Duration, dir string) ([]IP
 			GROUP BY peer_ip, local_ip, proto, dst_port, country, dir
 			ORDER BY bytes DESC
 			LIMIT ?
-		`, asn, cutoff, topIPs)
+		`, asn, cutoff, queryLimits().TopIPs)
 	}
 	if err != nil {
 		return nil, err
@@ -227,7 +227,7 @@ func QueryTopPrefixes(db *sql.DB, asn uint32, window time.Duration) ([]PrefixSta
 		GROUP BY prefix, dir
 		ORDER BY SUM(bytes) DESC
 		LIMIT ?
-	`, asn, cutoff, topPfx)
+	`, asn, cutoff, queryLimits().TopPrefixes)
 	if err != nil {
 		return nil, err
 	}
@@ -309,7 +309,7 @@ func QueryPorts(db *sql.DB, asn uint32, window time.Duration) ([]PortStat, error
 		GROUP BY dst_port, dir
 		ORDER BY SUM(bytes) DESC
 		LIMIT ?
-	`, asn, cutoff, topPorts)
+	`, asn, cutoff, queryLimits().TopPorts)
 	if err != nil {
 		return nil, err
 	}

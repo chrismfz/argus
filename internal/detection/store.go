@@ -172,6 +172,9 @@ func (s *SQLiteStore) InsertRiskEvent(
 // PurgeOldRiskEvents deletes risk_events older than maxAge.
 // Wire into the same cleanup ticker as CleanupExpiredBlackholes in main.go.
 func PurgeOldRiskEvents(db *sql.DB, maxAge time.Duration) error {
+	if maxAge <= 0 {
+		return nil // pruning disabled — a negative cutoff would delete everything
+	}
 	cutoff := time.Now().Add(-maxAge).Unix()
 	res, err := db.Exec(`DELETE FROM risk_events WHERE ts < ?`, cutoff)
 	if err != nil {

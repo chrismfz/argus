@@ -246,6 +246,33 @@ ip_profile:
   cleanup_interval: 15m
   max_entries: 10000
 
+# ── Storage: aggregation caps & retention (Phase 1) ───────────────────────────
+# Every value is optional. Unset/0 = the defaults shown below (the historical
+# hardcoded values). Negative = unlimited (top-N / caps) or keep-forever
+# (retentions). Raising these keeps more information at the cost of disk —
+# argus logs its SQLite footprint at startup so you can watch the effect.
+
+flowstore:
+  retention_days: 7            # 30-min detail tables (top IPs/prefixes/ports, proto, country, TCP flags)
+  timeline_retention_days: 30  # 5-min per-ASN timeline (cheap — safe to raise)
+  top_ips: 50                  # IP pairs written per (30-min bucket, ASN, direction); -1 = all tracked
+  top_prefixes: 20
+  top_ports: 10
+  max_tracked_ips: 10000       # unique IP pairs tracked in RAM per bucket before new ones are dropped
+  max_tracked_prefixes: 1000
+  max_tracked_ports: 500
+
+telemetry:
+  bucket_retention_days: 30    # per-minute global/ASN/interface bucket tables
+
+retention:
+  detections: 2160h            # detections table, by last_seen (90 days)
+  alert_events: 2160h          # alert history (+ deliveries via FK)
+  snapshots_daily: 9600h       # 'daily' snapshots only (400 days); weekly/monthly/yearly/manual kept forever
+  risk_events: 168h            # anomaly risk events (7 days)
+  blackhole_events: 2160h      # blackhole audit log (90 days)
+  blackhole_events_max_rows: 10000  # hard row cap on top of the age window; -1 = no cap
+
 
 cfm:
   enabled: true

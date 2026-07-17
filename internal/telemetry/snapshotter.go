@@ -244,7 +244,10 @@ func periodLabel(period string, ts int64) string {
 //	weekly  — at 00:00 on Sunday
 //	monthly — at 00:00 on the 1st of each month
 //	yearly  — at 00:00 on Jan 1st
-func StartScheduler(ctx context.Context, db *sql.DB) {
+//
+// bucketRetentionDays controls how long the telemetry_*_buckets minute tables
+// are kept (wired from the `telemetry:` config section; negative = keep forever).
+func StartScheduler(ctx context.Context, db *sql.DB, bucketRetentionDays int) {
 	if db == nil {
 		log.Print("[telemetry] scheduler: no DB, snapshots disabled")
 		return
@@ -294,7 +297,7 @@ func StartScheduler(ctx context.Context, db *sql.DB) {
 		}
 	}()
 
-	// ── Daily prune — keep last 30 days (configurable) ───────────────────────
+	// ── Daily prune of the minute-bucket tables ──────────────────────────────
 	go func() {
 		t := time.NewTicker(24 * time.Hour)
 		defer t.Stop()
@@ -303,7 +306,7 @@ func StartScheduler(ctx context.Context, db *sql.DB) {
 			case <-ctx.Done():
 				return
 			case <-t.C:
-				if err := PruneOldBuckets(db, 30); err != nil {
+				if err := PruneOldBuckets(db, bucketRetentionDays); err != nil {
 					log.Printf("[telemetry] prune failed: %v", err)
 				}
 			}

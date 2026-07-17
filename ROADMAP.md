@@ -83,26 +83,27 @@ tiered rollups) and a size-capped optional flow log. Details in Phase 2.
       (`flowdir`), flowstore flush/prune, blackhole TTL escalation (`escalationTTL` +
       `BlackholeDurations`), period-aware snapshot pruning. *(PRs: phase-0 lock / flowdir / cleanup)*
 
-## Phase 1 — Stop the bleeding: configurable retention & caps
+## Phase 1 — Stop the bleeding: configurable retention & caps ✅ complete
 
-Everything below exists today as a constant; promote to config with current values
-as defaults (backward compatible, zero migration):
+Every previously hardcoded cap/retention is now a config knob with the historical
+value as default (backward compatible, zero migration). See the `flowstore:`,
+`telemetry:`, and `retention:` sections in `etc/config.yaml.example`.
+Semantics: unset/0 = default, negative = unlimited (caps) / keep forever (retentions).
 
-```yaml
-flowstore:
-  retention_days: 7        # per-ASN detail tables
-  timeline_retention_days: 30
-  top_ips: 50
-  top_prefixes: 20
-  top_ports: 10
-telemetry:
-  bucket_retention_days: 30   # currently hardcoded
-```
-
-- [ ] Wire flowstore consts + telemetry retention into config.
-- [ ] Startup disk-budget log line: estimate DB growth/day at current settings so
-      operators can size retention consciously.
-- [ ] Rename/clarify the "hourly" tables (they flush every 30 min).
+- [x] Wire flowstore caps + retention into config (`flowstore:` — top-N, RAM track
+      caps, detail retention, and a new independent `timeline_retention_days` so the
+      cheap 5-min timeline outlives the detail tables). *(PR: phase-1 retention)*
+- [x] Wire telemetry bucket retention into config (`telemetry:` — was hardcoded 30d
+      despite claiming to be configurable). *(PR: phase-1 retention)*
+- [x] Lift the cleanup-ticker retentions (detections, alert_events, snapshots_daily,
+      risk_events, blackhole_events + row cap) into the `retention:` section.
+      *(PR: phase-1 retention)*
+- [x] Startup log lines: effective storage settings + current SQLite footprint so
+      operators can size retention against disk. (A true growth/day estimator needs
+      two points in time — revisit alongside Phase 2's flow log sizing.)
+      *(PR: phase-1 retention)*
+- [x] Rename/clarify the "hourly" internals → "detail" (they flush every 30 min);
+      DB table names unchanged. *(PR: phase-1 retention)*
 
 ## Phase 2 — Get the information back (the big one)
 

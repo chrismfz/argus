@@ -190,6 +190,40 @@ type Config struct {
 		CleanupInterval time.Duration `yaml:"cleanup_interval"`
 		MaxEntries      int           `yaml:"max_entries"`
 	} `yaml:"ip_profile"`
+
+	Flowstore FlowstoreConfig `yaml:"flowstore"`
+	Telemetry TelemetryConfig `yaml:"telemetry"`
+	Retention RetentionConfig `yaml:"retention"`
+}
+
+// FlowstoreConfig controls how much per-ASN aggregate data survives to SQLite.
+// Zero values mean "use the default"; -1 means unlimited (top-N caps) or
+// keep-forever (retentions). See ROADMAP Phase 1.
+type FlowstoreConfig struct {
+	RetentionDays         int `yaml:"retention_days"`          // detail tables (top IPs/prefixes/ports/…), default 7
+	TimelineRetentionDays int `yaml:"timeline_retention_days"` // 5-min timeline tables, default 30
+	TopIPs                int `yaml:"top_ips"`                 // IP pairs written per (bucket, asn, dir), default 50
+	TopPrefixes           int `yaml:"top_prefixes"`            // default 20
+	TopPorts              int `yaml:"top_ports"`               // default 10
+	MaxTrackedIPs         int `yaml:"max_tracked_ips"`         // unique IP pairs tracked in RAM per bucket, default 10000
+	MaxTrackedPrefixes    int `yaml:"max_tracked_prefixes"`    // default 1000
+	MaxTrackedPorts       int `yaml:"max_tracked_ports"`       // default 500
+}
+
+// TelemetryConfig controls the minute-bucket time series retention.
+type TelemetryConfig struct {
+	BucketRetentionDays int `yaml:"bucket_retention_days"` // telemetry_*_buckets tables, default 30
+}
+
+// RetentionConfig groups the cleanup-ticker retentions for the detection-side
+// tables. Zero values mean "use the default"; negative disables pruning.
+type RetentionConfig struct {
+	Detections            time.Duration `yaml:"detections"`                // detections table by last_seen, default 90d
+	AlertEvents           time.Duration `yaml:"alert_events"`              // alert_events (+deliveries via FK), default 90d
+	SnapshotsDaily        time.Duration `yaml:"snapshots_daily"`           // 'daily' snapshots only, default 400d
+	RiskEvents            time.Duration `yaml:"risk_events"`               // risk_events table, default 7d
+	BlackholeEvents       time.Duration `yaml:"blackhole_events"`          // blackhole_events audit log, default 90d
+	BlackholeEventsMaxRow int           `yaml:"blackhole_events_max_rows"` // hard row cap, default 10000
 }
 
 type SNMPConfig struct {
@@ -298,7 +332,46 @@ func LoadConfig(path string) (*Config, error) {
 	if cfg.IPProfile.MaxEntries <= 0 {
 		cfg.IPProfile.MaxEntries = 10_000
 	}
+
+	applyStorageDefaults(&cfg)
 	return &cfg, nil
+}
+
+// applyStorageDefaults fills in the Phase-1 storage knobs. Semantics for every
+// field: 0 (unset) → the pre-Phase-1 hardcoded value, so existing deployments
+// keep their exact behaviour; negative → "unlimited" for top-N/track caps and
+// "keep forever" (pruning disabled) for retentions.
+func applyStorageDefaults(cfg *Config) {
+	defInt := func(v *int, def int) {
+		if *v == 0 {
+			*v = def
+		}
+	}
+	defDur := func(v *time.Duration, def time.Duration) {
+		if *v == 0 {
+			*v = def
+		}
+	}
+
+	fs := &cfg.Flowstore
+	defInt(&fs.RetentionDays, 7)
+	defInt(&fs.TimelineRetentionDays, 30)
+	defInt(&fs.TopIPs, 50)
+	defInt(&fs.TopPrefixes, 20)
+	defInt(&fs.TopPorts, 10)
+	defInt(&fs.MaxTrackedIPs, 10000)
+	defInt(&fs.MaxTrackedPrefixes, 1000)
+	defInt(&fs.MaxTrackedPorts, 500)
+
+	defInt(&cfg.Telemetry.BucketRetentionDays, 30)
+
+	r := &cfg.Retention
+	defDur(&r.Detections, 90*24*time.Hour)
+	defDur(&r.AlertEvents, 90*24*time.Hour)
+	defDur(&r.SnapshotsDaily, 400*24*time.Hour)
+	defDur(&r.RiskEvents, 7*24*time.Hour)
+	defDur(&r.BlackholeEvents, 90*24*time.Hour)
+	defInt(&r.BlackholeEventsMaxRow, 10000)
 }
 
 func (gc Config) GetCollectors() []collectors.Frontend {
@@ -347,6 +420,15 @@ func EnrichEnabled(cfg *Config, name string) bool {
 
 // LogStartup prints the effective configuration at startup.
 func LogStartup(cfg *Config) {
+	fs, tel, r := cfg.Flowstore, cfg.Telemetry, cfg.Retention
+	log.Printf("[CFG] storage: flowstore(detail=%dd timeline=%dd top{ips:%d,pfx:%d,ports:%d} track{ips:%d,pfx:%d,ports:%d}) telemetry_buckets=%dd",
+		fs.RetentionDays, fs.TimelineRetentionDays,
+		fs.TopIPs, fs.TopPrefixes, fs.TopPorts,
+		fs.MaxTrackedIPs, fs.MaxTrackedPrefixes, fs.MaxTrackedPorts,
+		tel.BucketRetentionDays)
+	log.Printf("[CFG] retention: detections=%s alert_events=%s snapshots_daily=%s risk_events=%s blackhole_events=%s (max_rows=%d)",
+		r.Detections, r.AlertEvents, r.SnapshotsDaily, r.RiskEvents, r.BlackholeEvents, r.BlackholeEventsMaxRow)
+
 	ac := cfg.Detection.Anomaly
 	pf := ac.Prefilter
 	log.Printf("[CFG] anomaly: enabled=%v window=%s interval=%s label=%s min_score=%.3f log_only=%v",

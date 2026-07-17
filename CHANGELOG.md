@@ -8,6 +8,18 @@ Every behavior-changing PR must add an entry under **Unreleased**.
 ## [Unreleased]
 
 ### Added
+- **Phase 3 — Flow Explorer UI** (`/flows`, embedded page, linked from the global
+  nav on every page). Two tabs:
+  - *Flow Explorer* over the raw flow log: IP/src/dst/port/proto/direction filters,
+    time-range chips (15m–7d), stacked in/out traffic-over-time chart, top-talkers
+    chart with click-to-filter and direct value labels, results table with per-IP
+    links, and client-side CSV export.
+  - *Daily History* over the Tier-2 rollups: per-IP daily in/out bars and per-ASN
+    stacked top-5-IPs+other daily chart. Deep-linkable (`/flows?hip=<ip>`,
+    `/flows?asn=<n>`).
+  Chart colors are deeper steps of the site accents, validated (CVD separation,
+  contrast, lightness band) against the dark panel surface; series colors follow
+  the entity, legends + hover tooltips throughout.
 - **Phase 2 (Tier 2) — daily rollups** (`internal/flowstore/rollup.go`). Each
   complete day's 30-min detail is aggregated into `flowstore_daily_*` tables (top
   IPs/prefixes/ports/countries/proto per ASN, plus a per-IP daily total that

@@ -26,6 +26,9 @@ func QueryIPDailyHistory(db *sql.DB, ip string, maxDays int) ([]DailyIPTotal, er
 	if maxDays <= 0 {
 		maxDays = 365
 	}
+	if maxDays > 400 {
+		maxDays = 400 // match the ASN path's bound
+	}
 	rows, err := db.Query(`
 		SELECT day, dir, bytes, packets, flows
 		FROM flowstore_daily_ip_totals

@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>argus · flows</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.4.3/echarts.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/alpinejs/3.13.3/cdn.min.js" defer></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f1117;--bg2:#161b27;--bg3:#1e2535;--bg4:#242d3f;
+  --border:#2a3147;--text:#cdd6f4;--muted:#6c7086;
+  --accent:#89b4fa;--green:#a6e3a1;--red:#f38ba8;
+  --yellow:#f9e2af;--purple:#cba6f7;--teal:#94e2d5;--orange:#fab387;
+  /* Chart series colors — validated (CVD + contrast + lightness band) against
+     --bg2; deeper steps of the site accents. Do not repaint by rank. */
+  --s-in:#4d7fe0;--s-out:#cc7440;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;font-size:14px}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* ── Global nav (shared across all pages) ── */
+.global-nav{
+  display:flex;gap:4px;align-items:center;padding:0 20px;background:var(--bg2);
+  border-bottom:1px solid var(--border);height:44px;font-size:13px;
+}
+.global-nav a{
+  padding:0 12px;line-height:42px;color:var(--muted);border-bottom:2px solid transparent;
+}
+.global-nav a:hover{color:var(--text);text-decoration:none}
+.global-nav a.active{color:var(--accent);border-bottom-color:var(--accent)}
+.global-nav .sep{flex:1}
+.global-nav a.dbg{font-size:11px;color:var(--muted);opacity:.6}
+.global-nav a.dbg:hover{opacity:1}
+
+.page-header{display:flex;align-items:center;gap:14px;padding:14px 20px 4px}
+.page-title{font-size:17px;font-weight:700;letter-spacing:2px}
+.page-status{display:flex;gap:8px}
+.status-tag{background:var(--bg3);border:1px solid var(--border);border-radius:4px;
+  padding:2px 8px;font-size:11px;color:var(--muted)}
+
+.tab-bar{display:flex;gap:2px;align-items:center;padding:0 20px;margin-top:8px;
+  border-bottom:1px solid var(--border);font-size:13px}
+.tab-bar button{background:none;border:none;color:var(--muted);padding:9px 14px;cursor:pointer;
+  border-bottom:2px solid transparent;font-size:13px}
+.tab-bar button:hover{color:var(--text)}
+.tab-bar button.active{color:var(--accent);border-bottom-color:var(--accent)}
+
+.content{padding:16px 20px;max-width:1500px}
+.panel{background:var(--bg2);border:1px solid var(--border);border-radius:8px;
+  padding:14px 16px;margin-bottom:16px}
+.panel h3{font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);
+  margin-bottom:10px;font-weight:600}
+.panel h3 small{letter-spacing:0;text-transform:none;font-weight:400;margin-left:8px}
+
+/* ── Filter row — one row above the charts ── */
+.filter-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.filter-row input,.filter-row select{
+  background:var(--bg3);border:1px solid var(--border);border-radius:5px;color:var(--text);
+  padding:6px 9px;font-size:12.5px;outline:none;min-width:0}
+.filter-row input:focus,.filter-row select:focus{border-color:var(--accent)}
+.filter-row input.ipw{width:150px}
+.filter-row input.portw{width:76px}
+.filter-row button{
+  background:var(--accent);color:var(--bg);border:none;border-radius:5px;
+  padding:6px 14px;font-size:12.5px;font-weight:600;cursor:pointer}
+.filter-row button:hover{opacity:.9}
+.filter-row button.ghost{background:var(--bg3);color:var(--muted);border:1px solid var(--border);font-weight:400}
+.filter-row button.ghost:hover{color:var(--text)}
+.range-chips{display:flex;gap:4px}
+.range-chips button{background:var(--bg3);color:var(--muted);border:1px solid var(--border);font-weight:400;padding:6px 10px}
+.range-chips button.on{color:var(--accent);border-color:var(--accent);background:rgba(137,180,250,.08)}
+
+.stat-line{display:flex;gap:16px;color:var(--muted);font-size:12px;margin-top:10px;flex-wrap:wrap}
+.stat-line b{color:var(--text);font-weight:600}
+.notice{background:rgba(249,226,175,.07);border:1px solid rgba(249,226,175,.25);
+  color:var(--yellow);border-radius:6px;padding:10px 14px;font-size:13px;margin-bottom:16px}
+.notice code{background:var(--bg3);padding:1px 6px;border-radius:4px;font-size:12px;color:var(--text)}
+
+.chart{width:100%;height:260px}
+.chart-sm{width:100%;height:300px}
+.charts-2col{display:grid;grid-template-columns:1.7fr 1fr;gap:16px}
+@media(max-width:1100px){.charts-2col{grid-template-columns:1fr}}
+
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{color:var(--muted);text-align:left;font-weight:600;font-size:11px;letter-spacing:.5px;
+  text-transform:uppercase;padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:5px 10px;border-bottom:1px solid rgba(42,49,71,.5);white-space:nowrap}
+tr:hover td{background:var(--bg3)}
+td.num{text-align:right;font-variant-numeric:tabular-nums}
+th.num{text-align:right}
+.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
+.dir-pill{display:inline-block;border-radius:3px;padding:0 6px;font-size:10.5px;font-weight:600}
+.dir-in{background:rgba(77,127,224,.18);color:#9db9f2}
+.dir-out{background:rgba(204,116,64,.18);color:#e6a377}
+.spinner{display:inline-block;width:11px;height:11px;border:2px solid var(--muted);
+  border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;
+  vertical-align:-1px;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.empty{color:var(--muted);text-align:center;padding:30px 0;font-size:13px}
+</style>
+</head>
+<body x-data="app()" x-init="init()">
+
+<!-- ══ Global nav ══════════════════════════════════════════════════════════ -->
+<nav class="global-nav">
+  <a href="/dashboard">Overview</a>
+  <a href="/bgp">BGP</a>
+  <a href="/routewatch">Routewatch</a>
+  <a href="/detection">Detection</a>
+  <a href="/flows" class="active">Flows</a>
+  <a href="/alerts">Alerts</a>
+  <a href="/pathfinder">Pathfinder</a>
+  <span class="sep"></span>
+  <a href="/debug/flows"    target="_blank" class="dbg">⚡ Live Flows</a>
+  <a href="/debug/rawflows" target="_blank" class="dbg">🔬 Raw Fields</a>
+</nav>
+
+<!-- ══ Page header ══════════════════════════════════════════════════════════ -->
+<div class="page-header">
+  <div class="page-title">FLOWS</div>
+  <div class="page-status">
+    <span class="status-tag" x-show="logStats.enabled" x-text="fmtInt(logStats.row_count) + ' flows stored'"></span>
+    <span class="status-tag" x-show="logStats.enabled" x-text="(logStats.size_mb||0).toFixed(1) + ' MB on disk'"></span>
+  </div>
+</div>
+
+<!-- ══ Tabs ═════════════════════════════════════════════════════════════════ -->
+<div class="tab-bar">
+  <button :class="{active:tab==='explorer'}" @click="switchTab('explorer')">Flow Explorer</button>
+  <button :class="{active:tab==='history'}"  @click="switchTab('history')">Daily History</button>
+</div>
+
+<!-- ══ EXPLORER ═════════════════════════════════════════════════════════════ -->
+<div class="content" x-show="tab==='explorer'">
+
+  <div class="notice" x-show="logStats.enabled===false">
+    The raw flow log is disabled — enable it with <code>flowlog:&nbsp;enabled:&nbsp;true</code>
+    in config.yaml to capture flows (size-capped, default 20&nbsp;GB). See README § Storage.
+  </div>
+
+  <div class="panel">
+    <h3>Filters</h3>
+    <div class="filter-row">
+      <input class="ipw"   placeholder="IP (src or dst)" x-model="f.ip"    @keyup.enter="search()">
+      <input class="ipw"   placeholder="src IP"          x-model="f.src"   @keyup.enter="search()">
+      <input class="ipw"   placeholder="dst IP"          x-model="f.dst"   @keyup.enter="search()">
+      <input class="portw" placeholder="port"            x-model="f.port"  @keyup.enter="search()">
+      <select x-model="f.proto">
+        <option value="">any proto</option><option value="6">TCP</option>
+        <option value="17">UDP</option><option value="1">ICMP</option>
+      </select>
+      <select x-model="f.dir">
+        <option value="">in + out</option><option value="in">in</option><option value="out">out</option>
+      </select>
+      <div class="range-chips">
+        <template x-for="r in ranges" :key="r.s">
+          <button :class="{on:f.range===r.s}" @click="f.range=r.s;search()" x-text="r.label"></button>
+        </template>
+      </div>
+      <select x-model="f.limit">
+        <option value="2000">2k rows</option><option value="5000">5k rows</option>
+        <option value="20000">20k rows</option>
+      </select>
+      <button @click="search()">Search</button>
+      <button class="ghost" @click="exportCSV()" :disabled="!rows.length">⬇ CSV</button>
+    </div>
+    <div class="stat-line">
+      <span x-show="loading"><span class="spinner"></span>querying…</span>
+      <span x-show="!loading && searched">matched <b x-text="fmtInt(rows.length)"></b> flows
+        <span x-show="rows.length>=+f.limit">(hit the <span x-text="fmtInt(+f.limit)"></span>-row limit — narrow the window)</span></span>
+      <span x-show="!loading && rows.length"><b x-text="fmtBytes(totBytes)"></b> · <b x-text="fmtInt(totPkts)"></b> pkts</span>
+      <span x-show="error" style="color:var(--red)" x-text="error"></span>
+    </div>
+  </div>
+
+  <div class="charts-2col" x-show="rows.length">
+    <div class="panel">
+      <h3>Traffic over time <small x-text="'(' + bucketLabel + ' buckets)'"></small></h3>
+      <div id="chart-traffic" class="chart"></div>
+    </div>
+    <div class="panel">
+      <h3>Top talkers <small>by bytes — click to filter</small></h3>
+      <div id="chart-talkers" class="chart"></div>
+    </div>
+  </div>
+
+  <div class="panel" x-show="searched">
+    <h3>Flows <small x-show="rows.length>500">showing newest 500 of <span x-text="fmtInt(rows.length)"></span> — full set in the CSV</small></h3>
+    <div style="overflow-x:auto">
+    <table>
+      <thead><tr>
+        <th>time</th><th>dir</th><th>src</th><th></th><th>dst</th>
+        <th>proto</th><th>flags</th><th class="num">bytes</th><th class="num">pkts</th><th>AS</th>
+      </tr></thead>
+      <tbody>
+        <template x-for="(r,i) in rows.slice(0,500)" :key="i">
+          <tr>
+            <td class="mono" x-text="fmtTime(r.ts)"></td>
+            <td><span class="dir-pill" :class="r.dir==='out'?'dir-out':'dir-in'" x-text="r.dir||'—'"></span></td>
+            <td class="mono"><a :href="'/ip/'+encodeURIComponent(r.src_ip)" x-text="r.src_ip"></a><span style="color:var(--muted)" x-text="r.src_port?':'+r.src_port:''"></span></td>
+            <td style="color:var(--muted)">→</td>
+            <td class="mono"><a :href="'/ip/'+encodeURIComponent(r.dst_ip)" x-text="r.dst_ip"></a><span style="color:var(--muted)" x-text="r.dst_port?':'+r.dst_port:''"></span></td>
+            <td x-text="protoName(r.proto)"></td>
+            <td class="mono" x-text="tcpFlags(r)"></td>
+            <td class="num" x-text="fmtBytes(r.bytes)"></td>
+            <td class="num" x-text="fmtInt(r.packets)"></td>
+            <td class="mono" style="color:var(--muted)" x-text="asLabel(r)"></td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+    </div>
+    <div class="empty" x-show="searched && !loading && !rows.length">no flows matched — widen the time range or loosen a filter</div>
+  </div>
+</div>
+
+<!-- ══ DAILY HISTORY ════════════════════════════════════════════════════════ -->
+<div class="content" x-show="tab==='history'">
+
+  <div class="panel">
+    <h3>Per-IP daily traffic <small>from the Tier-2 rollups — survives even for quiet IPs</small></h3>
+    <div class="filter-row">
+      <input class="ipw" placeholder="IP address" x-model="h.ip" @keyup.enter="loadIPHistory()">
+      <select x-model="h.ipDays" @change="h.ip && loadIPHistory()">
+        <option value="30">30 days</option><option value="90">90 days</option><option value="365">1 year</option>
+      </select>
+      <button @click="loadIPHistory()">Load</button>
+      <span class="stat-line" style="margin:0" x-show="h.ipLoading"><span class="spinner"></span></span>
+      <span class="stat-line" style="margin:0;color:var(--red)" x-text="h.ipError"></span>
+    </div>
+    <div id="chart-iphist" class="chart-sm" style="margin-top:12px"></div>
+    <div class="empty" x-show="h.ipLoaded && !h.ipHasData">no rollup data for this IP yet — daily rollups accrue once per completed day</div>
+  </div>
+
+  <div class="panel">
+    <h3>Per-ASN daily top talkers <small>stacked: top-5 IPs + other</small></h3>
+    <div class="filter-row">
+      <input class="ipw" placeholder="ASN (e.g. 15169)" x-model="h.asn" @keyup.enter="loadASNHistory()">
+      <select x-model="h.asnDays" @change="h.asn && loadASNHistory()">
+        <option value="14">14 days</option><option value="30">30 days</option><option value="90">90 days</option>
+      </select>
+      <button @click="loadASNHistory()">Load</button>
+      <span class="stat-line" style="margin:0" x-show="h.asnLoading"><span class="spinner"></span></span>
+      <span class="stat-line" style="margin:0;color:var(--red)" x-text="h.asnError"></span>
+    </div>
+    <div id="chart-asnhist" class="chart-sm" style="margin-top:12px"></div>
+    <div class="empty" x-show="h.asnLoaded && !h.asnHasData">no rollup data for this ASN yet</div>
+  </div>
+</div>
+
+<script>
+'use strict'
+
+/* ── Chart palette — validated with the dataviz six-checks against #161b27 ──
+   IN/OUT pair and the fixed 6-slot categorical order. Colors follow the
+   entity (a series keeps its color when others disappear), never the rank. */
+const C_IN  = '#4d7fe0', C_OUT = '#cc7440'
+const CAT6  = ['#4d7fe0', '#cc7440', '#2f9e8f', '#9d76e0', '#b3902a', '#d4547a']
+const C_OTHER = '#565e75'  // neutral for the "other" fold — never a categorical hue
+const INK   = '#cdd6f4', INK_MUTED = '#6c7086', GRIDLN = '#232a3d', SURFACE = '#161b27'
+
+/* Shared recessive chart chrome: muted axes, faint grid, dark tooltip. */
+function baseOption () {
+  return {
+    animationDuration: 250,
+    textStyle: { fontFamily: 'system-ui, sans-serif' },
+    grid: { left: 8, right: 16, top: 34, bottom: 4, containLabel: true },
+    tooltip: {
+      trigger: 'axis', axisPointer: { type: 'shadow' },
+      backgroundColor: '#1e2535', borderColor: '#2a3147',
+      textStyle: { color: INK, fontSize: 12 },
+    },
+    legend: { top: 0, right: 0, textStyle: { color: INK_MUTED, fontSize: 11 }, itemWidth: 14, itemHeight: 9 },
+  }
+}
+const axisX = (labels, fmt) => ({
+  type: 'category', data: labels,
+  axisLine: { lineStyle: { color: GRIDLN } }, axisTick: { show: false },
+  axisLabel: { color: INK_MUTED, fontSize: 11, formatter: fmt },
+})
+const axisYBytes = () => ({
+  type: 'value',
+  splitLine: { lineStyle: { color: GRIDLN } },
+  axisLabel: { color: INK_MUTED, fontSize: 11, formatter: v => fmtBytes(v) },
+})
+
+/* ── formatters ── */
+function fmtBytes (b) {
+  b = +b || 0
+  const u = ['B','KB','MB','GB','TB','PB']; let i = 0
+  while (b >= 1024 && i < u.length - 1) { b /= 1024; i++ }
+  return (i === 0 ? b : b.toFixed(b >= 100 ? 0 : 1)) + ' ' + u[i]
+}
+const fmtInt  = n => (+n || 0).toLocaleString('en-US')
+const fmtTime = ts => { const d = new Date(ts * 1000)
+  return d.toLocaleDateString('en-CA') + ' ' + d.toTimeString().slice(0, 8) }
+// Daily-rollup buckets are cut at UTC midnight — render their labels in UTC
+// too, or a UTC-05:00 operator would see every bar shifted onto the wrong date.
+// (Per-flow fmtTime stays local: those are instants, not day buckets.)
+const fmtDay  = ts => new Date(ts * 1000).toISOString().slice(0, 10)
+// Defence in depth for the ECharts tooltip formatters, which return HTML:
+// peer-IP strings can only be net.IP.String() output today (no HTML metachars),
+// but that invariant lives far away in the collector — escape anyway.
+const esc = s => String(s).replace(/[&<>"']/g,
+  c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+const PROTO   = { 1: 'ICMP', 6: 'TCP', 17: 'UDP', 58: 'ICMP6' }
+
+function app () { return {
+  tab: 'explorer',
+  logStats: {}, loading: false, searched: false, error: '',
+  rows: [], totBytes: 0, totPkts: 0, bucketLabel: '',
+  ranges: [
+    { s: 900, label: '15m' }, { s: 3600, label: '1h' }, { s: 21600, label: '6h' },
+    { s: 86400, label: '24h' }, { s: 604800, label: '7d' },
+  ],
+  f: { ip: '', src: '', dst: '', port: '', proto: '', dir: '', range: 3600, limit: '5000' },
+  h: { ip: '', ipDays: '30', ipLoading: false, ipLoaded: false, ipHasData: false, ipError: '',
+       asn: '', asnDays: '30', asnLoading: false, asnLoaded: false, asnHasData: false, asnError: '' },
+  charts: {},
+
+  init () {
+    const q = new URLSearchParams(location.search)
+    if (q.get('ip'))  this.f.ip = q.get('ip')
+    if (q.get('hip')) { this.tab = 'history'; this.h.ip = q.get('hip') }
+    if (q.get('asn')) { this.tab = 'history'; this.h.asn = q.get('asn') }
+    fetch('/debug/flowlog').then(r => r.json()).then(s => {
+      this.logStats = s
+      if (s.enabled && this.tab === 'explorer') this.search()
+    }).catch(() => { this.logStats = { enabled: false } })
+    if (this.tab === 'history') this.$nextTick(() => {
+      if (this.h.ip)  this.loadIPHistory()
+      if (this.h.asn) this.loadASNHistory()
+    })
+    window.addEventListener('resize', () => this.resizeVisible())
+  },
+
+  // Resize only charts whose container is actually visible — calling resize()
+  // on a display:none chart makes ECharts 5.4.3 throw inside its scheduler.
+  resizeVisible () {
+    for (const c of Object.values(this.charts)) {
+      const el = c.getDom()
+      if (el && el.offsetParent !== null) c.resize()
+    }
+  },
+
+  switchTab (t) { this.tab = t
+    this.$nextTick(() => this.resizeVisible()) },
+
+  chart (id) {
+    if (!this.charts[id]) this.charts[id] = echarts.init(document.getElementById(id))
+    return this.charts[id]
+  },
+
+  /* ── Explorer ── */
+  search () {
+    const now = Math.floor(Date.now() / 1000)
+    const p = new URLSearchParams()
+    if (this.f.ip)    p.set('ip', this.f.ip.trim())
+    if (this.f.src)   p.set('src_ip', this.f.src.trim())
+    if (this.f.dst)   p.set('dst_ip', this.f.dst.trim())
+    if (this.f.port)  p.set('port', this.f.port.trim())
+    if (this.f.proto) p.set('proto', this.f.proto)
+    if (this.f.dir)   p.set('dir', this.f.dir)
+    p.set('since', now - this.f.range)
+    p.set('limit', this.f.limit)
+    this.loading = true; this.error = ''
+    fetch('/debug/flowlog?' + p).then(r => r.json()).then(d => {
+      this.loading = false; this.searched = true
+      if (d.error) { this.error = d.error; this.rows = []; return }
+      this.logStats = { enabled: d.enabled, row_count: d.row_count, size_mb: d.size_mb }
+      this.rows = d.flows || []
+      this.totBytes = this.rows.reduce((a, r) => a + r.bytes, 0)
+      this.totPkts  = this.rows.reduce((a, r) => a + r.packets, 0)
+      this.$nextTick(() => { this.drawTraffic(now); this.drawTalkers() })
+    }).catch(e => { this.loading = false; this.error = String(e) })
+  },
+
+  drawTraffic (now) {
+    if (!this.rows.length) return
+    const range = +this.f.range
+    const bucket = Math.max(60, Math.round(range / 72 / 60) * 60)
+    this.bucketLabel = bucket >= 3600 ? (bucket / 3600) + 'h' : (bucket / 60) + 'min'
+    const start = now - range
+    const n = Math.ceil(range / bucket)
+    const tIn = new Array(n).fill(0), tOut = new Array(n).fill(0), labels = []
+    for (let i = 0; i < n; i++) labels.push(start + i * bucket)
+    for (const r of this.rows) {
+      const i = Math.min(n - 1, Math.max(0, Math.floor((r.ts - start) / bucket)))
+      if (r.dir === 'out') tOut[i] += r.bytes; else tIn[i] += r.bytes
+    }
+    const seg = { borderColor: SURFACE, borderWidth: 1 } // 2px visual gap between stacked segments
+    const o = baseOption()
+    o.xAxis = axisX(labels, ts => {
+      const d = new Date(ts * 1000)
+      return range > 172800 ? (d.getMonth() + 1) + '/' + d.getDate()
+                            : d.toTimeString().slice(0, 5)
+    })
+    o.yAxis = axisYBytes()
+    o.tooltip.formatter = ps => {
+      const t = fmtTime(labels[ps[0].dataIndex])
+      return t + '<br>' + ps.map(p =>
+        p.marker + ' ' + esc(p.seriesName) + ': <b>' + fmtBytes(p.value) + '</b>').join('<br>')
+    }
+    o.series = [
+      { name: 'In',  type: 'bar', stack: 't', data: tIn,  itemStyle: { color: C_IN,  ...seg }, barCategoryGap: '25%' },
+      { name: 'Out', type: 'bar', stack: 't', data: tOut, itemStyle: { color: C_OUT, ...seg, borderRadius: [3, 3, 0, 0] } },
+    ]
+    this.chart('chart-traffic').setOption(o, true)
+  },
+
+  drawTalkers () {
+    const agg = {}
+    for (const r of this.rows) {
+      const peer = r.dir === 'out' ? r.dst_ip : r.src_ip
+      agg[peer] = (agg[peer] || 0) + r.bytes
+    }
+    const top = Object.entries(agg).sort((a, b) => b[1] - a[1]).slice(0, 10).reverse()
+    const o = baseOption()
+    o.legend = undefined                      // single series — the title names it
+    o.grid.left = 4
+    o.grid.right = 62                         // room for the direct value labels
+    o.tooltip.trigger = 'item'
+    o.tooltip.formatter = p => esc(p.name) + ': <b>' + fmtBytes(p.value) + '</b>'
+    o.yAxis = { type: 'category', data: top.map(t => t[0]),
+      axisLine: { show: false }, axisTick: { show: false },
+      axisLabel: { color: INK, fontSize: 11, fontFamily: 'ui-monospace,monospace' } }
+    o.xAxis = { type: 'value', splitNumber: 4, splitLine: { lineStyle: { color: GRIDLN } },
+      axisLabel: { color: INK_MUTED, fontSize: 11, formatter: v => fmtBytes(v) } }
+    o.series = [{ type: 'bar', data: top.map(t => t[1]), barMaxWidth: 14,
+      itemStyle: { color: C_IN, borderRadius: [0, 3, 3, 0] },
+      label: { show: true, position: 'right', color: INK_MUTED, fontSize: 11,
+               formatter: p => fmtBytes(p.value) } }]
+    const ch = this.chart('chart-talkers')
+    ch.setOption(o, true)
+    ch.off('click')
+    ch.on('click', p => { this.f.ip = p.name; this.search() })
+  },
+
+  exportCSV () {
+    const head = 'ts,time,dir,src_ip,src_port,dst_ip,dst_port,proto,tcp_flags,bytes,packets,src_as,dst_as'
+    const lines = this.rows.map(r => [r.ts, fmtTime(r.ts), r.dir, r.src_ip, r.src_port,
+      r.dst_ip, r.dst_port, protoName(r.proto), this.tcpFlags(r), r.bytes, r.packets,
+      r.src_as, r.dst_as].join(','))
+    const blob = new Blob([head + '\n' + lines.join('\n')], { type: 'text/csv' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = 'argus-flows-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.csv'
+    a.click(); URL.revokeObjectURL(a.href)
+  },
+
+  protoName, fmtBytes, fmtInt, fmtTime,
+  tcpFlags (r) {
+    if (r.proto !== 6 || !r.tcp_flags) return ''
+    const F = [[0x02,'S'],[0x10,'A'],[0x01,'F'],[0x04,'R'],[0x08,'P'],[0x20,'U']]
+    return F.filter(([m]) => r.tcp_flags & m).map(([, c]) => c).join('')
+  },
+  asLabel (r) {
+    const a = r.dir === 'out' ? r.dst_as : r.src_as
+    return a ? 'AS' + a : ''
+  },
+
+  /* ── Daily history ── */
+  loadIPHistory () {
+    const ip = this.h.ip.trim(); if (!ip) return
+    this.h.ipLoading = true; this.h.ipError = ''
+    fetch('/debug/rollup?ip=' + encodeURIComponent(ip) + '&days=' + this.h.ipDays)
+      .then(r => r.json()).then(d => {
+        this.h.ipLoading = false; this.h.ipLoaded = true
+        if (d.error) { this.h.ipError = d.error; return }
+        const rows = d.days || []
+        this.h.ipHasData = rows.length > 0
+        const byDay = {}
+        for (const r of rows) {
+          byDay[r.day] = byDay[r.day] || { in: 0, out: 0 }
+          byDay[r.day][r.dir === 'out' ? 'out' : 'in'] += r.bytes
+        }
+        const days = Object.keys(byDay).map(Number).sort((a, b) => a - b)
+        const o = baseOption()
+        o.xAxis = axisX(days, fmtDay); o.yAxis = axisYBytes()
+        o.tooltip.formatter = ps => fmtDay(days[ps[0].dataIndex]) + '<br>' + ps.map(p =>
+          p.marker + ' ' + esc(p.seriesName) + ': <b>' + fmtBytes(p.value) + '</b>').join('<br>')
+        o.series = [
+          { name: 'In',  type: 'bar', data: days.map(d => byDay[d].in),
+            itemStyle: { color: C_IN,  borderRadius: [3, 3, 0, 0] }, barMaxWidth: 22 },
+          { name: 'Out', type: 'bar', data: days.map(d => byDay[d].out),
+            itemStyle: { color: C_OUT, borderRadius: [3, 3, 0, 0] }, barMaxWidth: 22 },
+        ]
+        this.$nextTick(() => this.chart('chart-iphist').setOption(o, true))
+      }).catch(e => { this.h.ipLoading = false; this.h.ipError = String(e) })
+  },
+
+  loadASNHistory () {
+    const asn = this.h.asn.trim().replace(/^AS/i, ''); if (!asn) return
+    this.h.asnLoading = true; this.h.asnError = ''
+    fetch('/debug/rollup?asn=' + encodeURIComponent(asn) + '&days=' + this.h.asnDays)
+      .then(r => r.json()).then(d => {
+        this.h.asnLoading = false; this.h.asnLoaded = true
+        if (d.error) { this.h.asnError = d.error; return }
+        const rows = d.rows || []
+        this.h.asnHasData = rows.length > 0
+        // Rank IPs by total bytes across the whole window; top-5 keep a fixed
+        // categorical color, the rest fold into a neutral "other".
+        const ipTot = {}, byDayIP = {}, dayTot = {}
+        for (const r of rows) {
+          ipTot[r.peer_ip] = (ipTot[r.peer_ip] || 0) + r.bytes
+          const k = r.day + '|' + r.peer_ip
+          byDayIP[k] = (byDayIP[k] || 0) + r.bytes
+          dayTot[r.day] = (dayTot[r.day] || 0) + r.bytes
+        }
+        const top5 = Object.entries(ipTot).sort((a, b) => b[1] - a[1]).slice(0, 5).map(e => e[0])
+        const days = [...new Set(rows.map(r => r.day))].sort((a, b) => a - b)
+        const seg = { borderColor: SURFACE, borderWidth: 1 }
+        const series = top5.map((ip, i) => ({
+          name: ip, type: 'bar', stack: 'd', barMaxWidth: 26,
+          itemStyle: { color: CAT6[i], ...seg },
+          data: days.map(day => byDayIP[day + '|' + ip] || 0),
+        }))
+        // "other" = day total minus the top-5 — O(days), not a rescan of rows.
+        series.push({ name: 'other', type: 'bar', stack: 'd', barMaxWidth: 26,
+          itemStyle: { color: C_OTHER, ...seg, borderRadius: [3, 3, 0, 0] },
+          data: days.map(day => Math.max(0, (dayTot[day] || 0) -
+            top5.reduce((a, ip) => a + (byDayIP[day + '|' + ip] || 0), 0))) })
+        const o = baseOption()
+        o.xAxis = axisX(days, fmtDay); o.yAxis = axisYBytes()
+        o.legend.textStyle.fontFamily = 'ui-monospace,monospace'
+        o.tooltip.formatter = ps => fmtDay(days[ps[0].dataIndex]) + '<br>' + ps
+          .filter(p => p.value > 0)
+          .map(p => p.marker + ' ' + esc(p.seriesName) + ': <b>' + fmtBytes(p.value) + '</b>').join('<br>')
+        o.series = series
+        this.$nextTick(() => this.chart('chart-asnhist').setOption(o, true))
+      }).catch(e => { this.h.asnLoading = false; this.h.asnError = String(e) })
+  },
+}}
+
+function protoName (p) { return PROTO[p] || String(p) }
+</script>
+</body>
+</html>

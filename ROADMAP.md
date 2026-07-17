@@ -142,13 +142,20 @@ Tiered rollups — degrade gracefully instead of falling off a cliff:
 The backend query API (`flowstore/query.go`, telemetry handlers) already exists;
 the UI barely exposes it. After Phases 1–2 there will be much more to show.
 
+- [x] **Flow explorer page** (`/flows`) over the Tier-0 flow log: filters (IP /
+      src / dst / port / proto / direction), time-range chips (15m–7d), traffic-over-
+      time chart (in/out stacked), top-talkers chart (click-to-filter), results table,
+      client-side CSV export. Palette validated with the dataviz six-checks against
+      the dark surface. *(PR: phase-3 flows-ui)*
+- [x] Per-IP and per-ASN **daily history charts** from the Tier-2 rollups, on the
+      `/flows` Daily History tab: per-IP daily in/out bars and per-ASN stacked
+      top-5-IPs+other — deep-linkable (`?hip=…`, `?asn=…`) so `ip.html`/`asn.html`
+      can link in. *(PR: phase-3 flows-ui)*
 - [ ] Global **time-range picker** (last hour / 24h / 7d / 30d / custom) on dashboard,
-      ASN, and IP pages — today most views are "now"-centric.
-- [ ] **Flow explorer page** over the Tier-0 flow log: filter by IP/prefix/ASN/port/
-      proto/flags/direction + time range, sortable, CSV/JSON export.
-- [ ] Per-ASN and per-IP **history charts** from Tier 1/2 (traffic over days/weeks,
-      port mix evolution, country mix) — replaces "History snapshots" comparisons
-      with real time series.
+      ASN, and IP pages — today most views are "now"-centric. (`/flows` has its own
+      range chips; the global rollout across existing pages remains.)
+- [ ] Port/country mix evolution charts on `asn.html` from the daily rollup tables
+      (`flowstore_daily_ports` / `_country` / `_proto` are populated and waiting).
 - [ ] Extract shared CSS + chart helpers from the ~6.5k lines of duplicated inline
       style/script across the 10 static pages (keep the no-build-step rule).
 - [ ] Detection UX: timeline of detections/blackholes over time, rule hit-rate chart,

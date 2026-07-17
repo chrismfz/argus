@@ -2,6 +2,7 @@ package flowlog
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
 	"testing"
 	"time"
@@ -170,5 +171,79 @@ func TestPruneBoundsSize(t *testing.T) {
 	_ = l.prune()
 	if size3 > size2*3/2 {
 		t.Fatalf("file not stabilising: cycle2=%d cycle3=%d bytes", size2, size3)
+	}
+}
+
+// TestPruneUsesLiveDataNotFileSize is the F2 regression: after a burst bloats
+// the file and a prune leaves many free pages behind, a subsequent prune must
+// key off LIVE data (page_count - freelist), not total file size. Otherwise it
+// treats the free pages as data, inflates bytes-per-row, and deletes almost
+// everything.
+func TestPruneUsesLiveDataNotFileSize(t *testing.T) {
+	l, _ := newTestLogger(t, Config{MaxBytes: 256 * 1024})
+
+	// Bloat far past the cap, then prune — this leaves the file large with many
+	// free pages while the live data drops under the cap.
+	fillSync(t, l, 30000)
+	if err := l.prune(); err != nil {
+		t.Fatalf("prune: %v", err)
+	}
+	rows1, file1, _ := l.Stats()
+	used1, _ := l.usedBytes()
+
+	if used1 > int64(l.cfg.MaxBytes) {
+		t.Skipf("live data still over cap after first prune (%d) — can't exercise the no-op path", used1)
+	}
+	if file1 <= int64(l.cfg.MaxBytes) {
+		t.Logf("note: file already at/under cap (%d) — free-page inflation not present on this build", file1)
+	}
+
+	// Second prune: live data fits, so it MUST be a no-op. The old (file-size)
+	// math would over-delete the survivors here.
+	if err := l.prune(); err != nil {
+		t.Fatalf("prune 2: %v", err)
+	}
+	rows2, _, _ := l.Stats()
+	if rows2 != rows1 {
+		t.Fatalf("second prune over-deleted (used file size, not live size): %d -> %d rows", rows1, rows2)
+	}
+}
+
+// TestCloseFlushesPending is the F1 regression: Close() must drain and flush the
+// buffered rows before closing the DB — no lost final batch, no "database is
+// closed". A large BatchSize keeps the writer from flushing mid-run so the flush
+// is forced by Close.
+func TestCloseFlushesPending(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "shutdown.db")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	l, err := Init(ctx, Config{DBPath: path, BatchSize: 100000})
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	const N = 500
+	now := time.Now().Unix()
+	for i := 0; i < N; i++ {
+		l.Enqueue(sampleRow("198.51.100.7", now))
+	}
+
+	if err := l.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	Global = nil
+
+	// Reopen the file independently and confirm every flow persisted.
+	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro")
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer db.Close()
+	var n int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM flows`).Scan(&n); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if n != N {
+		t.Fatalf("Close lost flows: expected %d persisted, got %d", N, n)
 	}
 }

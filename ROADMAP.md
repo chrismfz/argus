@@ -116,7 +116,13 @@ Tiered rollups — degrade gracefully instead of falling off a cliff:
       reusing freed pages. Non-blocking write path (bounded channel, batched writer,
       drop-if-full+counted). Config `flowlog:`, `GET /debug/flowlog?ip=…` JSON endpoint,
       tests (round-trip, sampling, size-bounding, drop path). *(PR: phase-2 flowlog)*
+      Hardened after an independent review — prune keys off live data not file size,
+      shutdown drains before close, chunked deletes. *(PR: phase-2 flowlog review-fixes)*
       **Next:** the Flow Explorer UI page (Phase 3) to surface it.
+      Known soft-cap limits (acceptable): the size bound is main-file-only and lags
+      the 1-min prune tick (transient overshoot under bursts + WAL on top); prune
+      deletes by insertion order not strictly by timestamp; IPv6 lookups are exact
+      string matches (no canonicalisation) — revisit if they bite.
 - [ ] **Tier 1: 5-min detail** (current tables) — retention e.g. 14–30 days.
 - [ ] **Tier 2: daily rollups** of the detail tables (top IPs/prefixes/ports/countries
       per ASN per day) — retention 1–2 years. Cheap: computed at prune time from

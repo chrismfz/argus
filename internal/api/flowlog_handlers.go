@@ -54,7 +54,11 @@ func handleFlowLog(w http.ResponseWriter, r *http.Request) {
 		f.Limit, _ = strconv.Atoi(v)
 	}
 
-	rowCount, sizeBytes, _ := lg.Stats()
+	rowCount, sizeBytes, err := lg.Stats()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
 	resp := map[string]any{
 		"enabled":   true,
 		"row_count": rowCount,

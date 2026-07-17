@@ -7,6 +7,23 @@ Every behavior-changing PR must add an entry under **Unreleased**.
 
 ## [Unreleased]
 
+### Fixed
+- **flowlog hardening** (from an independent review of the Tier-0 flow log):
+  - Prune now measures **live data** (`page_count − freelist_count`), not total
+    file size. The old math counted free pages left by earlier deletes as data,
+    inflated bytes-per-row, and could delete ~99% of rows after a burst even when
+    the live data already fit the cap. (regression test)
+  - Shutdown: `Close()` now stops the writer and **waits for it to drain + flush**
+    before closing the DB — no lost final batch, no "database is closed" on exit.
+    The writer stops on `Close` (not the app context), so flows the batcher flushes
+    during its own shutdown are still captured. (regression test)
+  - Prune deletes in bounded chunks so one statement can't hold the write lock
+    past `busy_timeout` and make the concurrent writer's insert fail.
+  - Prune cadence 5m → 1m to bound overshoot between checks; `Stats()` errors are
+    surfaced by `/debug/flowlog` instead of reporting an empty log; docs corrected
+    so `max_gb: 0` = default (20) and **negative** = unbounded (per the Phase 1
+    convention). Documented the remaining soft-cap limits in ROADMAP.
+
 ### Added
 - **Phase 2 (Tier 0) — optional raw flow log** (`internal/flowlog`, off by default).
   When `flowlog.enabled: true`, every enriched flow (5-tuple + bytes/packets/ifaces/

@@ -7,6 +7,28 @@ Every behavior-changing PR must add an entry under **Unreleased**.
 
 ## [Unreleased]
 
+### Fixed
+- **BGP Ranger now honours withdrawals.** The best-path watcher inserted every
+  update into the cidranger trie but never removed anything — prefixes
+  withdrawn from the internet stayed resolvable forever and their memory was
+  never reclaimed, one of the slow RSS-growth sources on long uptimes.
+  Withdrawn best paths now `Remove()` the prefix (and skip attribute decoding).
+- **GeoIP per-IP caches are now bounded** (they previously grew one entry per
+  distinct IP seen, no TTL, no cap — the main "6 GB becomes 16 GB over weeks"
+  suspect). All four caches (ASN name/number, country, city) use a
+  two-generation bounded map: worst-case ~2× `geoip.cache_max_entries` entries
+  per cache, hot entries survive eviction flips. New config knob
+  `geoip.cache_max_entries` (0 = default 250000, negative = unlimited — the old
+  behavior).
+
+### Changed
+- `/debug/memstats` bgp census: `ranger_paths` (a churn counter that looked
+  like a RIB size) split into `paths_processed` (updates processed since start)
+  and `ranger_size` (actual trie entry count via `Ranger.Len()`).
+- `etc/systemd/system/argus.service` documents an opt-in `GOMEMLIMIT` line:
+  with default GOGC the Go heap ratchets to ~2× the live set, which doubles any
+  real growth on a full-table BGP box; a soft memory limit keeps GC honest.
+
 ### Added
 - **`argus debug` — one-shot diagnostic bundle** (modeled on cfm's `cfm debug`),
   for answering "why is argus at 12 GB RSS" without external tooling. Run on the

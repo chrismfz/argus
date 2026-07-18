@@ -11,6 +11,13 @@ RestartSec=5
 User=root
 Group=root
 
+# Soft cap for the Go heap. With the default GOGC=100 the runtime lets the heap
+# grow to ~2x the live data before collecting — on a full-table BGP box (~4 GB
+# live) that alone ratchets RSS towards 8+ GB, and any real growth is doubled.
+# GOMEMLIMIT makes GC run harder as usage approaches the limit instead. Size it
+# to what you can actually afford to give argus (leave headroom for the OS).
+#Environment=GOMEMLIMIT=8GiB
+
 # Logs
 LogsDirectory=argus
 StandardOutput=append:/var/log/argus/output.log

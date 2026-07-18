@@ -11,18 +11,18 @@ func countSyncMap(m *sync.Map) int {
 }
 
 // DebugStats returns element counts of the enrichment caches for the
-// /debug/memstats census. The GeoIP caches are keyed per distinct IP seen and
-// have no TTL or cap, so these counts are prime suspects when RSS grows over
-// weeks of uptime.
+// /debug/memstats census. The GeoIP caches are keyed per distinct IP seen —
+// bounded at ~2× geoip.cache_max_entries per cache (two-generation eviction);
+// the PTR cache is TTL-bounded only.
 func DebugStats() map[string]any {
 	out := map[string]any{}
 
 	if Global != nil && Global.Geo != nil {
 		g := Global.Geo
-		out["geoip_asn_name_cache"] = countSyncMap(&g.asnNameCache)
-		out["geoip_asn_num_cache"] = countSyncMap(&g.asnNumCache)
-		out["geoip_country_cache"] = countSyncMap(&g.countryCache)
-		out["geoip_city_cache"] = countSyncMap(&g.cityCache)
+		out["geoip_asn_name_cache"] = g.asnNameCache.Len()
+		out["geoip_asn_num_cache"] = g.asnNumCache.Len()
+		out["geoip_country_cache"] = g.countryCache.Len()
+		out["geoip_city_cache"] = g.cityCache.Len()
 	}
 	if Global != nil && Global.DNS != nil {
 		out["ptr_cache"] = countSyncMap(&Global.DNS.cache)

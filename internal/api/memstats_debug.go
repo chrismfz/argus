@@ -83,11 +83,16 @@ func handleMemStatsDebug(w http.ResponseWriter, r *http.Request) {
 	var ms runtime.MemStats
 	runtime.ReadMemStats(&ms)
 
+	bgpStats := bgp.DebugStats()
+	if Ranger != nil {
+		// The actual trie size — paths_processed is only a churn counter.
+		bgpStats["ranger_size"] = Ranger.Len()
+	}
 	components := map[string]any{
 		"telemetry": telemetry.DebugStats(),
 		"flowstore": flowstore.DebugStats(),
 		"enrich":    enrich.DebugStats(),
-		"bgp":       bgp.DebugStats(),
+		"bgp":       bgpStats,
 	}
 	if fl := flowlog.DebugStats(); fl != nil {
 		components["flowlog"] = fl

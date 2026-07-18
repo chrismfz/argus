@@ -64,7 +64,11 @@ type Config struct {
 	GeoIP   struct {
 		ASNDB  string // derived, not from yaml
 		CityDB string // derived, not from yaml
-	}
+		// CacheMaxEntries bounds each per-IP GeoIP lookup cache (ASN name,
+		// ASN number, country, city). 0 = default (250000), negative =
+		// unlimited — same semantics as the retention/cap knobs.
+		CacheMaxEntries int `yaml:"cache_max_entries"`
+	} `yaml:"geoip"`
 
 	DNS struct {
 		Nameserver      string `yaml:"nameserver"`

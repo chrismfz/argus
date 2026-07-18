@@ -45,6 +45,12 @@ maxmind:
   min_age: 72h
   http_timeout: 30s
 
+geoip:
+  # Bound on each per-IP GeoIP lookup cache (ASN name/number, country, city).
+  # Two-generation eviction → worst-case footprint ~2x this per cache.
+  # 0 = default (250000), negative = unlimited (the pre-cap behavior, which
+  # grows forever with distinct IPs seen — not recommended).
+  cache_max_entries: 250000
 
 dns:
   nameserver: "1.1.1.1"

@@ -3,21 +3,26 @@ package enrich
 import (
 	"fmt"
 	"net"
-	"sync"
 	//    "argus/internal/detection"
 	"github.com/oschwald/geoip2-golang"
 )
 
+// DefaultGeoIPCacheMax is the per-generation cap of each per-IP lookup cache
+// (config knob geoip.cache_max_entries; 0 = this default, negative =
+// unlimited, matching the repo-wide retention/cap convention). Worst-case
+// footprint is ~2×max entries per cache across the four caches.
+const DefaultGeoIPCacheMax = 250_000
+
 type GeoIP struct {
 	asnDB        *geoip2.Reader
 	cityDB       *geoip2.Reader
-	asnNameCache sync.Map // IP string → ASN Name
-	countryCache sync.Map // IP string → country code (e.g. "US")
-	cityCache    sync.Map // IP string → city name
-	asnNumCache  sync.Map // IP string → ASN number (uint32)
+	asnNameCache *boundedCache // IP string → ASN Name
+	countryCache *boundedCache // IP string → country code (e.g. "US")
+	cityCache    *boundedCache // IP string → city name
+	asnNumCache  *boundedCache // IP string → ASN number (uint32)
 }
 
-func NewGeoIP(asnPath, cityPath string) (*GeoIP, error) {
+func NewGeoIP(asnPath, cityPath string, cacheMax int) (*GeoIP, error) {
 	asnDB, err := geoip2.Open(asnPath)
 	if err != nil {
 		return nil, err
@@ -26,14 +31,23 @@ func NewGeoIP(asnPath, cityPath string) (*GeoIP, error) {
 	if err != nil {
 		return nil, err
 	}
+	if cacheMax == 0 {
+		cacheMax = DefaultGeoIPCacheMax
+	} else if cacheMax < 0 {
+		cacheMax = 0 // unlimited inside boundedCache
+	}
 	return &GeoIP{
-		asnDB:  asnDB,
-		cityDB: cityDB,
+		asnDB:        asnDB,
+		cityDB:       cityDB,
+		asnNameCache: newBoundedCache(cacheMax),
+		countryCache: newBoundedCache(cacheMax),
+		cityCache:    newBoundedCache(cacheMax),
+		asnNumCache:  newBoundedCache(cacheMax),
 	}, nil
 }
 
 func (g *GeoIP) GetASNNumber(ip string) uint32 {
-	if val, ok := g.asnNumCache.Load(ip); ok {
+	if val, ok := g.asnNumCache.Get(ip); ok {
 		switch v := val.(type) {
 		case uint32:
 			return v
@@ -55,12 +69,12 @@ func (g *GeoIP) GetASNNumber(ip string) uint32 {
 	}
 
 	asn := uint32(record.AutonomousSystemNumber)
-	g.asnNumCache.Store(ip, asn)
+	g.asnNumCache.Put(ip, asn)
 	return asn
 }
 
 func (g *GeoIP) GetASNName(ip string) string {
-	if val, ok := g.asnNameCache.Load(ip); ok {
+	if val, ok := g.asnNameCache.Get(ip); ok {
 		if name, ok := val.(string); ok {
 			return name
 		}
@@ -77,12 +91,12 @@ func (g *GeoIP) GetASNName(ip string) string {
 	}
 
 	name := record.AutonomousSystemOrganization
-	g.asnNameCache.Store(ip, name)
+	g.asnNameCache.Put(ip, name)
 	return name
 }
 
 func (g *GeoIP) GetCountry(ip string) string {
-	if val, ok := g.countryCache.Load(ip); ok {
+	if val, ok := g.countryCache.Get(ip); ok {
 		if cc, ok := val.(string); ok {
 			return cc
 		}
@@ -98,12 +112,12 @@ func (g *GeoIP) GetCountry(ip string) string {
 		return ""
 	}
 
-	g.countryCache.Store(ip, record.Country.IsoCode)
+	g.countryCache.Put(ip, record.Country.IsoCode)
 	return record.Country.IsoCode
 }
 
 func (g *GeoIP) GetCity(ip string) string {
-	if val, ok := g.cityCache.Load(ip); ok {
+	if val, ok := g.cityCache.Get(ip); ok {
 		if city, ok := val.(string); ok {
 			return city
 		}
@@ -120,7 +134,7 @@ func (g *GeoIP) GetCity(ip string) string {
 	}
 
 	name := record.City.Names["en"]
-	g.cityCache.Store(ip, name)
+	g.cityCache.Put(ip, name)
 	return name
 }
 

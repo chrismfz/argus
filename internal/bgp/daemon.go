@@ -228,6 +228,15 @@ func (b *BGPListener) watchUpdates() {
 					continue
 				}
 
+				// Withdrawn best path → drop the prefix from the Ranger.
+				// Without this the trie only ever grows: prefixes withdrawn
+				// from the internet stay resolvable forever and their memory
+				// is never reclaimed. Skip attribute decoding entirely.
+				if path.GetIsWithdraw() {
+					_, _ = b.Ranger.Remove(*prefix)
+					continue
+				}
+
 				// --- decode attributes (AS path gated by config) ---
 				var (
 					asPath      []string

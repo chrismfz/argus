@@ -22,6 +22,7 @@ import (
 	"argus/internal/cfmapi"
 	"argus/internal/collectors"
 	"argus/internal/config"
+	"argus/internal/debugcli"
 	"argus/internal/detection"
 	"argus/internal/enrich"
 	"argus/internal/fields"
@@ -63,7 +64,13 @@ Options:
   -h, --help           Show this help message
   -c, --config FILE    Path to config file (default: auto-detect)
   --debug              Enable debug output
-  -v, --version        Show version`)
+  -v, --version        Show version
+
+Subcommands:
+  argus auth <cmd>     Manage dashboard users (see: argus auth help)
+  argus debug          One-shot diagnostic bundle from the running daemon:
+                       memory census + heap/goroutine profiles + summary
+                       (argus debug -h for flags)`)
 }
 
 // logDiskBudget logs the current on-disk SQLite footprint at startup so
@@ -111,6 +118,12 @@ func main() {
 		os.Args = append(os.Args[:1], os.Args[2:]...)
 		runAuthCLI()
 		return
+	}
+
+	// ── Debug CLI — one-shot diagnostic bundle from the running daemon ────────
+	// Usage:  argus debug [flags]   (note: distinct from the --debug flag)
+	if len(os.Args) > 1 && os.Args[1] == "debug" {
+		os.Exit(debugcli.Run(os.Args[2:]))
 	}
 
 	// ── CLI flags ─────────────────────────────────────────────────────────────
@@ -634,6 +647,7 @@ func main() {
 		}
 
 		go engine.Run(ctx)
+		api.RegisterDebugComponent("detection", engine.DebugStats)
 		log.Printf("[INFO] Detection engine started (maxWindow=%s)", maxWin)
 	} else {
 		log.Print("[INFO] Detection engine disabled")
@@ -710,6 +724,7 @@ func main() {
 		ribWatcher := rib.New(listener.Server, um, enrichers.Geo) // <- pass um, not nil
 		go ribWatcher.Run(ctx)
 		api.RIB = ribWatcher
+		api.RegisterDebugComponent("rib", ribWatcher.DebugStats)
 		log.Printf("[rib] watcher started — adj-in polling active")
 	}
 

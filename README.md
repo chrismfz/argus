@@ -513,6 +513,38 @@ All endpoints require `Authorization: Bearer <token>` header and source IP in `a
 | `/dashboard` | GET | Embedded telemetry dashboard |
 | `/debug/flows` | GET | Live flow debug page |
 | `/debug/rawflows` | GET | Raw NetFlow field inspector |
+| `/debug/memstats` | GET | Memory census: Go runtime stats, process RSS, per-component element counts |
+
+---
+
+## Debugging a running daemon (`argus debug`)
+
+When argus misbehaves — RSS climbing over weeks, CPU pegged, goroutines stuck —
+run the one-shot diagnostic capture **on the server** (loopback needs no token):
+
+```bash
+argus debug                 # instant: memory census + heap/goroutine profiles
+argus debug --cpu 30        # additionally capture a 30s CPU profile
+argus debug -h              # all flags (--output, --keep, --api, --no-pprof)
+```
+
+It writes a bundle to `debug-bundles/<UTC-timestamp>/` (last 10 kept) and prints
+`summary.txt` — the scannable answer to "where did the memory go":
+
+- **Process RSS vs Go heap** (from `/proc` + runtime stats) — distinguishes heap
+  growth from idle-but-unreleased pages;
+- **Top allocation sites by in-use bytes**, parsed from the symbolized heap
+  profile — no `go tool pprof` needed on the host (the raw `heap.pb.gz` /
+  `allocs.pb.gz` are also saved for offline `go tool pprof` analysis);
+- **Component census** — element counts of every long-lived structure: BGP RIB
+  paths (cidranger), rib-watcher prefixes/alt-paths, GeoIP caches (per-IP,
+  unbounded), PTR cache, telemetry rings, flowstore accumulators, detection
+  flow cache, flow-log queue depth/drops;
+- goroutine dumps (`debug=1` + full stacks).
+
+The census alone is available live at `GET /debug/memstats` (IP-only). Compare
+two bundles taken hours apart: the component whose count grows with uptime while
+traffic is steady is your leak.
 
 ---
 

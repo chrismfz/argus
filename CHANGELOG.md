@@ -8,6 +8,25 @@ Every behavior-changing PR must add an entry under **Unreleased**.
 ## [Unreleased]
 
 ### Added
+- **`argus debug` — one-shot diagnostic bundle** (modeled on cfm's `cfm debug`),
+  for answering "why is argus at 12 GB RSS" without external tooling. Run on the
+  server (loopback needs no token): captures the new `GET /debug/memstats`
+  census, heap/allocs/goroutine profiles (binary `.pb.gz` for offline
+  `go tool pprof` **and** symbolized text), optional CPU profile (`--cpu N`),
+  the daemon's `/proc` status, and renders `summary.txt` with process RSS vs Go
+  heap, **top allocation sites by in-use bytes** (parsed in-process from the
+  symbolized heap profile, pprof-style sample un-scaling — no Go toolchain
+  needed on the host), and a per-component element-count census. Bundles go to
+  `debug-bundles/<UTC-timestamp>/`, pruned to the last 10 (`--keep`).
+- **`GET /debug/memstats`** (IP-only): Go runtime memory stats + process
+  RSS/VmSize + element counts of every long-lived in-memory structure — BGP
+  cidranger RIB paths, rib-watcher prefixes/alt-paths, GeoIP per-IP caches
+  (unbounded — prime leak suspects), PTR cache, telemetry rings/hosts/pairs,
+  flowstore timeline/detail/meta accumulators, detection flow cache + anomaly
+  windows + EWMA tracked IPs, flow-log queue depth and drop counter, alerter
+  state. Implemented as nil-safe `DebugStats()` per package plus
+  `api.RegisterDebugComponent` for instance-held components (detection engine,
+  rib watcher) wired from `main.go`.
 - **Phase 3 — Flow Explorer UI** (`/flows`, embedded page, linked from the global
   nav on every page). Two tabs:
   - *Flow Explorer* over the raw flow log: IP/src/dst/port/proto/direction filters,

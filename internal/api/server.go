@@ -342,6 +342,7 @@ func Start() {
 	mainMux.HandleFunc("/debug/rollup", WithMainIPOnly(handleDailyRollup))
 	mainMux.HandleFunc("/tel/flows/stream", WithMainIPOnly(handleFlowsStream))
 	mainMux.HandleFunc("/debug/rawflows", WithMainIPOnly(handleRawFlowsDebug))
+	mainMux.HandleFunc("/debug/memstats", WithMainIPOnly(handleMemStatsDebug))
 	mainMux.HandleFunc("/tel/rawflows/stream", WithMainIPOnly(handleRawFlowsStream))
 
 	// ── pprof — IP-only (loopback always permitted) ───────────────────────

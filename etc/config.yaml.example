@@ -293,7 +293,8 @@ retention:
   detections: 2160h            # detections table, by last_seen (90 days)
   alert_events: 2160h          # alert history (+ deliveries via FK)
   snapshots_daily: 9600h       # 'daily' snapshots only (400 days); weekly/monthly/yearly/manual kept forever
-  risk_events: 168h            # anomaly risk events (7 days)
+  risk_events: 168h            # anomaly risk events, by ts (7 days)
+  risk_events_max_rows: 1000000  # hard row cap on top of the age window; backstop against bursts; -1 = no cap
   blackhole_events: 2160h      # blackhole audit log (90 days)
   blackhole_events_max_rows: 10000  # hard row cap on top of the age window; -1 = no cap
 

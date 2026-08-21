@@ -223,6 +223,14 @@ func main() {
 	}
 	_, _ = db.Exec(`PRAGMA synchronous=NORMAL;`)
 	_, _ = db.Exec(`PRAGMA busy_timeout=5000;`)
+	// Cap the -wal file on disk. In WAL mode SQLite reuses WAL space after a
+	// checkpoint but never shrinks the file back on its own, so a single burst
+	// (or a checkpoint pinned by a slow reader across our 8 connections) can leave
+	// a multi-GB -wal sitting on disk indefinitely. journal_size_limit tells
+	// SQLite to truncate the WAL back to this bound after each checkpoint. 64 MiB
+	// is comfortably above the autocheckpoint threshold, so steady-state writes
+	// are unaffected — only the post-burst high-water mark is reclaimed.
+	_, _ = db.Exec(`PRAGMA journal_size_limit=67108864;`)
 	if err := sqlite.InitSQLiteSchema(db); err != nil {
 		log.Fatal("Failed to init schema:", err)
 	}
@@ -246,7 +254,7 @@ func main() {
 				}
 				// Retention windows come from the `retention:` config section
 				// (defaults preserve the historical values; negative = keep forever).
-				if err := detection.PurgeOldRiskEvents(db, cfg.Retention.RiskEvents); err != nil {
+				if err := detection.PurgeOldRiskEvents(db, cfg.Retention.RiskEvents, cfg.Retention.RiskEventsMaxRow); err != nil {
 					log.Printf("[WARN] Periodic risk_events purge error: %v", err)
 				}
 				if err := detection.PruneBlackholeEvents(db, cfg.Retention.BlackholeEvents, cfg.Retention.BlackholeEventsMaxRow); err != nil {

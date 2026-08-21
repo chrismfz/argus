@@ -583,10 +583,22 @@ for row count and on-disk size.
 `retention:` sections in `etc/config.yaml.example`). Unset values keep the
 historical defaults — flowstore detail 7d / timeline 30d with top-50 IPs,
 top-20 prefixes, top-10 ports per 30-min bucket; telemetry buckets 30d;
-detections/alert/blackhole history 90d; daily snapshots 400d. Set a value
-negative to keep data forever (retentions) or write everything tracked
-(top-N caps). argus logs its effective settings and current SQLite footprint
-at startup so you can size retention against your disk.
+detections/alert/blackhole history 90d; daily snapshots 400d; risk events 7d,
+capped at 1,000,000 rows. Set a value negative to keep data forever
+(retentions / row caps) or write everything tracked (top-N caps). argus logs
+its effective settings and current SQLite footprint at startup so you can size
+retention against your disk.
+
+**Reclaiming disk (`detections.sqlite`).** Retention *deletes* rows on the
+1-minute cleanup ticker, but SQLite never returns freed pages to the OS on its
+own — a file that once ballooned stays big, full of reusable free pages. The
+`-wal` sidecar is bounded (`PRAGMA journal_size_limit`, 64 MiB) so it no longer
+grows into the GBs, but the main file is only compacted by an explicit
+`VACUUM`. To shrink it, stop argus briefly and run
+`sqlite3 detections.sqlite 'VACUUM;'` (needs free disk ≈ the *compacted* size,
+so let the ticker prune first). Dump the tiny live-state tables first as
+insurance: `sqlite3 detections.sqlite '.dump blackholes whitelist' > critical.sql`
+— never just `rm` the file, or active blackholes are lost on the next restart.
 
 **Log files:**
 | File | Contents |

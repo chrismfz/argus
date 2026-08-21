@@ -268,9 +268,14 @@ make build
 # Explicit config path
 ./bin/argus --config /opt/argus/etc/config.yaml
 
-# Install as systemd service
-cp etc/systemd/system/argus.service /etc/systemd/system/
-systemctl enable --now argus
+# Install/refresh the systemd unit + logrotate config into place
+# (drops etc/systemd/system/argus.service → /etc/systemd/system/ and
+#  etc/logrotate.d/argus-rotate → /etc/logrotate.d/argus, then daemon-reload;
+#  paths are the same on Debian/Ubuntu/RHEL clones and overridable, e.g.
+#  `make install DESTDIR=/tmp/stage`)
+sudo make install
+systemctl enable --now argus     # first time only
+sudo systemctl restart argus     # to pick up unit changes on later re-installs
 ```
 
 ## MikroTik setup

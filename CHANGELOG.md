@@ -8,6 +8,12 @@ Every behavior-changing PR must add an entry under **Unreleased**.
 ## [Unreleased]
 
 ### Added
+- **`make install`** drops the latest systemd unit and logrotate config into
+  place (`/etc/systemd/system/argus.service` and `/etc/logrotate.d/argus`) and
+  runs `systemctl daemon-reload` — the same paths on every systemd + logrotate
+  distro (Debian, Ubuntu, RHEL clones). It removes a stale `argus-rotate`
+  drop-in so logs aren't rotated twice, runs `restorecon` on RHEL/SELinux, and
+  honours `DESTDIR`/`SYSTEMD_DIR`/`LOGROTATE_DIR`/`LOG_DIR` for staged packaging.
 - **`risk_events` now has a hard row cap.** It was the one high-frequency
   detection table with only an age window (7d) and no count backstop — under a
   burst (a DDoS lighting up thousands of sources) rows could pile on faster than

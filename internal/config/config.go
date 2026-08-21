@@ -240,7 +240,8 @@ type RetentionConfig struct {
 	Detections            time.Duration `yaml:"detections"`                // detections table by last_seen, default 90d
 	AlertEvents           time.Duration `yaml:"alert_events"`              // alert_events (+deliveries via FK), default 90d
 	SnapshotsDaily        time.Duration `yaml:"snapshots_daily"`           // 'daily' snapshots only, default 400d
-	RiskEvents            time.Duration `yaml:"risk_events"`               // risk_events table, default 7d
+	RiskEvents            time.Duration `yaml:"risk_events"`               // risk_events table by ts, default 7d
+	RiskEventsMaxRow      int           `yaml:"risk_events_max_rows"`      // hard row cap on top of the age window, default 1_000_000; -1 = no cap
 	BlackholeEvents       time.Duration `yaml:"blackhole_events"`          // blackhole_events audit log, default 90d
 	BlackholeEventsMaxRow int           `yaml:"blackhole_events_max_rows"` // hard row cap, default 10000
 }
@@ -390,6 +391,7 @@ func applyStorageDefaults(cfg *Config) {
 	defDur(&r.AlertEvents, 90*24*time.Hour)
 	defDur(&r.SnapshotsDaily, 400*24*time.Hour)
 	defDur(&r.RiskEvents, 7*24*time.Hour)
+	defInt(&r.RiskEventsMaxRow, 1_000_000)
 	defDur(&r.BlackholeEvents, 90*24*time.Hour)
 	defInt(&r.BlackholeEventsMaxRow, 10000)
 
@@ -459,8 +461,8 @@ func LogStartup(cfg *Config) {
 		fs.TopIPs, fs.TopPrefixes, fs.TopPorts,
 		fs.MaxTrackedIPs, fs.MaxTrackedPrefixes, fs.MaxTrackedPorts,
 		tel.BucketRetentionDays)
-	log.Printf("[CFG] retention: detections=%s alert_events=%s snapshots_daily=%s risk_events=%s blackhole_events=%s (max_rows=%d)",
-		r.Detections, r.AlertEvents, r.SnapshotsDaily, r.RiskEvents, r.BlackholeEvents, r.BlackholeEventsMaxRow)
+	log.Printf("[CFG] retention: detections=%s alert_events=%s snapshots_daily=%s risk_events=%s (max_rows=%d) blackhole_events=%s (max_rows=%d)",
+		r.Detections, r.AlertEvents, r.SnapshotsDaily, r.RiskEvents, r.RiskEventsMaxRow, r.BlackholeEvents, r.BlackholeEventsMaxRow)
 
 	ac := cfg.Detection.Anomaly
 	pf := ac.Prefilter

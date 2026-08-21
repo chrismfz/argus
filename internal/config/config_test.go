@@ -45,6 +45,9 @@ func TestStorageDefaults(t *testing.T) {
 	if r.SnapshotsDaily != 400*24*time.Hour || r.RiskEvents != 7*24*time.Hour {
 		t.Fatalf("retention defaults wrong: %+v", r)
 	}
+	if r.RiskEventsMaxRow != 1_000_000 {
+		t.Fatalf("risk_events_max_rows default wrong: %+v", r)
+	}
 	if r.BlackholeEvents != 90*24*time.Hour || r.BlackholeEventsMaxRow != 10000 {
 		t.Fatalf("blackhole_events defaults wrong: %+v", r)
 	}
@@ -91,6 +94,7 @@ telemetry:
 retention:
   detections: 720h
   snapshots_daily: -1h
+  risk_events_max_rows: -1
 `)
 
 	if cfg.Flowstore.RetentionDays != 30 || cfg.Flowstore.TimelineRetentionDays != 90 {
@@ -113,5 +117,8 @@ retention:
 	}
 	if cfg.Retention.AlertEvents != 90*24*time.Hour {
 		t.Fatalf("unset alert_events must still default, got %v", cfg.Retention.AlertEvents)
+	}
+	if cfg.Retention.RiskEventsMaxRow != -1 {
+		t.Fatalf("risk_events_max_rows=-1 (no cap) must pass through, got %d", cfg.Retention.RiskEventsMaxRow)
 	}
 }

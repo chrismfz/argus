@@ -169,19 +169,44 @@ func (s *SQLiteStore) InsertRiskEvent(
 	}
 }
 
-// PurgeOldRiskEvents deletes risk_events older than maxAge.
-// Wire into the same cleanup ticker as CleanupExpiredBlackholes in main.go.
-func PurgeOldRiskEvents(db *sql.DB, maxAge time.Duration) error {
-	if maxAge <= 0 {
-		return nil // pruning disabled — a negative cutoff would delete everything
+// PurgeOldRiskEvents enforces retention on the risk_events table: it deletes
+// rows older than maxAge, then trims to at most maxRows (FIFO by id). risk_events
+// is the highest-frequency detection table (one row per "interesting" anomaly per
+// tick) and, unlike blackhole_events, had no hard row cap — so a burst (e.g. a
+// DDoS lighting up thousands of sources) could pile on rows faster than the age
+// window pruned them. The row cap is the backstop that keeps the table (and the
+// SQLite file it shares) bounded. Wire into the same cleanup ticker as
+// CleanupExpiredBlackholes in main.go.
+//
+// maxAge <= 0 disables age pruning (keep forever); maxRows <= 0 disables the cap.
+func PurgeOldRiskEvents(db *sql.DB, maxAge time.Duration, maxRows int) error {
+	if db == nil {
+		return nil
 	}
-	cutoff := time.Now().Add(-maxAge).Unix()
-	res, err := db.Exec(`DELETE FROM risk_events WHERE ts < ?`, cutoff)
-	if err != nil {
-		return fmt.Errorf("purge risk_events: %w", err)
+	if maxAge > 0 {
+		cutoff := time.Now().Add(-maxAge).Unix()
+		res, err := db.Exec(`DELETE FROM risk_events WHERE ts < ?`, cutoff)
+		if err != nil {
+			return fmt.Errorf("purge risk_events by age: %w", err)
+		}
+		if n, _ := res.RowsAffected(); n > 0 {
+			log.Printf("[risk_events] purged %d rows older than %s", n, maxAge)
+		}
 	}
-	if n, _ := res.RowsAffected(); n > 0 {
-		log.Printf("[risk_events] purged %d rows older than %s", n, maxAge)
+	if maxRows > 0 {
+		res, err := db.Exec(`
+			DELETE FROM risk_events
+			WHERE id IN (
+				SELECT id FROM risk_events
+				ORDER BY id DESC
+				LIMIT -1 OFFSET ?
+			)`, maxRows)
+		if err != nil {
+			return fmt.Errorf("purge risk_events by count: %w", err)
+		}
+		if n, _ := res.RowsAffected(); n > 0 {
+			log.Printf("[risk_events] purged %d rows over cap of %d", n, maxRows)
+		}
 	}
 	return nil
 }

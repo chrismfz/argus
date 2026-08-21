@@ -1,14 +1,29 @@
-/var/log/argus/*.log {
+# argus log rotation — covers both locations argus writes to:
+#
+#   /var/log/argus/*.log  systemd's stdout/stderr
+#                         (StandardOutput=append:/var/log/argus/output.log,
+#                          StandardError=append:/var/log/argus/error.log)
+#   /opt/argus/*.log      argus's own logs, written relative to
+#                         WorkingDirectory=/opt/argus — detections.log, risk.log,
+#                         anomalies.log, plus the optional netflow-debug / memory logs
+#
+# copytruncate is deliberate: neither writer reopens its log on a signal. argus
+# only handles SIGTERM/SIGINT (it never wired SIGUSR1), and systemd keeps its
+# append: fd open. So the old `create` + "postrotate ... SIGUSR1" model was a
+# no-op — argus kept writing to the rotated inode and disk was never freed (this
+# is why detections.log grew into the GBs). copytruncate rotates by copying then
+# truncating the file in place, so the existing fd keeps appending to the same
+# now-empty inode with no process cooperation needed.
+#
+# NOTE: copytruncate copies the file before truncating, so the FIRST rotation of
+# an already-huge log needs free disk ~= its current size. Truncate any giant log
+# once by hand first ( : > /opt/argus/detections.log ) so the initial copy is cheap.
+/var/log/argus/*.log /opt/argus/*.log {
     daily
     rotate 14
     compress
     delaycompress
     missingok
     notifempty
-    create 0640 root root
-    sharedscripts
-    postrotate
-        # Tell systemd to reopen the log files after rotation
-        systemctl kill -s SIGUSR1 argus.service >/dev/null 2>&1 || true
-    endscript
+    copytruncate
 }

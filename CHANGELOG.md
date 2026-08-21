@@ -7,7 +7,32 @@ Every behavior-changing PR must add an entry under **Unreleased**.
 
 ## [Unreleased]
 
+### Added
+- **`risk_events` now has a hard row cap.** It was the one high-frequency
+  detection table with only an age window (7d) and no count backstop — under a
+  burst (a DDoS lighting up thousands of sources) rows could pile on faster than
+  the age prune removed them, bloating `detections.sqlite`. New config knob
+  `retention.risk_events_max_rows` (0 = default 1,000,000, negative = no cap)
+  trims the table FIFO by id, mirroring `blackhole_events_max_rows`.
+
+### Changed
+- **SQLite `-wal` file is now size-bounded** via `PRAGMA journal_size_limit`
+  (64 MiB). WAL mode reuses WAL space after a checkpoint but never shrinks the
+  file on its own, so a write burst — or a checkpoint pinned by a slow reader
+  across the 8 DB connections — could leave a multi-GB `detections.sqlite-wal`
+  on disk indefinitely. The WAL is now truncated back after each checkpoint.
+  Note: this bounds future growth only; an already-bloated `detections.sqlite`
+  is reclaimed with a one-time `VACUUM` (see README → Storage / disk).
+
 ### Fixed
+- **Log rotation now actually frees disk.** `etc/logrotate.d/argus-rotate` only
+  matched `/var/log/argus/*.log` and relied on a `postrotate` SIGUSR1 to make the
+  process reopen — but argus never handled SIGUSR1 (only SIGTERM/SIGINT), so it
+  kept writing to the rotated inode and space was never reclaimed (how
+  `detections.log` reached 1.7 GB). It also missed argus's own logs, which are
+  written relative to `WorkingDirectory=/opt/argus`. The config now covers both
+  `/var/log/argus/*.log` and `/opt/argus/*.log` and uses `copytruncate`, which
+  needs no reopen from either argus or systemd.
 - **BGP Ranger now honours withdrawals.** The best-path watcher inserted every
   update into the cidranger trie but never removed anything — prefixes
   withdrawn from the internet stayed resolvable forever and their memory was

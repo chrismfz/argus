@@ -25,6 +25,14 @@ Every behavior-changing PR must add an entry under **Unreleased**.
   is reclaimed with a one-time `VACUUM` (see README → Storage / disk).
 
 ### Fixed
+- **Log rotation now actually frees disk.** `etc/logrotate.d/argus-rotate` only
+  matched `/var/log/argus/*.log` and relied on a `postrotate` SIGUSR1 to make the
+  process reopen — but argus never handled SIGUSR1 (only SIGTERM/SIGINT), so it
+  kept writing to the rotated inode and space was never reclaimed (how
+  `detections.log` reached 1.7 GB). It also missed argus's own logs, which are
+  written relative to `WorkingDirectory=/opt/argus`. The config now covers both
+  `/var/log/argus/*.log` and `/opt/argus/*.log` and uses `copytruncate`, which
+  needs no reopen from either argus or systemd.
 - **BGP Ranger now honours withdrawals.** The best-path watcher inserted every
   update into the cidranger trie but never removed anything — prefixes
   withdrawn from the internet stayed resolvable forever and their memory was

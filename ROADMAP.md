@@ -207,6 +207,14 @@ Turning data argus already collects into operator decisions:
 - [ ] **Prometheus `/metrics` endpoint** — flows/sec, enrichment latency, detection
       counts, BGP session state. Cheap, huge operational value, optional for users.
 - [ ] Scheduled **reports** (daily/weekly email: top talkers, detections, blackholes).
+- [ ] **IP insights + traffic-anomaly + argus MCP** — per-*local-host* traffic
+      attribution (bytes in/out, top remote peers/ASN/ports for one of *our*
+      IPs), a volume-anomaly layer (host/interface/ASN N× baseline), and a
+      read-only MCP that plugs into the `cfm-web` fleet proxy so argus is
+      queryable next to the CFM nodes. Delivered as CLI + UI + MCP. Motivated by
+      a LibreNMS outbound spike CFM structurally can't attribute (it has no
+      interface byte counter). Design + phasing:
+      `docs/ip-insights-and-traffic-anomaly-mcp.md`.
 
 ## Phase 6 — Ops & platform
 

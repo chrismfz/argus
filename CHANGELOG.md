@@ -8,6 +8,13 @@ Every behavior-changing PR must add an entry under **Unreleased**.
 ## [Unreleased]
 
 ### Added
+- **Design doc: IP insights, traffic-anomaly detection, and an argus MCP**
+  (`docs/ip-insights-and-traffic-anomaly-mcp.md`). Plans per-local-host traffic
+  attribution (the data is already captured — `flowstore_daily_ips` carries
+  `local_ip`), a volume-anomaly layer, and a read-only MCP that mirrors the CFM
+  daemon's go-sdk `/mcp` so it plugs into the `cfm-web` fleet proxy. Doc-only for
+  now; grew out of a LibreNMS outbound spike that CFM cannot attribute (no
+  interface byte counter). Also linked from ROADMAP Phase 5.
 - **`make install`** drops the latest systemd unit and logrotate config into
   place (`/etc/systemd/system/argus.service` and `/etc/logrotate.d/argus`) and
   runs `systemctl daemon-reload` — the same paths on every systemd + logrotate

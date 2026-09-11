@@ -54,6 +54,10 @@ func initSchema(db *sql.DB) error {
 	-- Per-local-host lookups (the "My Hosts" per-IP traffic view). Keyed on
 	-- local_ip so "what is 84.54.49.202 sending, to whom" doesn't table-scan.
 	CREATE INDEX IF NOT EXISTS idx_fstips_local ON flowstore_top_ips(local_ip, ts DESC);
+	-- ts-leading index for the "busiest local hosts" query, which ranges on ts
+	-- and GROUP BYs local_ip (neither local_ip- nor asn-leading index serves it).
+	-- Cheap: flowstore_top_ips is written in 30-min batches, not per-flow.
+	CREATE INDEX IF NOT EXISTS idx_fstips_ts ON flowstore_top_ips(ts);
 
 	-- Hourly top-20 BGP prefixes per ASN + direction.
 	CREATE TABLE IF NOT EXISTS flowstore_top_prefixes (

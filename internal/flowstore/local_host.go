@@ -15,7 +15,15 @@ import (
 // (asn, dir). So a host's traffic that is spread across many small,
 // below-top-N peers can be undercounted — these views are "who/what dominates
 // this host", not billing-grade totals. Every result therefore carries
-// Partial=true. An exact per-local-host rollup is future work (see
+// Partial=true.
+//
+// PORT CAVEAT: the table stores only dst_port (no src_port), so for the
+// response/egress half of a connection our host SERVES, dst_port is the
+// remote client's EPHEMERAL port, not the service port. Read TopPorts' In
+// column for the service port of inbound-initiated connections; a proper
+// service-port view needs src_port stored (a follow-up — see
+// docs/ip-insights-and-traffic-anomaly-mcp.md). Peers/ASNs/countries/series
+// are unaffected. An exact per-local-host rollup is future work (see
 // docs/ip-insights-and-traffic-anomaly-mcp.md). Direction is network-relative:
 // dir="out" is traffic leaving our AS (a server's egress to clients — the POP3
 // drain shape), dir="in" is traffic arriving into our AS.
@@ -172,6 +180,13 @@ func queryLocalRank(db *sql.DB, ip string, since, until int64, keyExpr string, l
 
 // QueryTopLocalHosts returns our busiest local hosts by total bytes over
 // [since, until), so "which of my servers is hot" is one query.
+//
+// local_ip is the non-peer side of each flow (store.go Accumulate). For a stub
+// AS whose direction is decided by a my_prefixes match that is our own host; but
+// when direction is decided by the upstream-interface tier alone (flowdir), the
+// local side is not re-checked against my_prefixes, so a rare transit/foreign
+// flow could contribute a non-owned local_ip. We at least drop the empty-string
+// bucket so a malformed flow can't masquerade as a dominant "host".
 func QueryTopLocalHosts(db *sql.DB, since, until int64, topN int) ([]LocalTalker, error) {
 	topN = clampLocalTop(topN)
 	rows, err := db.Query(`
@@ -179,7 +194,7 @@ func QueryTopLocalHosts(db *sql.DB, since, until int64, topN int) ([]LocalTalker
 		       COALESCE(SUM(CASE WHEN dir='in'  THEN bytes ELSE 0 END), 0),
 		       COALESCE(SUM(CASE WHEN dir='out' THEN bytes ELSE 0 END), 0)
 		FROM flowstore_top_ips
-		WHERE ts >= ? AND ts < ?
+		WHERE ts >= ? AND ts < ? AND local_ip != ''
 		GROUP BY local_ip
 		ORDER BY SUM(bytes) DESC
 		LIMIT ?`, since, until, topN)

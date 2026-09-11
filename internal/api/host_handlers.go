@@ -18,10 +18,23 @@ import (
 //	GET /debug/hosts?hours=24&top=25
 //	    → our busiest local hosts by bytes over the window
 
-// hostWindow parses the shared ?hours= (default 24, clamped 1..168) into a
-// [since, until) unix-second window ending now.
+// Read-side display defaults for the "My Hosts" views. These are UI query
+// defaults, not data-retention caps; maxHostWindowHours tracks the flowstore
+// 30-min detail retention (default 7 days) — an operator running a longer detail
+// retention can't yet widen the window from here. Making these config-backed
+// (tied to config.RetentionConfig) is a follow-up noted in
+// docs/ip-insights-and-traffic-anomaly-mcp.md.
+const (
+	defaultHostWindowHours = 24
+	maxHostWindowHours     = 168 // 7 days = the detail-table retention
+	defaultHostTopN        = 15  // ranked lists on the single-host view
+	defaultHostsTopN       = 25  // rows on the top-local-hosts view
+)
+
+// hostWindow parses the shared ?hours= into a [since, until) unix-second window
+// ending now, clamped to [1, maxHostWindowHours].
 func hostWindow(r *http.Request) (since, until int64) {
-	hours := 24
+	hours := defaultHostWindowHours
 	if v := r.URL.Query().Get("hours"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			hours = n
@@ -30,8 +43,8 @@ func hostWindow(r *http.Request) (since, until int64) {
 	if hours < 1 {
 		hours = 1
 	}
-	if hours > 168 { // 7 days = the detail-table retention
-		hours = 168
+	if hours > maxHostWindowHours {
+		hours = maxHostWindowHours
 	}
 	until = time.Now().Unix()
 	since = until - int64(hours)*3600
@@ -59,7 +72,7 @@ func handleHostInsights(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	since, until := hostWindow(r)
-	ins, err := flowstore.QueryLocalHostInsights(DB, ip, since, until, hostTopN(r, 15))
+	ins, err := flowstore.QueryLocalHostInsights(DB, ip, since, until, hostTopN(r, defaultHostTopN))
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
@@ -74,7 +87,7 @@ func handleTopHosts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	since, until := hostWindow(r)
-	hosts, err := flowstore.QueryTopLocalHosts(DB, since, until, hostTopN(r, 25))
+	hosts, err := flowstore.QueryTopLocalHosts(DB, since, until, hostTopN(r, defaultHostsTopN))
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return

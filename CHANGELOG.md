@@ -8,6 +8,15 @@ Every behavior-changing PR must add an entry under **Unreleased**.
 ## [Unreleased]
 
 ### Added
+- **Embedded read-only MCP server at `/mcp` (P2 of the IP-insights plan).** argus
+  now speaks the Model Context Protocol (go-sdk v1.7.0 streamable HTTP, stateless
+  + JSON) so an operator can query its flow telemetry from the same place they
+  query the CFM fleet. Tools: `host_traffic`, `top_local_talkers`, `infoip`,
+  `interfaces` (live SNMP), and `flow_search` (raw flow log, when enabled). It is
+  gated by the existing `WithAuth` (bearer from `api.tokens`, or `allow_ips`) —
+  the same credential a fleet gateway (cfm-web) already holds — and mirrors the
+  CFM daemon's MCP so it is drop-in for cfm-web's `node_call` proxy (P3). New
+  `internal/mcpserver` package; kill switch `api.mcp_enabled: false`.
 - **"My Hosts" — per-local-host traffic view (P1 of the IP-insights plan).** A
   new page at `/hosts` and two IP-only endpoints answer the question a LibreNMS
   interface spike raises but can't itself answer: *what is one of MY hosts

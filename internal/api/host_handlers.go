@@ -31,14 +31,12 @@ const (
 	defaultHostsTopN       = 25  // rows on the top-local-hosts view
 )
 
-// hostWindow parses the shared ?hours= into a [since, until) unix-second window
-// ending now, clamped to [1, maxHostWindowHours].
-func hostWindow(r *http.Request) (since, until int64) {
-	hours := defaultHostWindowHours
-	if v := r.URL.Query().Get("hours"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			hours = n
-		}
+// hostWindowHours turns an hours count into a [since, until) unix-second window
+// ending now, clamped to [1, maxHostWindowHours]. hours <= 0 uses the default.
+// Shared by the HTTP handlers and the MCP host tools.
+func hostWindowHours(hours int) (since, until int64) {
+	if hours <= 0 {
+		hours = defaultHostWindowHours
 	}
 	if hours < 1 {
 		hours = 1
@@ -49,6 +47,17 @@ func hostWindow(r *http.Request) (since, until int64) {
 	until = time.Now().Unix()
 	since = until - int64(hours)*3600
 	return since, until
+}
+
+// hostWindow parses the shared ?hours= into a [since, until) window.
+func hostWindow(r *http.Request) (since, until int64) {
+	hours := defaultHostWindowHours
+	if v := r.URL.Query().Get("hours"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			hours = n
+		}
+	}
+	return hostWindowHours(hours)
 }
 
 func hostTopN(r *http.Request, def int) int {

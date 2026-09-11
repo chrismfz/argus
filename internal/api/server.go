@@ -346,6 +346,9 @@ func Start() {
 	mainMux.HandleFunc("/debug/rollup", WithMainIPOnly(handleDailyRollup))
 	mainMux.HandleFunc("/debug/host", WithMainIPOnly(handleHostInsights))
 	mainMux.HandleFunc("/debug/hosts", WithMainIPOnly(handleTopHosts))
+
+	// Embedded read-only MCP server at /mcp (behind WithAuth), unless disabled.
+	registerMCPServer(mainMux)
 	mainMux.HandleFunc("/tel/flows/stream", WithMainIPOnly(handleFlowsStream))
 	mainMux.HandleFunc("/debug/rawflows", WithMainIPOnly(handleRawFlowsDebug))
 	mainMux.HandleFunc("/debug/memstats", WithMainIPOnly(handleMemStatsDebug))

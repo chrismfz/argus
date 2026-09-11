@@ -207,6 +207,16 @@ Out of argus's scope but part of the same lesson, to be raised as separate `cfm`
   this drain — complementary to argus's IP/flow view. A candidate "base" for
   CLI/UI/MCP alongside the (de-noised) `health` signals.
 
+> **As-built (P2, landed):** `internal/mcpserver` uses go-sdk v1.7.0 streamable
+> HTTP (stateless + JSON, `DisableLocalhostProtection` like CFM) mounted at
+> `/mcp`. Auth reuses argus's existing `WithAuth` (bearer from `api.tokens`, or
+> `allow_ips`) rather than a dedicated `mcp_token` — a fleet gateway already
+> holds an api token, so this is one fewer secret to manage and still exactly
+> what cfm-web's `FleetMcpClient` presents. Kill switch: `api.mcp_enabled:false`.
+> Tools shipped: `host_traffic`, `top_local_talkers`, `infoip`, `interfaces`,
+> `flow_search`. `bgp_status`/`blackhole_*` and a light `whats_wrong` remain
+> follow-ups.
+
 ### 4.3 argus embedded MCP server (`internal/mcpserver`, new)
 
 Mirror the CFM daemon's MCP exactly so it is **drop-in for the `cfm-web`

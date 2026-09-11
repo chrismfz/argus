@@ -33,6 +33,52 @@ patterns, "is a process running"). It structurally **cannot measure or
 attribute raw bandwidth**. That is a flow-data question, and argus already
 ingests the flows — it just can't yet answer it conveniently.
 
+## 1a. Root cause found — the whitelist blind spot (case study)
+
+The virgo egress was traced (the hard way) to **`94.131.146.168` draining a
+mailbox on the `adamidis` (adamidisatebe.gr) account over POP3** — repeated
+RETR of a large mailbox is exactly the sustained outbound byte shape. Why it
+escaped every layer, confirmed against the live fleet + the code:
+
+- **It was whitelisted — permanently, globally, protocol-blind.** `check_ip`:
+  on the `whitelist`, permanent, added **manually on 2025-10-23 from virgo** with
+  reason `SECURITY/RCPT_AUTH_REQUIRED | exim_security`. `ip_locate` on virgo: it
+  sits in the nft **ALLOW** sets `allow_ext_v4_hosts` + `allow_ext_v4_hosts_myallow`
+  (the MYALLOW feed) → the firewall **fail-opens** for it, fleet-wide. A whitelist
+  added to silence one *SMTP* false-positive a year ago silently exempted the IP
+  for *every* protocol, including POP3, forever.
+- **Allow-list suppresses visibility, not just enforcement.** `detection_history`
+  for the IP is **empty**. In `cfm/internal/detectors/ignore.go`, ignored/allow
+  IPs are skipped and, with `LOG_IGNORED` defaulting to **false**, are **not even
+  recorded to the sink**. So the abuse left no trace to alert on.
+- **No detector models POP3 *volume*.** The `dovecot_auth` detector keys only on
+  auth *failures* (`auth failed|authentication failure|aborted login|password
+  mismatch`). A compromised login with **valid credentials** produces zero
+  failures → invisible. There is no bytes/RETR/volume signal on IMAP/POP3 at all.
+- **The one signal that could see bandwidth is the unused one.** CFM's `health`
+  detector computes `TX_THRU_SPIKE` / `CONN_TOTAL_SPIKE` / `CPU_HIGH`, but it is
+  noisy (fires at x≈1.9 via email, no dedup) and — critically — has **no
+  attribution** (no peer/port), so even when it fires it can't name the culprit.
+- **argus saw the bytes but you couldn't ask it.** NetFlow does not care about
+  CFM allow-lists; the flow to `94.131.146.168:110/995` was in argus the whole
+  time. The missing piece was a per-local-host view + a volume anomaly + a way to
+  query it — i.e. this document.
+- **Confirmed from the account too.** cPanel's per-account bandwidth-by-service
+  shows the account at **~500 GB / 1 TB monthly (49%)**, essentially **all POP3**
+  (bursts to ~1.2 GB/min in 24h; HTTP/FTP/IMAP/SMTP ≈ 0) — matching the LibreNMS
+  outbound spikes exactly. This per-account, per-protocol byte breakdown is a
+  signal CFM could read directly (see §4.2a) — it attributes to the *account*, not
+  just the IP.
+
+**Principles this bakes in:**
+1. **An allow-list must suppress enforcement, not visibility.** Abnormal volume
+   from a trusted IP must still be *recorded and alertable*.
+2. **Flow-layer detection is the backstop for app-layer blind spots.** argus is
+   immune to the CFM whitelist and to "valid credentials", so a volume anomaly
+   catches exfil/drain that every credential/rule-based detector misses.
+3. **Whitelists need scope + TTL.** A permanent, global, protocol-blind IP allow
+   is a landmine; scope it to a plane/protocol and expire it.
+
 ## 2. The gap in argus today
 
 argus receives NetFlow for the whole AS, and `84.54.49.0/24` (which contains
@@ -129,9 +175,37 @@ egress/ingress**. Add a distinct, cheap **volume-anomaly** layer:
   target), so JetBackup egress can be whitelisted instead of alerting nightly.
 - Optional (later): route a flagged anomaly to the existing `alerter`
   (smtp/log) backends.
+- **Allow-list-independent by construction.** argus scores flows; it has no
+  concept of the CFM whitelist, so a "trusted" IP draining a mailbox is scored
+  like any other. This is the deliberate backstop for the §1a blind spot — the
+  anomaly must fire on volume regardless of any upstream allow decision.
+- **Peer + port in every alert.** Because the flow carries the 5-tuple, an alert
+  can say `…top peer 94.131.146.168, port 995 (POP3S)` — the attribution CFM's
+  `TX_THRU_SPIKE` structurally lacks. A per-(local_ip, dst_port) egress view also
+  gives a cheap "mailbox drain" signal (sustained :110/:143/:993/:995 egress to
+  one peer) without argus needing to parse dovecot at all.
 
 This is the piece that would have turned the virgo incident into a one-line
 answer instead of an investigation.
+
+### 4.2a Companion CFM-side hardening (tracked in the `cfm` repo)
+
+Out of argus's scope but part of the same lesson, to be raised as separate `cfm`
+/ `cfm-web` changes:
+- **`dovecot_auth` gains a volume signal** (bytes/session or bytes/mailbox/IP),
+  not just auth-failure — catch valid-credential drains.
+- **Allow-listed IPs stay visible**: default `LOG_IGNORED` on (or an
+  "alert-even-if-allowed" path) so a whitelisted IP behaving abnormally is still
+  recorded — an allow decision must not blank `detection_history`.
+- **Whitelist hygiene**: scope allow entries to a plane/protocol and give them a
+  TTL; a permanent global IP allow added for one SMTP FP should never have
+  exempted POP3 for a year.
+- **Read cPanel's per-account bandwidth-by-service** (HTTP/FTP/IMAP/POP3/SMTP) —
+  cPanel already computes it (the incident showed one account at 500 GB/mo, ~all
+  POP3). A detector that flags "account X: N× its own baseline, or ≥K% of quota,
+  concentrated in one protocol" is a cheap, account-attributed catch for exactly
+  this drain — complementary to argus's IP/flow view. A candidate "base" for
+  CLI/UI/MCP alongside the (de-noised) `health` signals.
 
 ### 4.3 argus embedded MCP server (`internal/mcpserver`, new)
 

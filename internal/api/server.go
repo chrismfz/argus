@@ -333,6 +333,10 @@ func Start() {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write(flowsHTML)
 	}))
+	mainMux.HandleFunc("/hosts", WithMainIPOnly(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(hostsHTML)
+	}))
 	mainMux.HandleFunc("/static/nav-search.js", WithMainIPOnly(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
 		w.Write(navSearchJS)
@@ -340,6 +344,8 @@ func Start() {
 	mainMux.HandleFunc("/debug/flows", WithMainIPOnly(handleFlowsDebug))
 	mainMux.HandleFunc("/debug/flowlog", WithMainIPOnly(handleFlowLog))
 	mainMux.HandleFunc("/debug/rollup", WithMainIPOnly(handleDailyRollup))
+	mainMux.HandleFunc("/debug/host", WithMainIPOnly(handleHostInsights))
+	mainMux.HandleFunc("/debug/hosts", WithMainIPOnly(handleTopHosts))
 	mainMux.HandleFunc("/tel/flows/stream", WithMainIPOnly(handleFlowsStream))
 	mainMux.HandleFunc("/debug/rawflows", WithMainIPOnly(handleRawFlowsDebug))
 	mainMux.HandleFunc("/debug/memstats", WithMainIPOnly(handleMemStatsDebug))

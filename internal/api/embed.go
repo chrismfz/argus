@@ -32,5 +32,8 @@ var ipHTML []byte
 //go:embed static/flows.html
 var flowsHTML []byte
 
+//go:embed static/hosts.html
+var hostsHTML []byte
+
 //go:embed static/nav-search.js
 var navSearchJS []byte

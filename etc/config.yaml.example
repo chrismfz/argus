@@ -245,6 +245,11 @@ api:
     - "127.0.0.1"
     - "192.168.0.0/16"
     - "84.54.49.0/24"
+  # Embedded read-only MCP server at /mcp (host_traffic, top_local_talkers,
+  # infoip, interfaces, flow_search). Gated by the same bearer/allow_ips auth as
+  # the rest of the API, so a fleet gateway (cfm-web) reaches it with an api
+  # token. Default ON; set false to disable.
+  mcp_enabled: true
 
 ip_profile:
   stale_after: 24h

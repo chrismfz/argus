@@ -516,9 +516,13 @@ All endpoints require `Authorization: Bearer <token>` header and source IP in `a
 | `/snmp/interfaces` | GET | Live interface traffic via SNMP |
 | `/flush` | POST | Withdraw all BGP announcements + clear DB |
 | `/dashboard` | GET | Embedded telemetry dashboard |
+| `/hosts` | GET | "My Hosts" per-local-host traffic page |
+| `/debug/host?ip=x&hours=N` | GET | One local host's in/out series + top peers/ASNs/ports/countries (JSON) |
+| `/debug/hosts?hours=N` | GET | Busiest local hosts by bytes (JSON) |
 | `/debug/flows` | GET | Live flow debug page |
 | `/debug/rawflows` | GET | Raw NetFlow field inspector |
 | `/debug/memstats` | GET | Memory census: Go runtime stats, process RSS, per-component element counts |
+| `/mcp` | POST | Embedded read-only MCP server (host_traffic, top_local_talkers, infoip, interfaces, flow_search); bearer/allow_ips auth. Disable with `api.mcp_enabled: false` |
 
 ---
 

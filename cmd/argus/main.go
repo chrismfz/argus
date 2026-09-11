@@ -804,6 +804,7 @@ func main() {
 		}
 		api.TelemetryDB = db
 		api.CFM = cfm
+		api.Version = Version
 		api.Start()
 	}()
 

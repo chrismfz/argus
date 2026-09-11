@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>argus · My Hosts</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/alpinejs/3.13.3/cdn.min.js" defer></script>
+<script src="/static/nav-search.js" defer></script>
+<style>
+:root{--bg:#0f1117;--bg2:#161b27;--bg3:#1e2535;--border:#2a3147;--text:#cdd6f4;--muted:#6c7086;--accent:#89b4fa;--red:#f38ba8;--green:#a6e3a1;--yellow:#f9e2af}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;font-size:13px;min-height:100vh}
+nav{display:flex;gap:2px;padding:0 20px;background:var(--bg2);border-bottom:1px solid var(--border);align-items:center}
+nav a{padding:10px 16px;color:var(--muted);font-size:13px;text-decoration:none;border-bottom:2px solid transparent}
+nav a:hover{color:var(--text)}
+nav a.active{color:var(--accent);border-color:var(--accent)}
+.content{max-width:980px;margin:0 auto;padding:20px}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px}
+.title{font-size:18px;font-weight:700;margin-bottom:4px}
+.muted{color:var(--muted)}
+.mono{font-family:ui-monospace,Menlo,monospace}
+.err{color:var(--red)}
+.controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+input,select{background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:7px 10px;font-size:13px;font-family:ui-monospace,Menlo,monospace}
+button{background:var(--accent);color:#0b1020;border:0;border-radius:6px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer}
+button.secondary{background:var(--bg3);color:var(--text);border:1px solid var(--border);font-weight:500}
+.badge{display:inline-block;background:var(--bg3);border:1px solid var(--border);padding:2px 8px;border-radius:999px;font-size:11px;color:var(--muted)}
+.warn{color:var(--yellow);font-size:11px;margin-top:6px}
+.section{margin-top:18px}
+.section-title{font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.stat-row{display:flex;gap:24px;flex-wrap:wrap;margin-top:12px}
+.stat .k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.stat .v{font-size:22px;font-weight:700;margin-top:2px}
+.v.out{color:var(--red)}.v.in{color:var(--accent)}
+.chartwrap{margin-top:10px;overflow-x:auto;border:1px solid var(--border);border-radius:6px;background:var(--bg3);padding:8px}
+.legend{display:flex;gap:14px;font-size:11px;color:var(--muted);margin-top:6px}
+.legend b{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:middle;margin-right:4px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:720px){.cols{grid-template-columns:1fr}}
+table{width:100%;border-collapse:collapse}
+th,td{padding:7px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+th{text-align:left;font-size:11px;color:var(--muted);font-weight:600}
+td{font-size:12px}
+td.num{text-align:right;font-family:ui-monospace,Menlo,monospace}
+.empty-row td{color:var(--muted);font-style:italic}
+a.iplink{color:var(--accent);text-decoration:none}
+a.iplink:hover{text-decoration:underline}
+tr.click{cursor:pointer}tr.click:hover{background:var(--bg3)}
+</style>
+</head>
+<body x-data="hostsPage()" x-init="init()">
+<nav>
+  <a href="/dashboard">Overview</a>
+  <a href="/bgp">BGP</a>
+  <a href="/routewatch">Routewatch</a>
+  <a href="/detection">Detection</a>
+  <a href="/flows">Flows</a>
+  <a class="active" href="/hosts">My Hosts</a>
+  <a href="/alerts">Alerts</a>
+  <a href="/pathfinder">Pathfinder</a>
+  <div id="nav-search" class="argus-nav-search-mount"></div>
+</nav>
+
+<div class="content">
+  <div class="card">
+    <div class="title">My Hosts — per-host traffic</div>
+    <div class="muted">What one of <span class="mono">your</span> IPs is sending / receiving, to whom and on what port — the follow-up to a bandwidth spike on an interface graph.</div>
+
+    <div class="controls">
+      <input type="text" x-model="ip" placeholder="local IP e.g. 84.54.49.202" @keydown.enter="loadHost()" size="26">
+      <select x-model.number="hours">
+        <option value="6">last 6h</option>
+        <option value="24">last 24h</option>
+        <option value="72">last 3d</option>
+        <option value="168">last 7d</option>
+      </select>
+      <button @click="loadHost()">Load host</button>
+      <button class="secondary" @click="clearHost()">Top hosts</button>
+    </div>
+    <div class="err" x-show="error" x-text="error"></div>
+    <div class="warn" x-show="partial">Figures are derived from the per-ASN top-N detail — dominant peers/ports, not billing-grade totals.</div>
+  </div>
+
+  <!-- Top local hosts (no IP selected). Hidden on error so its empty
+       "no data" row doesn't layer under the error banner above. -->
+  <div class="card section" x-show="!ins && !error">
+    <div class="section-title">Busiest local hosts <span class="muted" x-text="windowLabel()"></span></div>
+    <table>
+      <thead><tr><th>Local host</th><th style="text-align:right">Out</th><th style="text-align:right">In</th><th style="text-align:right">Total</th></tr></thead>
+      <tbody>
+        <template x-if="!topHosts.length">
+          <tr class="empty-row"><td colspan="4" x-text="loading ? 'Loading…' : 'No flow data in this window.'"></td></tr>
+        </template>
+        <template x-for="(h,i) in topHosts" :key="i">
+          <tr class="click" @click="ip=h.local_ip; loadHost()">
+            <td><a class="iplink mono" x-text="h.local_ip"></a></td>
+            <td class="num" x-text="fmtBytes(h.out_bytes)"></td>
+            <td class="num" x-text="fmtBytes(h.in_bytes)"></td>
+            <td class="num" x-text="fmtBytes(h.bytes)"></td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- One host -->
+  <template x-if="ins">
+    <div class="card section">
+      <div class="section-title">Host <span class="mono" x-text="ins.ip"></span> <span class="muted" x-text="windowLabel()"></span></div>
+      <div class="stat-row">
+        <div class="stat"><div class="k">Out (egress)</div><div class="v out" x-text="fmtBytes(ins.out_bytes)"></div></div>
+        <div class="stat"><div class="k">In (ingress)</div><div class="v in" x-text="fmtBytes(ins.in_bytes)"></div></div>
+      </div>
+
+      <div class="chartwrap" x-show="(ins.series||[]).length">
+        <svg :width="Math.max(320, (ins.series||[]).length*barStep)" height="130" preserveAspectRatio="none">
+          <template x-for="(p,i) in (ins.series||[])" :key="i">
+            <g>
+              <rect :x="i*barStep" :y="118-barH(p.out_bytes)" :width="barW" :height="barH(p.out_bytes)" fill="var(--red)"></rect>
+              <rect :x="i*barStep+barW+1" :y="118-barH(p.in_bytes)" :width="barW" :height="barH(p.in_bytes)" fill="var(--accent)"></rect>
+            </g>
+          </template>
+          <line x1="0" y1="118" :x2="Math.max(320,(ins.series||[]).length*barStep)" y2="118" stroke="var(--border)"></line>
+        </svg>
+      </div>
+      <div class="legend" x-show="(ins.series||[]).length"><span><b style="background:var(--red)"></b>out</span><span><b style="background:var(--accent)"></b>in</span><span class="muted">30-min buckets · peak <span x-text="fmtBytes(maxSeriesBytes())"></span>/bucket</span></div>
+      <div class="muted" x-show="!(ins.series||[]).length" style="margin-top:10px">No traffic recorded for this host in the window.</div>
+
+      <div class="cols section">
+        <div>
+          <div class="section-title">Top remote peers</div>
+          <table>
+            <thead><tr><th>Peer IP</th><th style="text-align:right">Out</th><th style="text-align:right">In</th></tr></thead>
+            <tbody>
+              <template x-if="!(ins.top_peers||[]).length"><tr class="empty-row"><td colspan="3">none</td></tr></template>
+              <template x-for="(r,i) in (ins.top_peers||[])" :key="i">
+                <tr><td><a class="iplink mono" :href="'/ip/'+encodeURIComponent(r.key)" x-text="r.key"></a></td><td class="num" x-text="fmtBytes(r.out_bytes)"></td><td class="num" x-text="fmtBytes(r.in_bytes)"></td></tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+        <div>
+          <div class="section-title">Destination ports</div>
+          <div class="warn" style="margin-bottom:6px">Egress your host <em>serves</em> carries the client's ephemeral port — read the <b>In</b> column for the service port.</div>
+          <table>
+            <thead><tr><th>Port</th><th style="text-align:right">Out</th><th style="text-align:right">In</th></tr></thead>
+            <tbody>
+              <template x-if="!(ins.top_ports||[]).length"><tr class="empty-row"><td colspan="3">none</td></tr></template>
+              <template x-for="(r,i) in (ins.top_ports||[])" :key="i">
+                <tr><td class="mono" x-text="portLabel(r.key)"></td><td class="num" x-text="fmtBytes(r.out_bytes)"></td><td class="num" x-text="fmtBytes(r.in_bytes)"></td></tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+        <div>
+          <div class="section-title">Top ASNs</div>
+          <table>
+            <thead><tr><th>ASN</th><th style="text-align:right">Out</th><th style="text-align:right">In</th></tr></thead>
+            <tbody>
+              <template x-if="!(ins.top_asns||[]).length"><tr class="empty-row"><td colspan="3">none</td></tr></template>
+              <template x-for="(r,i) in (ins.top_asns||[])" :key="i">
+                <tr><td><a class="iplink mono" :href="'/asn/'+encodeURIComponent(r.key)" x-text="'AS'+r.key"></a></td><td class="num" x-text="fmtBytes(r.out_bytes)"></td><td class="num" x-text="fmtBytes(r.in_bytes)"></td></tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+        <div>
+          <div class="section-title">Top countries</div>
+          <table>
+            <thead><tr><th>Country</th><th style="text-align:right">Out</th><th style="text-align:right">In</th></tr></thead>
+            <tbody>
+              <template x-if="!(ins.top_countries||[]).length"><tr class="empty-row"><td colspan="3">none</td></tr></template>
+              <template x-for="(r,i) in (ins.top_countries||[])" :key="i">
+                <tr><td class="mono" x-text="r.key || '—'"></td><td class="num" x-text="fmtBytes(r.out_bytes)"></td><td class="num" x-text="fmtBytes(r.in_bytes)"></td></tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </template>
+</div>
+
+<script>
+function hostsPage(){ return {
+  ip: '',
+  hours: 24,
+  loading: false,
+  error: '',
+  ins: null,
+  topHosts: [],
+  partial: false,
+  seriesMax: 0,
+  barW: 5,
+  get barStep(){ return this.barW*2 + 3 },
+
+  init(){
+    const u = new URLSearchParams(window.location.search)
+    if (u.get('ip')) this.ip = u.get('ip')
+    if (u.get('hours')) this.hours = parseInt(u.get('hours')) || 24
+    if (this.ip) this.loadHost(); else this.loadTop()
+  },
+
+  windowLabel(){
+    const map = {6:'last 6h',24:'last 24h',72:'last 3d',168:'last 7d'}
+    return '· ' + (map[this.hours] || ('last '+this.hours+'h'))
+  },
+
+  async loadTop(){
+    this.loading = true; this.error = ''
+    try {
+      const r = await fetch('/debug/hosts?hours='+this.hours+'&top=25')
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error || 'request failed')
+      this.topHosts = j.hosts || []
+      this.partial = !!j.partial
+    } catch(e){ this.error = e?.message || 'request failed'; this.topHosts = [] }
+    finally { this.loading = false }
+  },
+
+  async loadHost(){
+    this.ip = (this.ip||'').trim()
+    if (!this.ip){ this.ins = null; this.loadTop(); return }
+    this.loading = true; this.error = ''; this.ins = null
+    try {
+      const r = await fetch('/debug/host?ip='+encodeURIComponent(this.ip)+'&hours='+this.hours+'&top=15')
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error || 'request failed')
+      this.ins = j
+      this.partial = !!j.partial
+      // Compute the chart's y-max once here (not per bar) — barH() is called
+      // 2×/bucket and a 7-day window is ~336 buckets.
+      this.seriesMax = 0
+      for (const p of (j.series||[])) this.seriesMax = Math.max(this.seriesMax, p.out_bytes||0, p.in_bytes||0)
+      const u = new URL(window.location); u.searchParams.set('ip', this.ip); u.searchParams.set('hours', this.hours)
+      window.history.replaceState({}, '', u)
+    } catch(e){ this.error = e?.message || 'request failed'; this.ins = null }
+    finally { this.loading = false }
+  },
+
+  clearHost(){
+    this.ins = null; this.ip = ''
+    const u = new URL(window.location); u.searchParams.delete('ip'); window.history.replaceState({}, '', u)
+    this.loadTop()
+  },
+
+  maxSeriesBytes(){ return this.seriesMax },
+  barH(b){
+    if (!this.seriesMax) return 0
+    return Math.max(0, Math.round((b||0)/this.seriesMax*112))
+  },
+
+  portLabel(p){
+    const names = {'25':'SMTP','110':'POP3','143':'IMAP','443':'HTTPS','80':'HTTP','993':'IMAPS','995':'POP3S','587':'submission','21':'FTP','22':'SSH','53':'DNS','3306':'MySQL'}
+    return names[p] ? (p+' ('+names[p]+')') : p
+  },
+
+  fmtBytes(b){
+    b = Number(b)||0
+    const u = ['B','KB','MB','GB','TB','PB']; let i = 0
+    while (b >= 1024 && i < u.length-1){ b/=1024; i++ }
+    return (i===0 ? b : b.toFixed(b<10?2:1)) + ' ' + u[i]
+  },
+}}
+
+// nav-search.js is deferred, so it hasn't defined mountArgusNavSearch yet when
+// this inline script runs at parse time — wait for DOMContentLoaded (fires after
+// deferred scripts) before mounting, or the search box silently never appears.
+document.addEventListener('DOMContentLoaded', function () {
+  if (window.mountArgusNavSearch) {
+    window.mountArgusNavSearch(document.getElementById('nav-search'))
+  }
+})
+</script>
+</body>
+</html>

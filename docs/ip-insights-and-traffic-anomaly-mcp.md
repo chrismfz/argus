@@ -207,6 +207,16 @@ Out of argus's scope but part of the same lesson, to be raised as separate `cfm`
   this drain — complementary to argus's IP/flow view. A candidate "base" for
   CLI/UI/MCP alongside the (de-noised) `health` signals.
 
+> **As-built (P2, landed):** `internal/mcpserver` uses go-sdk v1.7.0 streamable
+> HTTP (stateless + JSON, `DisableLocalhostProtection` like CFM) mounted at
+> `/mcp`. Auth reuses argus's existing `WithAuth` (bearer from `api.tokens`, or
+> `allow_ips`) rather than a dedicated `mcp_token` — a fleet gateway already
+> holds an api token, so this is one fewer secret to manage and still exactly
+> what cfm-web's `FleetMcpClient` presents. Kill switch: `api.mcp_enabled:false`.
+> Tools shipped: `host_traffic`, `top_local_talkers`, `infoip`, `interfaces`,
+> `flow_search`. `bgp_status`/`blackhole_*` and a light `whats_wrong` remain
+> follow-ups.
+
 ### 4.3 argus embedded MCP server (`internal/mcpserver`, new)
 
 Mirror the CFM daemon's MCP exactly so it is **drop-in for the `cfm-web`
@@ -311,3 +321,20 @@ its own CLAUDE.md (Filament assets / `clear-caches.sh`, manual CHANGELOG).
 - Anomaly seasonality: hour-of-day + day-of-week buckets vs a simpler EWMA with
   a manual backup-window/whitelist. Start simple; iterate on real FPs (the LSM
   and WAF history says budget for a tuning pass).
+
+### P1 follow-ups (from the code review of #35)
+
+- **Service-port view needs `src_port`.** `flowstore_top_ips` stores only
+  `dst_port`, so the response/egress half of a served connection carries the
+  client's *ephemeral* port, not the service port — the "Destination ports"
+  table is caveated in the UI meanwhile. A proper service-port breakdown needs
+  `src_port` added to the detail table + accumulate + rollup (a hot-path change,
+  hence deferred).
+- **Config-backed "My Hosts" query defaults.** The window/top-N defaults and the
+  168h max are named constants in `host_handlers.go` for now; per CLAUDE.md rule
+  2 they should move to `internal/config` (+ `etc/config.yaml.example`), with the
+  max window derived from the configured detail retention so a longer retention
+  widens the window automatically.
+- **Exact per-local-host totals.** Add a `flowstore_daily_local_ip_totals`
+  rollup (mirror of the `peer_ip` one) so a host's in/out total is complete
+  rather than top-N-derived (`partial:true`).

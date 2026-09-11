@@ -186,6 +186,10 @@ type Config struct {
 		Port          int      `yaml:"port"`
 		Tokens        []string `yaml:"tokens"`
 		AllowIPs      []string `yaml:"allow_ips"`
+		// MCPEnabled arms the embedded read-only MCP server at /mcp (gated by the
+		// same bearer/allow_ips auth as the rest of the API). nil = default ON;
+		// set false to disable. See internal/mcpserver.
+		MCPEnabled *bool `yaml:"mcp_enabled"`
 	} `yaml:"api"`
 
 	IPProfile struct {

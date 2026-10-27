@@ -505,10 +505,6 @@ func main() {
 		listener.WaitReady(ctx, 100_000, 60*time.Second)
 		log.Printf("[INFO] BGP warm-up done. Known prefixes: %d", listener.PathCount)
 
-		if err := detection.RestoreActiveBlackholes(db); err != nil {
-			log.Printf("[WARN] Failed to restore active blackholes: %v", err)
-		}
-
 		for _, n := range myNets {
 			entry := bgp.BGPEnrichedEntry{
 				Net:    *n,
@@ -659,6 +655,15 @@ func main() {
 		log.Printf("[INFO] Detection engine started (maxWindow=%s)", maxWin)
 	} else {
 		log.Print("[INFO] Detection engine disabled")
+	}
+
+	// Re-announce unexpired blackholes once the rules are loaded, so each one
+	// carries its rule's next-hop/communities (detectionRules is nil when the
+	// engine is disabled; the restore then falls back to the defaults).
+	if listener != nil && db != nil {
+		if err := detection.RestoreActiveBlackholes(db, detectionRules); err != nil {
+			log.Printf("[WARN] Failed to restore active blackholes: %v", err)
+		}
 	}
 
 	// ── RouterOS API client ───────────────────────────────────────────────

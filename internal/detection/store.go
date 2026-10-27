@@ -2,6 +2,7 @@ package detection
 
 import (
 	"argus/internal/bgp"
+	"argus/internal/config"
 	"database/sql"
 	"fmt"
 	"log"
@@ -98,33 +99,56 @@ func (s *SQLiteStore) GetCount(rule, ip string) (int, error) {
 	return count, nil
 }
 
-// RestoreActiveBlackholes φορτώνει όλα τα ενεργά prefixes από SQLite και τα ανακοινώνει ξανά
-func RestoreActiveBlackholes(db *sql.DB) error {
-	rows, err := db.Query(`
-		SELECT prefix FROM blackholes
-		WHERE expires_at > datetime('now')
-	`)
+// RestoreActiveBlackholes re-announces every unexpired blackhole from SQLite,
+// typically right after startup. Each prefix is announced with the next-hop and
+// communities of the rule that created it (see blackholeAnnounceParams), so the
+// router treats it as a blackhole again; prefixes whose rule is unknown (manual
+// API announces, renamed/removed rules) get the defaults.
+func RestoreActiveBlackholes(db *sql.DB, rules []DetectionRule) error {
+	return restoreActiveBlackholes(db, rules, bgp.AnnouncePrefix)
+}
+
+func restoreActiveBlackholes(db *sql.DB, rules []DetectionRule,
+	announce func(prefix, nextHop string, communities []string, asPath []uint32) error) error {
+
+	byName := make(map[string]DetectionRule, len(rules))
+	for _, r := range rules {
+		byName[r.Name] = r
+	}
+
+	// julianday() parses the RFC3339 offsets we store; a plain string compare
+	// against datetime('now') does not (see activeBlackholeCond).
+	rows, err := db.Query(`SELECT prefix, rule FROM blackholes WHERE ` + activeBlackholeCond)
 	if err != nil {
 		return fmt.Errorf("failed to query active blackholes: %w", err)
 	}
-	defer rows.Close()
-
-	var count int
+	type activeRow struct{ prefix, rule string }
+	var active []activeRow
 	for rows.Next() {
-		var prefix string
-		if err := rows.Scan(&prefix); err != nil {
+		var r activeRow
+		var rule sql.NullString
+		if err := rows.Scan(&r.prefix, &rule); err != nil {
 			log.Printf("[WARN] Failed to scan prefix: %v", err)
 			continue
 		}
+		r.rule = rule.String
+		active = append(active, r)
+	}
+	rows.Close()
 
-		// Default announce χωρίς έξτρα community / next-hop (θα οριστεί από config)
-		err = bgp.AnnouncePrefix(prefix, "", nil, []uint32{})
-		if err != nil {
-			log.Printf("[WARN] Failed to re-announce prefix %s: %v", prefix, err)
-		} else {
-			log.Printf("[RESTORE] Re-announced prefix %s from SQLite", prefix)
-			count++
+	var count int
+	for _, r := range active {
+		rule, ok := byName[r.rule]
+		if !ok {
+			rule = DetectionRule{Name: r.rule}
 		}
+		nextHop, communities := blackholeAnnounceParams(rule)
+		if err := announce(r.prefix, nextHop, communities, []uint32{config.GetLocalASN()}); err != nil {
+			log.Printf("[WARN] Failed to re-announce prefix %s: %v", r.prefix, err)
+			continue
+		}
+		log.Printf("[RESTORE] Re-announced prefix %s (rule=%s next-hop=%s communities=%v)", r.prefix, r.rule, nextHop, communities)
+		count++
 	}
 
 	if count > 0 {

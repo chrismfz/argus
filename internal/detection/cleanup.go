@@ -31,12 +31,22 @@ func PruneDetections(db *sql.DB, maxAge time.Duration) error {
 	return nil
 }
 
+// expires_at is stored as RFC3339 with the local offset
+// ("2026-10-27T23:30:37+02:00"). Comparing that string to datetime('now')
+// ("2026-10-27 21:31:00", UTC, space separator) is wrong twice over: the 'T'
+// sorts after ' ' so every same-UTC-day row looks unexpired, and the offset is
+// ignored. julianday() parses both forms into an absolute instant. Rows whose
+// expires_at does not parse (NULL julianday) are neither active nor expired.
+const (
+	activeBlackholeCond  = `julianday(expires_at) > julianday('now')`
+	expiredBlackholeCond = `julianday(expires_at) <= julianday('now')`
+)
+
 // Κάνει withdraw και διαγράφει expired blackholes
 func CleanupExpiredBlackholes(db *sql.DB) error {
 	rows, err := db.Query(`
 		SELECT prefix, rule FROM blackholes
-		WHERE expires_at <= datetime('now')
-	`)
+		WHERE ` + expiredBlackholeCond)
 	if err != nil {
 		return fmt.Errorf("failed to query expired blackholes: %w", err)
 	}

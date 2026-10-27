@@ -644,6 +644,7 @@ func main() {
 		if cfm != nil {
 			engine.SetReporter(cfm)
 		}
+		engine.SetAlertCooldown(cfg.Detection.AlertCooldown)
 
 		if cfg.Detection.Anomaly.Enabled {
 			anom, _ := detection.StartAnomalyStack(ctx, cfg, engine, store, configPath)

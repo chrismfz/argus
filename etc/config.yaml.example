@@ -117,6 +117,8 @@ detection:
   enable_detection_engine: true
   rules_config: /opt/argus/etc/detection.yml
   flow_cache_max_window: 60s
+  alert_cooldown: 10m          # re-log a still-matching (rule, src) incident at most this often;
+                               # an ENDED line closes it with the total match count. negative = log every match
   debug_detection: false
 
 # ──────────────────────────────

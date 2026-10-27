@@ -64,8 +64,9 @@ func InitIfaceRingSchema(db *sql.DB) error {
 
 // ── Throughput ring ───────────────────────────────────────────────────────────
 
-// PersistRing writes all non-zero ring buckets to SQLite.
-func PersistRing(db *sql.DB) error {
+// PersistRing writes the non-zero ring buckets whose minute is >= since to
+// SQLite (since <= 0 writes the whole ring). See persistSince in snapshotter.go.
+func PersistRing(db *sql.DB, since int64) error {
 	if Global == nil {
 		return nil
 	}
@@ -88,7 +89,7 @@ func PersistRing(db *sql.DB) error {
 	}
 	defer stmt.Close()
 	for _, b := range buckets {
-		if b.Ts == 0 {
+		if b.Ts == 0 || b.Ts < since {
 			continue
 		}
 		if _, err := stmt.Exec(b.Ts,
@@ -131,8 +132,9 @@ func WarmupRingFromDB(db *sql.DB) (int, error) {
 
 // ── ASN ring ──────────────────────────────────────────────────────────────────
 
-// PersistASNRing writes all asnRing buckets to SQLite.
-func PersistASNRing(db *sql.DB) error {
+// PersistASNRing writes the asnRing buckets whose minute is >= since to SQLite
+// (since <= 0 writes the whole ring).
+func PersistASNRing(db *sql.DB, since int64) error {
 	if Global == nil {
 		return nil
 	}
@@ -148,7 +150,7 @@ func PersistASNRing(db *sql.DB) error {
 	var rows []asnRow
 	for slot := 0; slot < RingSize; slot++ {
 		slotTs := Global.ring[slot].Ts
-		if slotTs == 0 {
+		if slotTs == 0 || slotTs < since {
 			continue
 		}
 		for asn, c := range Global.asnRing[slot] {
@@ -255,8 +257,9 @@ func WarmupASNRingFromDB(db *sql.DB) (int, error) {
 
 // ── Interface ring ────────────────────────────────────────────────────────────
 
-// PersistIfaceRing writes all ifaceRing buckets to SQLite.
-func PersistIfaceRing(db *sql.DB) error {
+// PersistIfaceRing writes the ifaceRing buckets whose minute is >= since to
+// SQLite (since <= 0 writes the whole ring).
+func PersistIfaceRing(db *sql.DB, since int64) error {
 	if Global == nil {
 		return nil
 	}
@@ -271,7 +274,7 @@ func PersistIfaceRing(db *sql.DB) error {
 	var rows []ifaceRow
 	for slot := 0; slot < RingSize; slot++ {
 		slotTs := Global.ring[slot].Ts
-		if slotTs == 0 {
+		if slotTs == 0 || slotTs < since {
 			continue
 		}
 		for idx, ic := range Global.ifaceRing[slot] {

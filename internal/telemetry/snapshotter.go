@@ -272,27 +272,41 @@ func StartScheduler(ctx context.Context, db *sql.DB, bucketRetentionDays int) {
 	log.Print("[telemetry] snapshot scheduler started")
 
 	// ── Ring persistence — flush every 5 minutes ──────────────────────────────
+	// Ingest buckets flows by arrival minute, so between two flushes only the
+	// minute that was current at the previous flush (possibly partial then) and
+	// the ones after it can change. Rewriting the whole 24h ring every tick
+	// meant ~1.5M INSERT OR REPLACE per flush for the ASN table alone — the
+	// write amplification behind a multi-GB WAL and a file that kept growing.
 	go func() {
+		var since int64 // 0 → the first flush writes the whole ring
+		flush := func() {
+			start := minEpoch(time.Now())
+			ok := true
+			if err := PersistRing(db, since); err != nil {
+				log.Printf("[telemetry] ring persist failed: %v", err)
+				ok = false
+			}
+			if err := PersistASNRing(db, since); err != nil {
+				log.Printf("[telemetry] ASN ring persist failed: %v", err)
+				ok = false
+			}
+			if err := PersistIfaceRing(db, since); err != nil {
+				log.Printf("[telemetry] iface ring persist failed: %v", err)
+				ok = false
+			}
+			if ok { // on failure keep the old watermark so the next flush retries
+				since = start
+			}
+		}
 		t := time.NewTicker(5 * time.Minute)
 		defer t.Stop()
 		for {
 			select {
 			case <-ctx.Done():
-				_ = PersistRing(db)
-				_ = PersistASNRing(db)
-				_ = PersistIfaceRing(db)
+				flush()
 				return
 			case <-t.C:
-				if err := PersistRing(db); err != nil {
-					log.Printf("[telemetry] ring persist failed: %v", err)
-				}
-				if err := PersistASNRing(db); err != nil {
-					log.Printf("[telemetry] ASN ring persist failed: %v", err)
-				}
-				if err := PersistIfaceRing(db); err != nil {
-					log.Printf("[telemetry] iface ring persist failed: %v", err)
-				}
-
+				flush()
 			}
 		}
 	}()

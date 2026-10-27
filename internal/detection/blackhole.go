@@ -46,6 +46,25 @@ func escalationTTL(durations []int, times int) int {
 	return durations[idx]
 }
 
+// blackholeAnnounceParams returns the next-hop and communities a blackhole for
+// rule is announced with. HandleBlackhole and RestoreActiveBlackholes must agree
+// on these: the router only installs a route as a blackhole when it carries the
+// blackhole community, so a re-announce without them is silently ineffective.
+func blackholeAnnounceParams(rule DetectionRule) (nextHop string, communities []string) {
+	nextHop = rule.BlackholeNextHop
+	if nextHop == "" {
+		nextHop = bgp.LocalBGPAddress
+		if nextHop == "" {
+			nextHop = "192.0.2.1"
+		}
+	}
+	communities = rule.BlackholeCommunities
+	if len(communities) == 0 {
+		communities = []string{"65001:666"} // default fallback
+	}
+	return nextHop, communities
+}
+
 func (e *Engine) HandleBlackhole(rule DetectionRule, flows []Flow, count int) {
 
 	// Decide target (default "src", optional "dst")
@@ -98,20 +117,7 @@ func (e *Engine) HandleBlackhole(rule DetectionRule, flows []Flow, count int) {
 		return
 	}
 
-	// Next-hop
-	nextHop := rule.BlackholeNextHop
-	if nextHop == "" {
-		nextHop = bgp.LocalBGPAddress
-		if nextHop == "" {
-			nextHop = "192.0.2.1"
-		}
-	}
-
-	// Communities
-	communities := rule.BlackholeCommunities
-	if len(communities) == 0 {
-		communities = []string{"65001:666"} // default fallback
-	}
+	nextHop, communities := blackholeAnnounceParams(rule)
 
 	// Ανακοίνωση
 	if err := bgp.AnnouncePrefix(prefix, nextHop, communities, []uint32{config.GetLocalASN()}); err != nil {

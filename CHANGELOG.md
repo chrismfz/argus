@@ -60,6 +60,24 @@ Every behavior-changing PR must add an entry under **Unreleased**.
   is reclaimed with a one-time `VACUUM` (see README → Storage / disk).
 
 ### Fixed
+- **Blackholes restored after a restart were not blackholes.**
+  `RestoreActiveBlackholes` re-announced every unexpired prefix with no
+  communities and the speaker's own next-hop, so the router never installed
+  them as blackholes. In production, only 76 of the 813 prefixes argus was
+  announcing were in effect after a restart. Because `HandleBlackhole` skips a
+  prefix it is already announcing, a returning offender also stayed unblocked
+  until the stale entry expired. The restore now runs after the detection rules
+  load and announces each prefix with its rule's `blackhole_next_hop` /
+  `blackhole_communities`. Both paths share one helper
+  (`blackholeAnnounceParams`), and unknown rules such as `(api)` get the same
+  defaults as a rule-driven blackhole, including `65001:666`.
+- **Blackhole expiry ignored the stored time zone.** `expires_at` is written as
+  RFC3339 with the local offset (`…T23:30:37+02:00`). Cleanup and restore
+  compared that string to `datetime('now')` (UTC, with a space separator), so
+  every row looked unexpired until the UTC date rolled over. Blackholes
+  therefore outlived their TTL by up to a day, and the restore re-announced
+  ones that had already expired. Both queries now compare `julianday()`
+  instants.
 - **Log rotation now actually frees disk.** `etc/logrotate.d/argus-rotate` only
   matched `/var/log/argus/*.log` and relied on a `postrotate` SIGUSR1 to make the
   process reopen — but argus never handled SIGUSR1 (only SIGTERM/SIGINT), so it

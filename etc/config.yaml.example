@@ -125,6 +125,8 @@ detection:
   enable_detection_engine: true
   rules_config: /opt/argus/etc/detection.yml
   flow_cache_max_window: 60s
+  alert_cooldown: 10m          # re-log a still-matching (rule, src) incident at most this often;
+                               # an ENDED line closes it with the total match count. negative = log every match
   debug_detection: false
 
 # ──────────────────────────────
@@ -310,6 +312,12 @@ retention:
   risk_events_max_rows: 1000000  # hard row cap on top of the age window; backstop against bursts; -1 = no cap
   blackhole_events: 2160h      # blackhole audit log (90 days)
   blackhole_events_max_rows: 10000  # hard row cap on top of the age window; -1 = no cap
+
+# Housekeeping of detections.sqlite (unset/0 = default, negative = disabled).
+storage:
+  wal_checkpoint_interval: 5m    # PRAGMA wal_checkpoint(TRUNCATE): keeps the -wal file from growing into GBs
+  incremental_vacuum_pages: 2000 # free pages returned to the OS per tick; needs a one-off
+                                 # 'PRAGMA auto_vacuum=INCREMENTAL; VACUUM;' (see README)
 
 
 cfm:

@@ -22,6 +22,14 @@ Every behavior-changing PR must add an entry under **Unreleased**.
   - Known limitation: the per-interface charts still key on the ifindex
     alone, so two routers' same-numbered upstream ports are summed into a
     single series.
+- **SQLite housekeeping (`storage:` config section).** Every
+  `wal_checkpoint_interval` (default 5m) argus runs
+  `PRAGMA wal_checkpoint(TRUNCATE)`. The PASSIVE autocheckpoint cannot reset
+  the WAL under constant API reads, but this can. On the same tick argus runs
+  `PRAGMA incremental_vacuum(incremental_vacuum_pages)` (default 2000), which
+  takes effect once the file has been converted offline with
+  `PRAGMA auto_vacuum=INCREMENTAL; VACUUM;` (see README). Until then argus logs
+  a one-time reminder. Negative values disable either step.
 - **Embedded read-only MCP server at `/mcp` (P2 of the IP-insights plan).** argus
   now speaks the Model Context Protocol (go-sdk v1.7.0 streamable HTTP, stateless
   + JSON) so an operator can query its flow telemetry from the same place they
@@ -65,6 +73,17 @@ Every behavior-changing PR must add an entry under **Unreleased**.
   trims the table FIFO by id, mirroring `blackhole_events_max_rows`.
 
 ### Changed
+- **Detection alerts are now incidents, not one block per second.** Rules
+  re-evaluate every second over a sliding window, so a single scanner wrote the
+  same alert block for as long as it stayed in the window. That added up to
+  143k alerts and ~62 MB of `detections.log` a day. The `alert` action now logs
+  an (rule, src) incident when it starts, then at most once per
+  `detection.alert_cooldown` (default 10m) while it keeps matching, with an
+  `Ongoing: N more matches` line. When the incident has been quiet for a
+  cooldown, it closes with an `ENDED` line that carries the total match count
+  and duration, so no match is lost. Detection counts, `blackhole_count` and
+  the blackhole action still see every match. A negative value restores the
+  old behaviour.
 - **SQLite `-wal` file is now size-bounded** via `PRAGMA journal_size_limit`
   (64 MiB). WAL mode reuses WAL space after a checkpoint but never shrinks the
   file on its own, so a write burst — or a checkpoint pinned by a slow reader
@@ -80,6 +99,22 @@ Every behavior-changing PR must add an entry under **Unreleased**.
   Two routers using the same template IDs would decode each other's flows with
   the wrong field layout. Keys now come from `ip.To4()`, and IPv6 exporters
   get an FNV hash.
+- **`slow_vertical_any` flagged return traffic as a vertical scan.** Replies
+  from Facebook/Google to our hosts' outbound connections hit many ephemeral
+  ports of one host, and this rule matched them: AS32934 was the #4 "attacker"
+  with ~15k alerts a day. The new `tcp_flags: SYN-ONLY` value matches SYN
+  without ACK, and the rule now uses it. Return traffic always carries ACK.
+- **Telemetry ring flush rewrote the whole 24h every 5 minutes.**
+  `PersistRing` / `PersistASNRing` / `PersistIfaceRing` re-`INSERT OR REPLACE`d
+  all 1440 minutes on every flush. For the ASN table that is about 1.5M row
+  rewrites per tick (~430M per day) to keep ~1.5M real rows a day. This write
+  amplification is what pushed `detections.sqlite` to 38 GB with a 12 GB WAL.
+  Flows are bucketed by arrival minute, so the scheduler now keeps a watermark
+  (the minute of the last successful flush) and writes only minutes at or
+  after it. The first flush after startup still writes the whole ring.
+- **`journal_size_limit` only reached one pooled connection.** It was set with
+  `db.Exec` on an 8-connection pool. It is now in the DSN, so every connection
+  truncates the WAL after a checkpoint.
 - **Blackholes restored after a restart were not blackholes.**
   `RestoreActiveBlackholes` re-announced every unexpired prefix with no
   communities and the speaker's own next-hop, so the router never installed

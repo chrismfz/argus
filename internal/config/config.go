@@ -98,6 +98,10 @@ type Config struct {
 		RulesConfig        string `yaml:"rules_config"`
 		FlowCacheMaxWindow string `yaml:"flow_cache_max_window"`
 		DebugDetection     bool   `yaml:"debug_detection"`
+		// How often a (rule, src) incident that keeps matching is re-logged by
+		// the "alert" action; a closing ENDED line accounts for the rest.
+		// unset/0 = default 10m, negative = log every match (old behaviour).
+		AlertCooldown time.Duration `yaml:"alert_cooldown"`
 
 		Anomaly struct {
 			// Core on/off + scheduling
@@ -208,6 +212,21 @@ type Config struct {
 	Telemetry TelemetryConfig `yaml:"telemetry"`
 	Retention RetentionConfig `yaml:"retention"`
 	FlowLog   FlowLogConfig   `yaml:"flowlog"`
+	Storage   StorageConfig   `yaml:"storage"`
+}
+
+// StorageConfig controls housekeeping of the main detections.sqlite file.
+// Zero values mean "use the default"; negative disables that step.
+type StorageConfig struct {
+	// How often to run PRAGMA wal_checkpoint(TRUNCATE) (+ incremental_vacuum).
+	// Autocheckpoints only ever run PASSIVE, which cannot reset the WAL while
+	// any of the pool's readers is active, so the -wal file can grow without
+	// bound under constant read load. Default 5m.
+	WALCheckpointInterval time.Duration `yaml:"wal_checkpoint_interval"`
+	// Free pages returned to the OS per checkpoint tick via
+	// PRAGMA incremental_vacuum. Only has an effect once the file has been
+	// converted with auto_vacuum=INCREMENTAL (see README). Default 2000.
+	IncrementalVacuumPages int `yaml:"incremental_vacuum_pages"`
 }
 
 // FlowLogConfig controls the optional raw flow log (ROADMAP Phase 2, Tier 0):
@@ -395,6 +414,10 @@ func applyStorageDefaults(cfg *Config) {
 
 	defInt(&cfg.Telemetry.BucketRetentionDays, 30)
 
+	defDur(&cfg.Detection.AlertCooldown, 10*time.Minute)
+	defDur(&cfg.Storage.WALCheckpointInterval, 5*time.Minute)
+	defInt(&cfg.Storage.IncrementalVacuumPages, 2000)
+
 	r := &cfg.Retention
 	defDur(&r.Detections, 90*24*time.Hour)
 	defDur(&r.AlertEvents, 90*24*time.Hour)
@@ -470,6 +493,8 @@ func LogStartup(cfg *Config) {
 		fs.TopIPs, fs.TopPrefixes, fs.TopPorts,
 		fs.MaxTrackedIPs, fs.MaxTrackedPrefixes, fs.MaxTrackedPorts,
 		tel.BucketRetentionDays)
+	log.Printf("[CFG] sqlite: wal_checkpoint_interval=%s incremental_vacuum_pages=%d",
+		cfg.Storage.WALCheckpointInterval, cfg.Storage.IncrementalVacuumPages)
 	log.Printf("[CFG] retention: detections=%s alert_events=%s snapshots_daily=%s risk_events=%s (max_rows=%d) blackhole_events=%s (max_rows=%d)",
 		r.Detections, r.AlertEvents, r.SnapshotsDaily, r.RiskEvents, r.RiskEventsMaxRow, r.BlackholeEvents, r.BlackholeEventsMaxRow)
 

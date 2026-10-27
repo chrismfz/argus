@@ -208,7 +208,11 @@ func main() {
 	dsn := "file:detections.sqlite?mode=rwc" +
 		"&_pragma=journal_mode(WAL)" +
 		"&_pragma=synchronous(NORMAL)" +
-		"&_pragma=busy_timeout(5000)"
+		"&_pragma=busy_timeout(5000)" +
+		// journal_size_limit is per connection: set via db.Exec below it only
+		// reached one of the pool's 8 connections, so most checkpoints never
+		// truncated the -wal. In the DSN it applies to every connection.
+		"&_pragma=journal_size_limit(67108864)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		log.Fatal("Failed to open DB:", err)
@@ -229,8 +233,9 @@ func main() {
 	// a multi-GB -wal sitting on disk indefinitely. journal_size_limit tells
 	// SQLite to truncate the WAL back to this bound after each checkpoint. 64 MiB
 	// is comfortably above the autocheckpoint threshold, so steady-state writes
-	// are unaffected — only the post-burst high-water mark is reclaimed.
-	_, _ = db.Exec(`PRAGMA journal_size_limit=67108864;`)
+	// are unaffected — only the post-burst high-water mark is reclaimed. It is
+	// set in the DSN so it applies to every pooled connection; the TRUNCATE
+	// checkpoints in sqlite.StartMaintenance do the rest.
 	if err := sqlite.InitSQLiteSchema(db); err != nil {
 		log.Fatal("Failed to init schema:", err)
 	}
@@ -241,6 +246,7 @@ func main() {
 	if err := detection.CleanupExpiredBlackholes(db); err != nil {
 		log.Printf("[WARN] Failed to cleanup expired blackholes: %v", err)
 	}
+	sqlite.StartMaintenance(ctx, db, cfg.Storage.WALCheckpointInterval, cfg.Storage.IncrementalVacuumPages)
 	go func() {
 		t := time.NewTicker(1 * time.Minute)
 		defer t.Stop()
@@ -649,6 +655,7 @@ func main() {
 		if cfm != nil {
 			engine.SetReporter(cfm)
 		}
+		engine.SetAlertCooldown(cfg.Detection.AlertCooldown)
 
 		if cfg.Detection.Anomaly.Enabled {
 			anom, _ := detection.StartAnomalyStack(ctx, cfg, engine, store, configPath)

@@ -33,6 +33,14 @@ upstream_interfaces:
   - 2    # sfp1-Synapsecom
   - 3    # sfp2-GRIX
 
+# With more than one router exporting NetFlow, ifindex values collide (index 2
+# on one router is not index 2 on the other). List each router's upstreams by
+# its exporter IP (the source address of its NetFlow packets); routers not
+# listed here keep using upstream_interfaces above.
+#upstream_interfaces_by_exporter:
+#  "192.0.2.11": [2, 3]   # R1: Synapsecom, GR-IX
+#  "192.0.2.12": [7]      # R2: second upstream
+
 maxmind:
   enabled: true
   account_id: "0000000"

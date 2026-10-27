@@ -35,6 +35,7 @@ import (
 // batcher.go maps *flow.FlowRecord → flowstore.FlowEvent before calling Accumulate.
 type FlowEvent struct {
 	FlowDirection       uint8
+	Exporter            string // IP of the exporting router ("" = unknown)
 	SrcHost             string
 	DstHost             string
 	PeerSrcAS           uint32
@@ -240,7 +241,7 @@ func Init(
 	db *sql.DB,
 	myASN uint32,
 	myNets []*net.IPNet,
-	upstreamIfaces []uint32,
+	dir *flowdir.Classifier, // shared direction classifier; nil = no upstream ifaces
 	ranger cidranger.Ranger,
 	geo *enrich.GeoIP,
 	settings Settings,
@@ -252,13 +253,16 @@ func Init(
 		return err
 	}
 
+	if dir == nil {
+		dir = flowdir.New(nil, myNets)
+	}
 	s := &Store{
 		tl:      make(map[tlKey]*tlVal),
 		details: make(map[detailKey]*detailAccum),
 		meta:    make(map[uint32]*metaAccum),
 		db:      db,
 		myASN:   myASN,
-		dir:     flowdir.New(upstreamIfaces, myNets),
+		dir:     dir,
 		ranger:  ranger,
 		geo:     geo,
 		limits:  settings.withDefaults(),
@@ -479,7 +483,7 @@ func (s *Store) Accumulate(rec *FlowEvent) {
 // classifyInbound delegates to the shared flowdir.Classifier so flowstore and
 // telemetry can never diverge on the 3-tier direction logic (see CLAUDE.md rule 7).
 func (s *Store) classifyInbound(rec *FlowEvent) bool {
-	return s.dir.Classify(rec.InputInterface, rec.OutputInterface, rec.SrcHost, rec.DstHost, rec.FlowDirection).Inbound
+	return s.dir.Classify(rec.Exporter, rec.InputInterface, rec.OutputInterface, rec.SrcHost, rec.DstHost, rec.FlowDirection).Inbound
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

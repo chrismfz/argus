@@ -70,7 +70,7 @@ Self-contained, embedded HTML served directly from the argus binary. No Grafana,
 - **🔬 Raw Fields** — raw NetFlow field inspector (field ID → raw value), freeze-on-hover, sample rate control
 
 **Direction classification** (MikroTik sends `FlowDirection=0` for all flows — confirmed):
-1. `INPUT_SNMP` / `OUTPUT_SNMP` interface index matched against `upstream_interfaces` config list
+1. `INPUT_SNMP` / `OUTPUT_SNMP` interface index matched against `upstream_interfaces` config list. With several routers, use `upstream_interfaces_by_exporter`, which gives the list per exporter IP, because ifindex values are only unique per device.
 2. IP prefix matching against `my_prefixes`
 3. Raw `FlowDirection` field (last resort, always 0 from MikroTik)
 

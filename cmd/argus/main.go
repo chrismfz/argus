@@ -342,7 +342,13 @@ func main() {
 	if len(myNets) > 0 {
 		myName = geo.GetASNName(myNets[0].IP.String())
 	}
-	telemetry.Init(uint32(cfg.MyASN), myName, myNets, cfg.UpstreamInterfaces)
+	// One direction classifier for telemetry, flowstore and the batcher, so the
+	// three can never disagree (CLAUDE.md rule 7).
+	flowDir, err := flowdir.NewWithExporters(cfg.UpstreamInterfaces, cfg.UpstreamInterfacesByExporter, myNets)
+	if err != nil {
+		log.Fatalf("[config] %v", err)
+	}
+	telemetry.Init(uint32(cfg.MyASN), myName, myNets, flowDir)
 
 	if err := telemetry.InitRingSchema(db); err != nil {
 		log.Printf("[telemetry] ring schema init failed: %v", err)
@@ -397,7 +403,7 @@ func main() {
 	if listener != nil {
 		flowRanger = listener.Ranger
 	}
-	if err := flowstore.Init(db, uint32(cfg.MyASN), myNets, cfg.UpstreamInterfaces, flowRanger, geo, fsSettings); err != nil {
+	if err := flowstore.Init(db, uint32(cfg.MyASN), myNets, flowDir, flowRanger, geo, fsSettings); err != nil {
 		log.Printf("[flowstore] init failed: %v", err)
 	} else {
 		log.Printf("[flowstore] ready")
@@ -544,7 +550,6 @@ func main() {
 	}
 
 	// ── Flow pipeline ─────────────────────────────────────────────────────────
-	flowDir := flowdir.New(cfg.UpstreamInterfaces, myNets)
 	batcher := flow.NewInsertFlowBatcher(
 		nil,                   // no inserter needed
 		200,                   // batch size (or cfg.Enrich.BatchSize)

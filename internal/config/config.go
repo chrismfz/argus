@@ -85,6 +85,11 @@ type Config struct {
 	MyASN              uint32   `yaml:"my_asn"`
 	MyPrefixes         []string `yaml:"my_prefixes"`
 	UpstreamInterfaces []uint32 `yaml:"upstream_interfaces"`
+	// Per-router upstream ifindexes, keyed by exporter IP (the source address
+	// of its NetFlow packets). Needed with more than one router, since ifindex
+	// values are only unique per device. Exporters not listed here use
+	// upstream_interfaces.
+	UpstreamInterfacesByExporter map[string][]uint32 `yaml:"upstream_interfaces_by_exporter"`
 
 	SNMP SNMPConfig `yaml:"snmp"`
 

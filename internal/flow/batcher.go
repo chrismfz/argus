@@ -136,6 +136,7 @@ func (b *FlowEnricher) enrichAndFeed(batch []*FlowRecord) {
 				Bytes:               rec.Bytes,
 				Packets:             rec.Packets,
 				FlowDirection:       rec.FlowDirection,
+				Exporter:            rec.Exporter,
 				DstPort:             rec.DstPort,
 				InputInterface:      rec.InputInterface,
 				OutputInterface:     rec.OutputInterface,
@@ -151,6 +152,7 @@ func (b *FlowEnricher) enrichAndFeed(batch []*FlowRecord) {
 		for _, rec := range batch {
 			flowstore.Global.Accumulate(&flowstore.FlowEvent{
 				FlowDirection:       rec.FlowDirection,
+				Exporter:            rec.Exporter,
 				SrcHost:             rec.SrcHost,
 				DstHost:             rec.DstHost,
 				PeerSrcAS:           rec.PeerSrcAS,
@@ -177,7 +179,7 @@ func (b *FlowEnricher) enrichAndFeed(batch []*FlowRecord) {
 		for _, rec := range batch {
 			dir := ""
 			if b.dir != nil {
-				if b.dir.Classify(rec.InputInterface, rec.OutputInterface, rec.SrcHost, rec.DstHost, rec.FlowDirection).Inbound {
+				if b.dir.Classify(rec.Exporter, rec.InputInterface, rec.OutputInterface, rec.SrcHost, rec.DstHost, rec.FlowDirection).Inbound {
 					dir = "in"
 				} else {
 					dir = "out"

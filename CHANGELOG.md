@@ -8,6 +8,20 @@ Every behavior-changing PR must add an entry under **Unreleased**.
 ## [Unreleased]
 
 ### Added
+- **More than one NetFlow exporter (second router).** A new config knob,
+  `upstream_interfaces_by_exporter`, gives the upstream ifindexes per exporter
+  IP. Direction tier 1 (the interface index) now looks up the list for the
+  router that sent the flow, because ifindex 2 on one router is not ifindex 2
+  on another. Exporters not listed there keep `upstream_interfaces`, so
+  single-router setups are unchanged.
+  - The exporter IP now travels with every flow
+    (`fields.CUSTOM_EXPORTER_ADDR` → `FlowRecord.Exporter` → telemetry /
+    flowstore / flowlog).
+  - main builds one `flowdir.Classifier` and passes it to `telemetry.Init`,
+    `flowstore.Init` and the batcher. Previously each built its own copy.
+  - Known limitation: the per-interface charts still key on the ifindex
+    alone, so two routers' same-numbered upstream ports are summed into a
+    single series.
 - **Embedded read-only MCP server at `/mcp` (P2 of the IP-insights plan).** argus
   now speaks the Model Context Protocol (go-sdk v1.7.0 streamable HTTP, stateless
   + JSON) so an operator can query its flow telemetry from the same place they
@@ -60,6 +74,12 @@ Every behavior-changing PR must add an entry under **Unreleased**.
   is reclaimed with a one-time `VACUUM` (see README → Storage / disk).
 
 ### Fixed
+- **All IPv4 NetFlow exporters shared one template cache.** The collector
+  keyed templates by `binary.BigEndian.Uint32(remoteAddr.IP)`, which reads
+  the first 4 bytes of the 16-byte IPv4-in-IPv6 form, and those are always 0.
+  Two routers using the same template IDs would decode each other's flows with
+  the wrong field layout. Keys now come from `ip.To4()`, and IPv6 exporters
+  get an FNV hash.
 - **Blackholes restored after a restart were not blackholes.**
   `RestoreActiveBlackholes` re-announced every unexpired prefix with no
   communities and the speaker's own next-hop, so the router never installed

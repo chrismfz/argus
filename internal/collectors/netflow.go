@@ -4,6 +4,7 @@ import (
 	"argus/internal/fields"
 	"encoding/binary"
 	"fmt"
+	"hash/fnv"
 	"io"  // Import for io.Writer
 	"log" // Import for logging
 	"net"
@@ -607,7 +608,8 @@ func (nf *Netflow) Start() {
 		}
 		nfpacket.Length = n
 
-		nfpacket.Source = binary.BigEndian.Uint32(remoteAddr.IP)
+		nfpacket.Source = exporterKey(remoteAddr.IP)
+		exporter := remoteAddr.IP.String()
 
 		p := netflowPacketHeader{}
 		p.Version = binary.BigEndian.Uint16(packet[:2])
@@ -666,6 +668,7 @@ func (nf *Netflow) Start() {
 		for _, dfs := range nfpacket.Data {
 			for _, record := range dfs.Records {
 				record.calcTime(p.Uptime, p.Usecs)
+				record.ValuesMap[fields.CUSTOM_EXPORTER_ADDR] = fields.StringValue{Data: exporter}
 
 				// Always push to channel if it's defined
 				if nf.FlowChannel != nil {
@@ -687,6 +690,20 @@ func (nf *Netflow) Start() {
 			}
 		}
 	}
+}
+
+// exporterKey is the template-cache key for an exporter. net.UDPAddr.IP is
+// usually the 16-byte IPv4-in-IPv6 form, so reading its first 4 bytes (as this
+// used to) gave 0 for every IPv4 exporter: all routers shared one template
+// cache, and two exporters using the same template IDs would decode each
+// other's flows with the wrong layout.
+func exporterKey(ip net.IP) uint32 {
+	if v4 := ip.To4(); v4 != nil {
+		return binary.BigEndian.Uint32(v4)
+	}
+	h := fnv.New32a()
+	h.Write(ip.To16())
+	return h.Sum32()
 }
 
 // NEW: Add flowChannel parameter

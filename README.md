@@ -599,15 +599,32 @@ its effective settings and current SQLite footprint at startup so you can size
 retention against your disk.
 
 **Reclaiming disk (`detections.sqlite`).** Retention *deletes* rows on the
-1-minute cleanup ticker, but SQLite never returns freed pages to the OS on its
-own — a file that once ballooned stays big, full of reusable free pages. The
-`-wal` sidecar is bounded (`PRAGMA journal_size_limit`, 64 MiB) so it no longer
-grows into the GBs, but the main file is only compacted by an explicit
-`VACUUM`. To shrink it, stop argus briefly and run
-`sqlite3 detections.sqlite 'VACUUM;'` (needs free disk ≈ the *compacted* size,
-so let the ticker prune first). Dump the tiny live-state tables first as
-insurance: `sqlite3 detections.sqlite '.dump blackholes whitelist' > critical.sql`
-— never just `rm` the file, or active blackholes are lost on the next restart.
+1-minute cleanup ticker, but by default SQLite never returns freed pages to the
+OS — a file that once ballooned stays big, full of reusable free pages. argus
+keeps both halves in check through the `storage:` config section:
+
+- **WAL.** Every `wal_checkpoint_interval` (default 5m) argus runs
+  `PRAGMA wal_checkpoint(TRUNCATE)`, which waits for readers and shrinks the
+  `-wal` to zero. The PASSIVE autocheckpoint alone cannot reset the WAL while
+  the API keeps a constant read load on the pool. `journal_size_limit` (64 MiB)
+  is also set on every pooled connection.
+- **Main file.** On the same tick argus runs
+  `PRAGMA incremental_vacuum(incremental_vacuum_pages)` (default 2000 pages,
+  about 8 MiB). This only works once the file has been converted to
+  `auto_vacuum=INCREMENTAL`, which is a one-off offline step. argus logs a
+  reminder once until the conversion is done.
+
+To convert (and compact) an existing file, stop argus briefly. First dump the
+tiny live-state tables as insurance. Then run the conversion:
+
+```bash
+sqlite3 detections.sqlite '.dump blackholes whitelist' > critical.sql
+sqlite3 detections.sqlite 'PRAGMA auto_vacuum=INCREMENTAL; VACUUM;'
+```
+
+The `VACUUM` rewrites the whole file and needs free disk about equal to the
+*compacted* size, so let the ticker prune first. Never just `rm` the file, or
+active blackholes are lost on the next restart.
 
 **Log files:**
 | File | Contents |

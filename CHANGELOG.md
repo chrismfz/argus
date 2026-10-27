@@ -8,6 +8,14 @@ Every behavior-changing PR must add an entry under **Unreleased**.
 ## [Unreleased]
 
 ### Added
+- **SQLite housekeeping (`storage:` config section).** Every
+  `wal_checkpoint_interval` (default 5m) argus runs
+  `PRAGMA wal_checkpoint(TRUNCATE)`. The PASSIVE autocheckpoint cannot reset
+  the WAL under constant API reads, but this can. On the same tick argus runs
+  `PRAGMA incremental_vacuum(incremental_vacuum_pages)` (default 2000), which
+  takes effect once the file has been converted offline with
+  `PRAGMA auto_vacuum=INCREMENTAL; VACUUM;` (see README). Until then argus logs
+  a one-time reminder. Negative values disable either step.
 - **Embedded read-only MCP server at `/mcp` (P2 of the IP-insights plan).** argus
   now speaks the Model Context Protocol (go-sdk v1.7.0 streamable HTTP, stateless
   + JSON) so an operator can query its flow telemetry from the same place they
@@ -60,6 +68,17 @@ Every behavior-changing PR must add an entry under **Unreleased**.
   is reclaimed with a one-time `VACUUM` (see README → Storage / disk).
 
 ### Fixed
+- **Telemetry ring flush rewrote the whole 24h every 5 minutes.**
+  `PersistRing` / `PersistASNRing` / `PersistIfaceRing` re-`INSERT OR REPLACE`d
+  all 1440 minutes on every flush. For the ASN table that is about 1.5M row
+  rewrites per tick (~430M per day) to keep ~1.5M real rows a day. This write
+  amplification is what pushed `detections.sqlite` to 38 GB with a 12 GB WAL.
+  Flows are bucketed by arrival minute, so the scheduler now keeps a watermark
+  (the minute of the last successful flush) and writes only minutes at or
+  after it. The first flush after startup still writes the whole ring.
+- **`journal_size_limit` only reached one pooled connection.** It was set with
+  `db.Exec` on an 8-connection pool. It is now in the DSN, so every connection
+  truncates the WAL after a checkpoint.
 - **Blackholes restored after a restart were not blackholes.**
   `RestoreActiveBlackholes` re-announced every unexpired prefix with no
   communities and the speaker's own next-hop, so the router never installed

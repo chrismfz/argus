@@ -72,6 +72,7 @@ type Engine struct {
 	store     DetectionStore
 	reporter  Reporter
 	anomaly   *Anomaly
+	alerts    *alertDeduper
 }
 
 type Reporter interface {
@@ -80,6 +81,10 @@ type Reporter interface {
 }
 
 func (e *Engine) SetReporter(r Reporter) { e.reporter = r }
+
+// SetAlertCooldown sets how often a still-matching (rule, src) incident is
+// re-logged by the "alert" action; <= 0 logs every match. See alertDeduper.
+func (e *Engine) SetAlertCooldown(d time.Duration) { e.alerts = newAlertDeduper(d) }
 
 func (e *Engine) SetAnomaly(a *Anomaly) {
 	e.anomaly = a
@@ -141,6 +146,13 @@ func (e *Engine) Run(ctx context.Context) {
 func (e *Engine) runDetection() {
 	now := time.Now().UTC()
 	cutoff := now.Add(-e.maxWindow)
+	// Close deduplicated alert incidents that stopped matching — also on ticks
+	// with an empty flow cache, which return early below.
+	defer func() {
+		for _, inc := range e.alerts.expire(now) {
+			LogIncidentEnded(inc)
+		}
+	}()
 
 	// Critical section kept as short as possible: prune the flow cache to the
 	// window and take a private snapshot to evaluate. Everything below — rule
@@ -205,7 +217,9 @@ func (e *Engine) runDetection() {
 		for _, act := range parseActions(rule.Action) {
 			switch act {
 			case "alert":
-				LogDetection(rule, flows, e.Geo, e.DNS, count) // 🆕 περνάμε count
+				if ok, suppressed := e.alerts.observe(rule.Name, srcIP, now); ok {
+					LogDetection(rule, flows, e.Geo, e.DNS, count, suppressed)
+				}
 
 			case "slack":
 				// Not implemented yet — see ROADMAP Phase 4 (Alerting v2).

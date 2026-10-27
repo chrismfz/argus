@@ -285,6 +285,12 @@ func matchTCPFlags(flowFlags uint8, required string) bool {
 		return flowFlags&0x10 != 0
 	case "SYN-ACK":
 		return (flowFlags&0x02 != 0) && (flowFlags&0x10 != 0)
+	case "SYN-ONLY":
+		// SYN without ACK: a connection attempt that never completed. Return
+		// traffic of our own outbound connections (e.g. a CDN answering on
+		// our ephemeral ports) always carries ACK, so this keeps "many dst
+		// ports" rules from flagging it as a vertical scan.
+		return (flowFlags&0x02 != 0) && (flowFlags&0x10 == 0)
 	default:
 		DlogEngine("Unknown TCP flag requirement: %s", required) // CHANGED: Call DlogEngine
 		return false

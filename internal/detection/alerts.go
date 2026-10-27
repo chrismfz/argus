@@ -38,7 +38,9 @@ func openDetectionLog() (*os.File, error) {
 
 // before passing flows to the detection engine, or by a separate enrichment service.
 
-func LogDetection(rule DetectionRule, flows []Flow, geo *enrich.GeoIP, dns *enrich.DNSResolver, count int) {
+// suppressed is the number of matches of this (rule, src) incident that the
+// alert deduplicator swallowed since its previous logged alert (0 = none).
+func LogDetection(rule DetectionRule, flows []Flow, geo *enrich.GeoIP, dns *enrich.DNSResolver, count, suppressed int) {
 	once.Do(initLoggers)
 
 	if len(flows) == 0 {
@@ -63,6 +65,9 @@ func LogDetection(rule DetectionRule, flows []Flow, geo *enrich.GeoIP, dns *enri
 		timestamp, rule.Name, len(flows), first.Proto, rulePorts, first.DstIP, first.DstPort, first.SrcIP)
 
 	detectionLogger.Printf("         Reason: %s", buildReason(rule))
+	if suppressed > 0 {
+		detectionLogger.Printf("         Ongoing: %d more matches since the previous alert for this source", suppressed)
+	}
 
 	// Group by unique SrcIP
 	srcCount := make(map[string]int)
@@ -92,6 +97,17 @@ func LogDetection(rule DetectionRule, flows []Flow, geo *enrich.GeoIP, dns *enri
 
 	detectionLogger.Println("---")
 	DlogEngine("Alert logged for rule '%s'", rule.Name)
+}
+
+// LogIncidentEnded writes the closing line of a deduplicated incident: it
+// stopped matching, and this accounts for the matches that were never logged.
+func LogIncidentEnded(inc endedIncident) {
+	once.Do(initLoggers)
+	detectionLogger.Printf("[%s] ENDED: Rule='%s' | SRC: %s | Matches=%d (unlogged since last alert: %d) | First=%s | Last=%s | Duration=%s",
+		time.Now().Format(time.RFC3339), inc.Rule, inc.Src, inc.Matches, inc.Suppressed,
+		inc.FirstSeen.Format(time.RFC3339), inc.LastSeen.Format(time.RFC3339),
+		inc.LastSeen.Sub(inc.FirstSeen).Round(time.Second))
+	detectionLogger.Println("---")
 }
 
 func LogBlackhole(entry string) {

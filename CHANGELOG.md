@@ -59,6 +59,17 @@ Every behavior-changing PR must add an entry under **Unreleased**.
   trims the table FIFO by id, mirroring `blackhole_events_max_rows`.
 
 ### Changed
+- **Detection alerts are now incidents, not one block per second.** Rules
+  re-evaluate every second over a sliding window, so a single scanner wrote the
+  same alert block for as long as it stayed in the window. That added up to
+  143k alerts and ~62 MB of `detections.log` a day. The `alert` action now logs
+  an (rule, src) incident when it starts, then at most once per
+  `detection.alert_cooldown` (default 10m) while it keeps matching, with an
+  `Ongoing: N more matches` line. When the incident has been quiet for a
+  cooldown, it closes with an `ENDED` line that carries the total match count
+  and duration, so no match is lost. Detection counts, `blackhole_count` and
+  the blackhole action still see every match. A negative value restores the
+  old behaviour.
 - **SQLite `-wal` file is now size-bounded** via `PRAGMA journal_size_limit`
   (64 MiB). WAL mode reuses WAL space after a checkpoint but never shrinks the
   file on its own, so a write burst — or a checkpoint pinned by a slow reader
@@ -68,6 +79,11 @@ Every behavior-changing PR must add an entry under **Unreleased**.
   is reclaimed with a one-time `VACUUM` (see README → Storage / disk).
 
 ### Fixed
+- **`slow_vertical_any` flagged return traffic as a vertical scan.** Replies
+  from Facebook/Google to our hosts' outbound connections hit many ephemeral
+  ports of one host, and this rule matched them: AS32934 was the #4 "attacker"
+  with ~15k alerts a day. The new `tcp_flags: SYN-ONLY` value matches SYN
+  without ACK, and the rule now uses it. Return traffic always carries ACK.
 - **Telemetry ring flush rewrote the whole 24h every 5 minutes.**
   `PersistRing` / `PersistASNRing` / `PersistIfaceRing` re-`INSERT OR REPLACE`d
   all 1440 minutes on every flush. For the ASN table that is about 1.5M row

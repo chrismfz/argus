@@ -93,6 +93,10 @@ type Config struct {
 		RulesConfig        string `yaml:"rules_config"`
 		FlowCacheMaxWindow string `yaml:"flow_cache_max_window"`
 		DebugDetection     bool   `yaml:"debug_detection"`
+		// How often a (rule, src) incident that keeps matching is re-logged by
+		// the "alert" action; a closing ENDED line accounts for the rest.
+		// unset/0 = default 10m, negative = log every match (old behaviour).
+		AlertCooldown time.Duration `yaml:"alert_cooldown"`
 
 		Anomaly struct {
 			// Core on/off + scheduling
@@ -405,6 +409,7 @@ func applyStorageDefaults(cfg *Config) {
 
 	defInt(&cfg.Telemetry.BucketRetentionDays, 30)
 
+	defDur(&cfg.Detection.AlertCooldown, 10*time.Minute)
 	defDur(&cfg.Storage.WALCheckpointInterval, 5*time.Minute)
 	defInt(&cfg.Storage.IncrementalVacuumPages, 2000)
 

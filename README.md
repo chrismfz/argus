@@ -79,7 +79,7 @@ Rule-based detection with configurable actions and automatic BGP blackholing.
 
 **Actions:** `alert` (writes to `detections.log`), `blackhole` (BGP announces /32 with community)
 
-**Rule conditions:** `proto`, `tcp_flags`, `dst_port`/`src_port` (single, list, or range), `direction` (ingress/egress), `same_dst_ip`, `same_dst_port`, `same_src_ip`, `unique_dst_ips`, `unique_dst_ports`, `min_flows`, `min_unique_src_ips`, `min_avg_pps`, `min_bytes`, `min_total_bytes`, `nat_present`, `ttl_min`/`ttl_max`, `only_prefixes`, `exclude_src_ips`, `exclude_dst_ips`
+**Rule conditions:** `proto`, `tcp_flags` (`SYN`, `ACK`, `SYN-ACK`, or `SYN-ONLY` = SYN without ACK, which ignores return traffic of your own connections), `dst_port`/`src_port` (single, list, or range), `direction` (ingress/egress), `same_dst_ip`, `same_dst_port`, `same_src_ip`, `unique_dst_ips`, `unique_dst_ports`, `min_flows`, `min_unique_src_ips`, `min_avg_pps`, `min_bytes`, `min_total_bytes`, `nat_present`, `ttl_min`/`ttl_max`, `only_prefixes`, `exclude_src_ips`, `exclude_dst_ips`
 
 **Escalating blackhole TTLs** — each repeated offense gets a longer block:
 ```

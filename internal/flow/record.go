@@ -32,6 +32,7 @@ type FlowRecord struct {
 	InputInterfaceName  string    `ch:"input_interface_name"`
 	OutputInterfaceName string    `ch:"output_interface_name"`
 	FlowDirection       uint8     `ch:"flow_direction"`
+	Exporter            string    `ch:"exporter"` // IP of the router that exported the flow
 	IPProtocol          uint8     `ch:"ip_protocol"`
 	// --- ΝΕΑ ---
 	PostNATSrcIP   string `ch:"post_nat_src_ip"`
@@ -43,6 +44,9 @@ type FlowRecord struct {
 func ConvertToFlowRecord(raw map[uint16]fields.Value) *FlowRecord {
 	fr := &FlowRecord{}
 	now := time.Now().UTC()
+	if v, ok := raw[fields.CUSTOM_EXPORTER_ADDR]; ok {
+		fr.Exporter = v.ToString()
+	}
 
 	// 🕒 timestamps (από CUSTOM_TIMESTAMP_START/CUSTOM_TIMESTAMP, με fallbacks)
 	var tsStart, tsEnd time.Time

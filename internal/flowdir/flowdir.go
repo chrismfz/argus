@@ -13,23 +13,82 @@
 // ("direction classification is sacred").
 package flowdir
 
-import "net"
+import (
+	"fmt"
+	"net"
+)
 
-// Classifier holds the network's identity: the set of upstream interface
-// indices and the local prefixes. Build one with New and reuse it — it is
-// read-only after construction and safe for concurrent use.
+// Classifier holds the network's identity: the upstream interface indices and
+// the local prefixes. Build one with New / NewWithExporters and reuse it — it
+// is read-only after construction and safe for concurrent use.
+//
+// Interface indices are only unique per router. With more than one NetFlow
+// exporter, index 2 on one router is not index 2 on the other, so upstreams
+// can be given per exporter IP; an exporter without its own entry uses the
+// default list.
 type Classifier struct {
-	upstreamIfaces map[uint32]bool
+	upstreamIfaces map[uint32]bool            // default, for exporters not in byExporter
+	byExporter     map[string]map[uint32]bool // exporter IP (canonical form) → its upstreams
 	myNets         []*net.IPNet
 }
 
-// New builds a Classifier from the raw config lists.
+// New builds a Classifier from the raw config lists (one shared upstream list).
 func New(upstreamIfaces []uint32, myNets []*net.IPNet) *Classifier {
-	ifSet := make(map[uint32]bool, len(upstreamIfaces))
-	for _, idx := range upstreamIfaces {
-		ifSet[idx] = true
+	return &Classifier{upstreamIfaces: ifaceSet(upstreamIfaces), myNets: myNets}
+}
+
+// NewWithExporters is New plus per-exporter upstream lists, keyed by the
+// exporter's IP (the source address of its NetFlow packets). An exporter listed
+// here — even with an empty list — uses only its own entry.
+func NewWithExporters(upstreamIfaces []uint32, byExporter map[string][]uint32, myNets []*net.IPNet) (*Classifier, error) {
+	c := New(upstreamIfaces, myNets)
+	if len(byExporter) == 0 {
+		return c, nil
 	}
-	return &Classifier{upstreamIfaces: ifSet, myNets: myNets}
+	c.byExporter = make(map[string]map[uint32]bool, len(byExporter))
+	for addr, idxs := range byExporter {
+		ip := net.ParseIP(addr)
+		if ip == nil {
+			return nil, fmt.Errorf("flowdir: upstream_interfaces_by_exporter: %q is not an IP address", addr)
+		}
+		c.byExporter[ip.String()] = ifaceSet(idxs)
+	}
+	return c, nil
+}
+
+func ifaceSet(idxs []uint32) map[uint32]bool {
+	set := make(map[uint32]bool, len(idxs))
+	for _, idx := range idxs {
+		set[idx] = true
+	}
+	return set
+}
+
+// upstreamsFor returns the upstream set that applies to flows from exporter
+// ("" = unknown exporter → the default list).
+func (c *Classifier) upstreamsFor(exporter string) map[uint32]bool {
+	if c.byExporter != nil && exporter != "" {
+		if set, ok := c.byExporter[canonicalIP(exporter)]; ok {
+			return set
+		}
+	}
+	return c.upstreamIfaces
+}
+
+func canonicalIP(s string) string {
+	if ip := net.ParseIP(s); ip != nil {
+		return ip.String()
+	}
+	return s
+}
+
+// CountsAsUpstream reports whether interface idx of exporter should be treated
+// as an upstream for per-interface accounting: true when it is a configured
+// upstream, and also when that exporter has no upstreams configured at all
+// (then every interface counts, the historical behaviour).
+func (c *Classifier) CountsAsUpstream(exporter string, idx uint32) bool {
+	set := c.upstreamsFor(exporter)
+	return len(set) == 0 || set[idx]
 }
 
 // Result is the full classification outcome.
@@ -43,16 +102,17 @@ type Result struct {
 	DstInMy bool
 }
 
-// Classify applies the 3-tier logic. inIface / outIface are the NetFlow
+// Classify applies the 3-tier logic. exporter is the IP of the router that
+// exported the flow ("" if unknown), inIface / outIface its NetFlow
 // INPUT_SNMP / OUTPUT_SNMP indices, srcHost / dstHost the IP strings, and
 // flowDirection the raw NetFlow DIRECTION field (MikroTik always sends 0).
-func (c *Classifier) Classify(inIface, outIface uint32, srcHost, dstHost string, flowDirection uint8) Result {
+func (c *Classifier) Classify(exporter string, inIface, outIface uint32, srcHost, dstHost string, flowDirection uint8) Result {
 	// 1. Interface index — most reliable (avoids the MikroTik direction=0 bug).
-	if len(c.upstreamIfaces) > 0 {
-		if inIface != 0 && c.upstreamIfaces[inIface] {
+	if up := c.upstreamsFor(exporter); len(up) > 0 {
+		if inIface != 0 && up[inIface] {
 			return Result{Inbound: true}
 		}
-		if outIface != 0 && c.upstreamIfaces[outIface] {
+		if outIface != 0 && up[outIface] {
 			return Result{Inbound: false}
 		}
 	}

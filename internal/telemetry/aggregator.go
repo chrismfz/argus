@@ -23,6 +23,7 @@ type Record struct {
 	Bytes               uint64
 	Packets             uint64
 	FlowDirection       uint8
+	Exporter            string // IP of the exporting router ("" = unknown)
 	DstPort             uint16
 	InputInterface      uint32
 	OutputInterface     uint32
@@ -144,11 +145,10 @@ type pairAccum struct {
 // ── Aggregator ────────────────────────────────────────────────────────────────
 
 type Aggregator struct {
-	mu             sync.RWMutex
-	myASN          uint32
-	myName         string
-	upstreamIfaces map[uint32]bool
-	dir            *flowdir.Classifier
+	mu     sync.RWMutex
+	myASN  uint32
+	myName string
+	dir    *flowdir.Classifier
 
 	ring      [RingSize]MinuteBucket
 	asnRing   [RingSize]map[uint32]*asnMinCount
@@ -168,24 +168,24 @@ type Aggregator struct {
 	lastReset time.Time
 }
 
-func Init(myASN uint32, myName string, myNets []*net.IPNet, upstreamIfaces []uint32) {
-	ifSet := make(map[uint32]bool, len(upstreamIfaces))
-	for _, idx := range upstreamIfaces {
-		ifSet[idx] = true
+// Init sets Global. dir is the shared direction classifier (also used by
+// flowstore and the batcher); nil means no upstream interfaces configured.
+func Init(myASN uint32, myName string, myNets []*net.IPNet, dir *flowdir.Classifier) {
+	if dir == nil {
+		dir = flowdir.New(nil, myNets)
 	}
 	a := &Aggregator{
-		myASN:          myASN,
-		myName:         myName,
-		upstreamIfaces: ifSet,
-		dir:            flowdir.New(upstreamIfaces, myNets),
-		asnIface:       make(map[ifaceAsnKey]*ifaceAsnAccum),
-		ifaceNames:     make(map[uint32]string),
-		pairsIn:        make(map[pairKey]*pairAccum),
-		pairsOut:       make(map[pairKey]*pairAccum),
-		hostsIn:        make(map[string]uint64),
-		hostsOut:       make(map[string]uint64),
-		ports:          make(map[uint16]uint64),
-		lastReset:      time.Now(),
+		myASN:      myASN,
+		myName:     myName,
+		dir:        dir,
+		asnIface:   make(map[ifaceAsnKey]*ifaceAsnAccum),
+		ifaceNames: make(map[uint32]string),
+		pairsIn:    make(map[pairKey]*pairAccum),
+		pairsOut:   make(map[pairKey]*pairAccum),
+		hostsIn:    make(map[string]uint64),
+		hostsOut:   make(map[string]uint64),
+		ports:      make(map[uint16]uint64),
+		lastReset:  time.Now(),
 	}
 	for i := range a.asnRing {
 		a.asnRing[i] = make(map[uint32]*asnMinCount)
@@ -204,7 +204,7 @@ func minEpoch(t time.Time) int64 { return (t.Unix() / 60) * 60 }
 // classifyDirection delegates to the shared flowdir.Classifier so telemetry and
 // flowstore can never diverge on the 3-tier direction logic (see CLAUDE.md rule 7).
 func (a *Aggregator) classifyDirection(rec *Record) (inbound, srcInMy, dstInMy bool) {
-	r := a.dir.Classify(rec.InputInterface, rec.OutputInterface, rec.SrcHost, rec.DstHost, rec.FlowDirection)
+	r := a.dir.Classify(rec.Exporter, rec.InputInterface, rec.OutputInterface, rec.SrcHost, rec.DstHost, rec.FlowDirection)
 	return r.Inbound, r.SrcInMy, r.DstInMy
 }
 
@@ -275,7 +275,7 @@ func (a *Aggregator) Ingest(rec *Record) {
 		}
 
 		// Only add to ring if it's an upstream interface
-		if len(a.upstreamIfaces) == 0 || a.upstreamIfaces[ifIdx] {
+		if a.dir.CountsAsUpstream(rec.Exporter, ifIdx) {
 			im := a.ifaceRing[slot]
 			ic, ok := im[ifIdx]
 			if !ok {
@@ -294,7 +294,7 @@ func (a *Aggregator) Ingest(rec *Record) {
 		}
 
 		// ASN→Interface mapping (for "via" column and sankey) — all upstream ifaces
-		if asn != 0 && asn != a.myASN && (len(a.upstreamIfaces) == 0 || a.upstreamIfaces[ifIdx]) {
+		if asn != 0 && asn != a.myASN && a.dir.CountsAsUpstream(rec.Exporter, ifIdx) {
 			k := ifaceAsnKey{ifIdx, asn, inbound}
 			acc, ok := a.asnIface[k]
 			if !ok {
@@ -461,7 +461,7 @@ func (a *Aggregator) QueryTopASN(n, minutes int) (topIn, topOut []ASNStat) {
 }
 
 // QueryInterfaces returns per-upstream-interface time-series.
-// Only returns upstream interfaces (those in upstreamIfaces config).
+// Only returns upstream interfaces (see flowdir.Classifier.CountsAsUpstream).
 func (a *Aggregator) QueryInterfaces(minutes int) []IfaceSeries {
 	if minutes > RingSize {
 		minutes = RingSize

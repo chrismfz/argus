@@ -131,6 +131,11 @@ const FIREWALL_EVENT = 233 // Kept as a common IPFIX field, but not 80 in Cisco 
 const CUSTOM_TIMESTAMP = 256 // New ID for your custom timestamp to avoid conflict with REPLICATION_FACTOR (99)
 const CUSTOM_TIMESTAMP_START uint16 = 65001
 
+// CUSTOM_EXPORTER_ADDR carries the source IP of the NetFlow/IPFIX packet (the
+// exporting router) as a StringValue. Interface indices are only unique per
+// exporter, so direction classification needs it once there is more than one.
+const CUSTOM_EXPORTER_ADDR uint16 = 65002
+
 const DIRECTION = FLOW_DIRECTION // Alias for backward compatibility
 
 // Integer Values

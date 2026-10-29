@@ -138,6 +138,12 @@ func restoreActiveBlackholes(db *sql.DB, rules []DetectionRule,
 
 	var count int
 	for _, r := range active {
+		// An exclusion added after the blackhole wins; WithdrawProtectedBlackholes
+		// drops the row on the next protection-list reload.
+		if IsProtected(prefixIP(r.prefix)) {
+			log.Printf("[RESTORE] Skipping protected prefix %s (rule=%s)", r.prefix, r.rule)
+			continue
+		}
 		rule, ok := byName[r.rule]
 		if !ok {
 			rule = DetectionRule{Name: r.rule}

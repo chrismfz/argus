@@ -457,7 +457,16 @@ func main() {
 			case <-ctx.Done():
 				return
 			case <-t.C:
-				_ = detection.LoadProtectedFromDB(db)
+				if detection.LoadProtectedFromDB(db) == nil {
+					// Catches exclusions added outside the API (CLI, sqlite3).
+					var rep detection.Reporter
+					if cfm != nil { // avoid a typed-nil interface
+						rep = cfm
+					}
+					if _, err := detection.WithdrawProtectedBlackholes(db, rep); err != nil {
+						log.Printf("[SAFEGUARD] withdrawing excluded blackholes failed: %v", err)
+					}
+				}
 			}
 		}
 	}()

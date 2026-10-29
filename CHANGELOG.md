@@ -93,6 +93,16 @@ Every behavior-changing PR must add an entry under **Unreleased**.
   is reclaimed with a one-time `VACUUM` (see README → Storage / disk).
 
 ### Fixed
+- **Adding a detection exclusion left an existing blackhole in place.** The
+  exclusion only stopped *new* blackholes, so an IP that was already
+  blackholed (permanently, after TTL escalation) stayed blocked. Startup
+  restore also re-announced it. Example: 79.129.12.159 stayed blackholed from
+  2026-10-22 to 2026-10-29 despite its exclusion. Adding or editing an
+  exclusion now withdraws every stored blackhole it covers, and so does the
+  protection list's 1-minute reload, which catches exclusions added outside
+  the API. Each withdrawal removes the BGP route and the `blackholes` row,
+  writes a `withdrawn/exclude` row to `blackhole_events`, and reports an
+  unblock to CFM. `RestoreActiveBlackholes` skips protected prefixes.
 - **All IPv4 NetFlow exporters shared one template cache.** The collector
   keyed templates by `binary.BigEndian.Uint32(remoteAddr.IP)`, which reads
   the first 4 bytes of the 16-byte IPv4-in-IPv6 form, and those are always 0.

@@ -155,9 +155,14 @@ rules:
     blackhole_time: [14400, 28800, 57600, 86400, 0]
 
 # "any" or "udp" in generic_scanner messes up with DNS
+# SYN-ONLY: without it, replies to our own outbound connections matched as a
+# scan — e.g. a hosting server opening hundreds of connections to a customer's
+# app port: the replies hit hundreds of our ephemeral ports, which got the
+# customer permanently blackholed (79.129.12.159, 2026-10).
 
   - name: generic_scanner
     proto: tcp
+    tcp_flags: SYN-ONLY
     direction: ingress
     unique_dst_ports: 250
     min_flows: 300

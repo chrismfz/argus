@@ -93,6 +93,12 @@ Every behavior-changing PR must add an entry under **Unreleased**.
   is reclaimed with a one-time `VACUUM` (see README → Storage / disk).
 
 ### Fixed
+- **`generic_scanner` blackholed customers for replies to our own connections.**
+  When one of our servers opened hundreds of connections to a customer's
+  application port, the customer's replies reached hundreds of our ephemeral
+  ports. The rule counted these as a vertical scan. With TTL escalation this
+  ended in a permanent blackhole: 79.129.12.159 in 2026-10. The rule now has
+  `tcp_flags: SYN-ONLY`, the same fix `slow_vertical_any` got.
 - **Adding a detection exclusion left an existing blackhole in place.** The
   exclusion only stopped *new* blackholes, so an IP that was already
   blackholed (permanently, after TTL escalation) stayed blocked. Startup

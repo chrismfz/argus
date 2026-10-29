@@ -182,7 +182,11 @@ func evaluateRule(rule DetectionRule, flows []Flow, myNets []*net.IPNet) (bool, 
 
 		// This condition applies if any of the SameDstIP, SameDstPort, MinUniqueSrcIPs, UniqueDstIPs are relevant
 		// For test_all_tcp, none of these are true, so this check will be skipped.
-		if (rule.SameDstIP || rule.SameDstPort || rule.MinUniqueSrcIPs > 0 || rule.UniqueDstIPs > 0) && !isMyPrefix(f.DstIP, myNets) {
+		// Egress rules are the exception: their destinations are remote by
+		// definition (the direction gate above already requires that), so this
+		// check made every egress rule with unique_dst_ips unmatchable.
+		isEgress := strings.EqualFold(rule.Direction, "egress")
+		if !isEgress && (rule.SameDstIP || rule.SameDstPort || rule.MinUniqueSrcIPs > 0 || rule.UniqueDstIPs > 0) && !isMyPrefix(f.DstIP, myNets) {
 			DlogEngine("  Flow %s->%s DstIP %s is not in myNets, and rule requires local destination. Skipping.", f.SrcIP, f.DstIP, f.DstIP) // CHANGED: Call DlogEngine
 			continue
 		}

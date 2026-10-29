@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -28,9 +29,19 @@ func jsonErr(w http.ResponseWriter, code int, msg string) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }
 
+// reloadExcludes refreshes the in-memory protection list and withdraws any
+// active blackhole the new/changed exclusion covers.
 func reloadExcludes() {
-	if DetectionDB != nil {
-		_ = detection.LoadProtectedFromDB(DetectionDB)
+	if DetectionDB == nil {
+		return
+	}
+	_ = detection.LoadProtectedFromDB(DetectionDB)
+	var rep detection.Reporter
+	if CFM != nil { // avoid a typed-nil interface
+		rep = CFM
+	}
+	if _, err := detection.WithdrawProtectedBlackholes(DetectionDB, rep); err != nil {
+		log.Printf("[SAFEGUARD] withdrawing excluded blackholes failed: %v", err)
 	}
 }
 

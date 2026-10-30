@@ -8,6 +8,11 @@ Every behavior-changing PR must add an entry under **Unreleased**.
 ## [Unreleased]
 
 ### Added
+- **`smtp_egress_fanout` detection rule** (alert-only). It fires when one of our
+  hosts sends to ≥30 distinct remote MXs on TCP/25 (≥40 flows) within 60s,
+  which points to a compromised box or a customer VPS sending bulk mail. For
+  now it only writes to `detections.log`. Per-IP mail history and a dashboard
+  page are planned next.
 - **More than one NetFlow exporter (second router).** A new config knob,
   `upstream_interfaces_by_exporter`, gives the upstream ifindexes per exporter
   IP. Direction tier 1 (the interface index) now looks up the list for the
@@ -93,6 +98,10 @@ Every behavior-changing PR must add an entry under **Unreleased**.
   is reclaimed with a one-time `VACUUM` (see README → Storage / disk).
 
 ### Fixed
+- **Egress rules with `unique_dst_ips` could never match.** A check meant for
+  ingress rules dropped every flow whose destination was not ours, which is
+  every egress flow. `data_exfil_multi_dst` was silently dead because of it,
+  and now evaluates as written.
 - **`generic_scanner` blackholed customers for replies to our own connections.**
   When one of our servers opened hundreds of connections to a customer's
   application port, the customer's replies reached hundreds of our ephemeral

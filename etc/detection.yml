@@ -326,6 +326,24 @@ rules:
     action: alert
 
 
+# Outbound SMTP fan-out: one of OUR hosts talking to many remote MXs on :25 —
+# a compromised box or a customer VPS sending bulk/spam. Alert only: never
+# blackhole our own address (the myNets safeguard would skip it anyway).
+# Window must stay <= detection.flow_cache_max_window (60s), the engine keeps
+# no older flows. No tcp_flags: MikroTik exports the first packet's flags
+# (a 645-packet SMTP session shows as SYN), so "failed connection" ratios
+# cannot be derived from them.
+  - name: smtp_egress_fanout
+    proto: tcp
+    direction: egress
+    dst_port: 25
+    same_src_ip: true
+    unique_dst_ips: 30
+    min_flows: 40
+    time_window: 60s
+    action: alert
+
+
 # Very slow horizontal web scan over 5 minutes
   - name: web_slow_horizontal_long
     proto: tcp

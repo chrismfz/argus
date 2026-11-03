@@ -10,8 +10,11 @@ import (
 
 // DefaultWriteBatchRows is the default for storage.write_batch_rows: how many
 // rows a bulk prune or rollup writes per transaction before committing and
-// letting other writers take the lock.
-const DefaultWriteBatchRows = 5000
+// letting other writers take the lock. 5000 took 2-4s per batch (lock waits
+// included) on the
+// 43 GB production file while a multi-GB WAL was building up, close enough to
+// the 5s busy_timeout that other writers still failed occasionally.
+const DefaultWriteBatchRows = 1000
 
 // BatchPause is the gap between two batches. SQLite's lock is not fair: a
 // writer blocked on it sleeps in the busy handler and retries, and those sleeps

@@ -38,7 +38,7 @@ func TestStorageDefaults(t *testing.T) {
 	if cfg.Telemetry.BucketRetentionDays != 30 {
 		t.Fatalf("telemetry default wrong: %+v", cfg.Telemetry)
 	}
-	if cfg.Storage.WriteBatchRows != 5000 {
+	if cfg.Storage.WriteBatchRows != 1000 {
 		t.Fatalf("storage.write_batch_rows default wrong: %d", cfg.Storage.WriteBatchRows)
 	}
 	r := cfg.Retention

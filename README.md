@@ -646,7 +646,7 @@ keeps both halves in check through the `storage:` config section:
   reminder once until the conversion is done.
 - **Write batching.** Bulk background writes (the 30-min flowstore detail
   flush, daily rollups, and the flowstore/telemetry prunes) commit every
-  `write_batch_rows` rows (default 5000). One huge transaction would hold the
+  `write_batch_rows` rows (default 1000). One huge transaction would hold the
   database's single write lock for tens of seconds, and every other writer
   would fail with `SQLITE_BUSY`. Set it negative for the old
   one-transaction behaviour.

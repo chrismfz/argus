@@ -161,7 +161,7 @@ Every behavior-changing PR must add an entry under **Unreleased**.
     writers kept missing the free window. A batch that still gets
     `SQLITE_BUSY` is retried with a backoff, a failed rollup is retried after
     15 minutes instead of 24h, and each rolled day is logged.
-  - **New knob** `storage.write_batch_rows` (default 5000; negative = old
+  - **New knob** `storage.write_batch_rows` (default 1000; negative = old
     single-transaction behaviour).
 - **Daily rollup failed every day since 2026-10-26** with
   `UNIQUE constraint failed: flowstore_daily_ips…`. The query grouped by

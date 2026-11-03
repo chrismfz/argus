@@ -267,7 +267,7 @@ type StorageConfig struct {
 	// Rows per transaction for bulk background writes: flowstore detail
 	// flush, daily rollups, flowstore/telemetry prunes. Each batch commits
 	// separately so other writers (bgpmon, risk_events, mailwatch, …) are
-	// never locked out for longer than one batch. Default 5000; negative =
+	// never locked out for longer than one batch. Default 1000; negative =
 	// one transaction / one DELETE per step (the pre-batching behaviour).
 	WriteBatchRows int `yaml:"write_batch_rows"`
 }
@@ -463,7 +463,7 @@ func applyStorageDefaults(cfg *Config) {
 	defDur(&cfg.Detection.AlertCooldown, 10*time.Minute)
 	defDur(&cfg.Storage.WALCheckpointInterval, 5*time.Minute)
 	defInt(&cfg.Storage.IncrementalVacuumPages, 2000)
-	defInt(&cfg.Storage.WriteBatchRows, 5000)
+	defInt(&cfg.Storage.WriteBatchRows, 1000)
 
 	r := &cfg.Retention
 	defDur(&r.Detections, 90*24*time.Hour)

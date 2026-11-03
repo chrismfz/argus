@@ -71,6 +71,13 @@ type Tracker struct {
 	cur         map[key]*agg
 	curStart    time.Time
 	droppedKeys uint64 // flows not counted because MaxSenders was reached
+
+	// Baseline alerts; only touched from the flush goroutine (see alerts.go).
+	alerts    AlertConfig
+	notify    func(Alert)
+	lastAlert map[string]time.Time
+	pending   []pendingBucket // flush goroutine only
+	retryWait time.Duration   // first persist backoff, doubled per attempt
 }
 
 // New builds a tracker. Bucket defaults to 5m, TopN to 10.
@@ -86,10 +93,11 @@ func New(cfg Config) *Tracker {
 		ports[p] = true
 	}
 	return &Tracker{
-		cfg:      cfg,
-		ports:    ports,
-		cur:      make(map[key]*agg),
-		curStart: time.Now().Truncate(cfg.Bucket),
+		cfg:       cfg,
+		ports:     ports,
+		cur:       make(map[key]*agg),
+		curStart:  time.Now().Truncate(cfg.Bucket),
+		retryWait: time.Second,
 	}
 }
 
@@ -162,26 +170,54 @@ func (t *Tracker) flush(db *sql.DB, now time.Time) {
 		log.Printf("[mailwatch] bucket %s: %d flows not counted (mailwatch.max_senders=%d reached)",
 			start.Format(time.RFC3339), dropped, t.cfg.MaxSenders)
 	}
-	if len(cur) == 0 {
-		return
+	if len(cur) > 0 {
+		// Read what we knew before this bucket lands (new-sender check).
+		t.pending = append(t.pending, pendingBucket{start, cur, t.alertContext(db, cur)})
 	}
-	// The write lock is contended at bucket boundaries and on shutdown (every
-	// subsystem flushes at once), so SQLITE_BUSY past busy_timeout is retried.
-	var err error
-	for attempt, wait := 1, time.Second; attempt <= persistAttempts; attempt, wait = attempt+1, wait*2 {
-		if err = t.persist(db, start, cur); err == nil {
+	if n := len(t.pending) - maxPending; n > 0 {
+		log.Printf("[mailwatch] dropping %d unpersisted bucket(s) from %s: more than %d pending",
+			n, t.pending[0].start.Format(time.RFC3339), maxPending)
+		t.pending = t.pending[n:]
+	}
+	// Oldest first; on failure keep the rest for the next flush. The write
+	// lock is contended at bucket boundaries, on shutdown (every subsystem
+	// flushes at once) and for tens of seconds after startup.
+	for len(t.pending) > 0 {
+		b := t.pending[0]
+		if err := t.persistRetry(db, b.start, b.cur); err != nil {
+			log.Printf("[mailwatch] persist bucket %s (%d senders) failed, %d bucket(s) kept for the next flush: %v",
+				b.start.Format(time.RFC3339), len(b.cur), len(t.pending), err)
 			return
+		}
+		t.evaluate(db, b.start, b.cur, b.pre)
+		t.pending = t.pending[1:]
+	}
+}
+
+func (t *Tracker) persistRetry(db *sql.DB, start time.Time, cur map[key]*agg) error {
+	var err error
+	for attempt, wait := 1, t.retryWait; attempt <= persistAttempts; attempt, wait = attempt+1, wait*2 {
+		if err = t.persist(db, start, cur); err == nil {
+			return nil
 		}
 		if attempt < persistAttempts {
 			time.Sleep(wait)
 		}
 	}
-	log.Printf("[mailwatch] persist bucket %s (%d senders) failed after %d attempts: %v",
-		start.Format(time.RFC3339), len(cur), persistAttempts, err)
+	return err
 }
 
-// persistAttempts bounds flush retries (1s, 2s, 4s between them).
-const persistAttempts = 4
+// pendingBucket is a finished bucket not yet written to SQLite.
+type pendingBucket struct {
+	start time.Time
+	cur   map[key]*agg
+	pre   preContext
+}
+
+const (
+	persistAttempts = 4  // per flush, 1s/2s/4s apart (each also waits busy_timeout)
+	maxPending      = 12 // unpersisted buckets kept for retry (1h at 5m buckets)
+)
 
 // TopDst / TopASN are the JSON elements of a bucket row's top lists.
 type TopDst struct {
@@ -257,7 +293,25 @@ func InitSchema(db *sql.DB) error {
 		total_flows   INTEGER NOT NULL DEFAULT 0,
 		total_bytes   INTEGER NOT NULL DEFAULT 0,
 		max_uniq_dsts INTEGER NOT NULL DEFAULT 0  -- busiest bucket ever, distinct destinations
-	);`)
+	);
+
+	-- Baseline alerts (new sender / spike over the sender's own p95).
+	CREATE TABLE IF NOT EXISTS mail_egress_alerts (
+		id        INTEGER PRIMARY KEY AUTOINCREMENT,
+		ts        INTEGER NOT NULL,           -- bucket start
+		src_ip    TEXT    NOT NULL,
+		port      INTEGER NOT NULL,
+		kind      TEXT    NOT NULL,           -- new_sender | spike
+		severity  TEXT    NOT NULL,
+		uniq_dsts INTEGER NOT NULL,
+		flows     INTEGER NOT NULL,
+		baseline  REAL    NOT NULL DEFAULT 0,
+		threshold INTEGER NOT NULL DEFAULT 0,
+		top_dsts  TEXT    NOT NULL DEFAULT '[]',
+		top_asns  TEXT    NOT NULL DEFAULT '[]'
+	);
+	CREATE INDEX IF NOT EXISTS idx_mailalerts_ts ON mail_egress_alerts(ts);
+	CREATE INDEX IF NOT EXISTS idx_mailalerts_ip ON mail_egress_alerts(src_ip, ts);`)
 	return err
 }
 

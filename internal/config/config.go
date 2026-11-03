@@ -227,11 +227,29 @@ type MailWatchConfig struct {
 	MaxSenders int           `yaml:"max_senders"` // distinct (sender, port) per bucket, default 5000; -1 = unlimited
 	MaxDsts    int           `yaml:"max_dsts"`    // distinct destinations tracked per sender per bucket, default 2000; -1 = unlimited
 	TopN       int           `yaml:"top_n"`       // destinations / ASNs stored per bucket row, default 10
+
+	Alerts MailWatchAlertsConfig `yaml:"alerts"`
+}
+
+// MailWatchAlertsConfig: baseline alerts evaluated after each bucket flush.
+type MailWatchAlertsConfig struct {
+	Enabled          *bool         `yaml:"enabled"`             // default true
+	LearningPeriod   time.Duration `yaml:"learning_period"`     // no new-sender alerts until history is this old, default 168h
+	NewSenderMinDsts int           `yaml:"new_sender_min_dsts"` // default 10
+	SpikeMinDsts     int           `yaml:"spike_min_dsts"`      // default 50
+	SpikeFactor      float64       `yaml:"spike_factor"`        // default 5 (× the sender's own p95)
+	BaselineWindow   time.Duration `yaml:"baseline_window"`     // default 168h
+	Cooldown         time.Duration `yaml:"cooldown"`            // per (sender, port, kind), default 1h
 }
 
 // MailWatchEnabled reports whether the mail egress tracker should run.
 func (c *Config) MailWatchEnabled() bool {
 	return c.MailWatch.Enabled == nil || *c.MailWatch.Enabled
+}
+
+// MailWatchAlertsEnabled reports whether mailwatch baseline alerts run.
+func (c *Config) MailWatchAlertsEnabled() bool {
+	return c.MailWatchEnabled() && (c.MailWatch.Alerts.Enabled == nil || *c.MailWatch.Alerts.Enabled)
 }
 
 // StorageConfig controls housekeeping of the main detections.sqlite file.
@@ -293,6 +311,7 @@ type RetentionConfig struct {
 	BlackholeEventsMaxRow int           `yaml:"blackhole_events_max_rows"` // hard row cap, default 10000
 	MailEgress            time.Duration `yaml:"mail_egress"`               // mail_egress_buckets, default 30d
 	MailEgressSenders     time.Duration `yaml:"mail_egress_senders"`       // mail_egress_senders by last_seen, default 365d
+	MailEgressAlerts      time.Duration `yaml:"mail_egress_alerts"`        // mail_egress_alerts, default 90d
 }
 
 type SNMPConfig struct {
@@ -458,6 +477,16 @@ func applyStorageDefaults(cfg *Config) {
 	defInt(&mw.MaxSenders, 5000)
 	defInt(&mw.MaxDsts, 2000)
 	defInt(&mw.TopN, 10)
+	ma := &mw.Alerts
+	defDur(&ma.LearningPeriod, 7*24*time.Hour)
+	defInt(&ma.NewSenderMinDsts, 10)
+	defInt(&ma.SpikeMinDsts, 50)
+	if ma.SpikeFactor <= 0 {
+		ma.SpikeFactor = 5
+	}
+	defDur(&ma.BaselineWindow, 7*24*time.Hour)
+	defDur(&ma.Cooldown, time.Hour)
+	defDur(&r.MailEgressAlerts, 90*24*time.Hour)
 
 	// FlowLog — only normalise the operational knobs; Enabled stays as set
 	// (default false) and MaxGB<=0 is a valid "no cap" so it is left alone.

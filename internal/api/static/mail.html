@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>argus · Mail egress</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/alpinejs/3.13.3/cdn.min.js" defer></script>
+<script src="/static/nav-search.js" defer></script>
+<style>
+:root{--bg:#0f1117;--bg2:#161b27;--bg3:#1e2535;--border:#2a3147;--text:#cdd6f4;--muted:#6c7086;--accent:#89b4fa;--red:#f38ba8;--green:#a6e3a1;--yellow:#f9e2af}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;font-size:13px;min-height:100vh}
+nav{display:flex;gap:2px;padding:0 20px;background:var(--bg2);border-bottom:1px solid var(--border);align-items:center;flex-wrap:wrap}
+nav a{padding:10px 16px;color:var(--muted);font-size:13px;text-decoration:none;border-bottom:2px solid transparent}
+nav a:hover{color:var(--text)}
+nav a.active{color:var(--accent);border-color:var(--accent)}
+.content{max-width:1080px;margin:0 auto;padding:20px}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px}
+.title{font-size:18px;font-weight:700;margin-bottom:4px}
+.muted{color:var(--muted)}
+.mono{font-family:ui-monospace,Menlo,monospace}
+.err{color:var(--red);margin-top:8px}
+.controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+input,select{background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:7px 10px;font-size:13px;font-family:ui-monospace,Menlo,monospace}
+button{background:var(--accent);color:#0b1020;border:0;border-radius:6px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer}
+button.secondary{background:var(--bg3);color:var(--text);border:1px solid var(--border);font-weight:500}
+.badge{display:inline-block;background:var(--bg3);border:1px solid var(--border);padding:1px 7px;border-radius:999px;font-size:11px;color:var(--muted);margin-left:4px}
+.badge.warning{color:var(--yellow);border-color:var(--yellow)}
+.badge.critical{color:var(--red);border-color:var(--red)}
+.badge.new{color:var(--green);border-color:var(--green)}
+.section{margin-top:18px}
+.section-title{font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.stat-row{display:flex;gap:28px;flex-wrap:wrap;margin-top:12px}
+.stat .k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.stat .v{font-size:20px;font-weight:700;margin-top:2px}
+.chartwrap{margin-top:10px;overflow-x:auto;border:1px solid var(--border);border-radius:6px;background:var(--bg3);padding:8px}
+.legend{display:flex;gap:14px;font-size:11px;color:var(--muted);margin-top:6px;flex-wrap:wrap}
+.legend b{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:middle;margin-right:4px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:720px){.cols{grid-template-columns:1fr}}
+.tablewrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th,td{padding:7px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
+th{text-align:left;font-size:11px;color:var(--muted);font-weight:600;white-space:nowrap}
+td{font-size:12px}
+td.num,th.num{text-align:right;font-family:ui-monospace,Menlo,monospace}
+.empty-row td{color:var(--muted);font-style:italic}
+a.iplink{color:var(--accent);text-decoration:none}
+a.iplink:hover{text-decoration:underline}
+tr.click{cursor:pointer}tr.click:hover{background:var(--bg3)}
+.ptr{color:var(--muted);font-size:11px;display:block}
+</style>
+</head>
+<body x-data="mailPage()" x-init="init()">
+<nav>
+  <a href="/dashboard">Overview</a>
+  <a href="/bgp">BGP</a>
+  <a href="/routewatch">Routewatch</a>
+  <a href="/detection">Detection</a>
+  <a href="/flows">Flows</a>
+  <a href="/hosts">My Hosts</a>
+  <a class="active" href="/mail">Mail</a>
+  <a href="/alerts">Alerts</a>
+  <a href="/pathfinder">Pathfinder</a>
+  <div id="nav-search" class="argus-nav-search-mount"></div>
+</nav>
+
+<div class="content">
+  <div class="card">
+    <div class="title">Mail egress — who sends mail out</div>
+    <div class="muted">TCP from <span class="mono">your</span> IPs to remote mail ports (25/465/587), per sender in 5-minute buckets. Each sender's history is its own baseline: a host that suddenly talks to far more MXs than usual, or one that never sent mail before, raises an alert.</div>
+    <div class="controls">
+      <input type="text" x-model="ip" placeholder="sender IP e.g. 84.54.49.205" @keydown.enter="loadIP()" size="26">
+      <select x-model.number="hours" @change="reload()">
+        <option value="6">last 6h</option>
+        <option value="24">last 24h</option>
+        <option value="72">last 3d</option>
+        <option value="168">last 7d</option>
+        <option value="720">last 30d</option>
+      </select>
+      <button @click="loadIP()">Load sender</button>
+      <button class="secondary" @click="clearIP()">All senders</button>
+    </div>
+    <div class="err" x-show="error" x-text="error"></div>
+  </div>
+
+  <!-- Alerts -->
+  <div class="card section">
+    <div class="section-title">Alerts <span class="muted" x-text="(det ? 'for '+det.ip+' ' : '') + windowLabel()"></span></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Bucket</th><th>Sender</th><th>Kind</th><th class="num">Distinct dsts</th><th class="num">Threshold</th><th class="num">Own p95</th><th class="num">Flows</th><th>Top ASN</th></tr></thead>
+      <tbody>
+        <template x-if="!shownAlerts().length"><tr class="empty-row"><td colspan="8">No alerts in this window.</td></tr></template>
+        <template x-for="a in shownAlerts()" :key="a.id">
+          <tr class="click" @click="ip=a.ip; loadIP()">
+            <td class="mono" x-text="fmtTime(a.ts)"></td>
+            <td><a class="iplink mono" x-text="a.ip+':'+a.port"></a></td>
+            <td><span class="badge" :class="a.severity" x-text="a.kind.replace('_',' ')"></span></td>
+            <td class="num" x-text="a.uniq_dsts"></td>
+            <td class="num" x-text="a.threshold"></td>
+            <td class="num" x-text="a.kind==='spike' ? a.baseline_p95.toFixed(1) : '—'"></td>
+            <td class="num" x-text="a.flows"></td>
+            <td x-text="topASN(a.top_asns)"></td>
+          </tr>
+        </template>
+      </tbody>
+    </table></div>
+  </div>
+
+  <!-- All senders -->
+  <div class="card section" x-show="!det">
+    <div class="section-title">Senders <span class="muted" x-text="windowLabel()"></span></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Sender</th><th>Ports</th><th class="num">Flows</th><th class="num">Peak dsts / bucket</th><th class="num">Busiest ever</th><th>Activity</th><th>First seen</th><th>Last seen</th></tr></thead>
+      <tbody>
+        <template x-if="!senders.length"><tr class="empty-row"><td colspan="8" x-text="loading ? 'Loading…' : 'No outbound mail in this window.'"></td></tr></template>
+        <template x-for="s in senders" :key="s.ip">
+          <tr class="click" @click="ip=s.ip; loadIP()">
+            <td>
+              <a class="iplink mono" x-text="s.ip"></a>
+              <template x-if="alertCount(s.ip)"><span class="badge warning" x-text="alertCount(s.ip)+' alert'+(alertCount(s.ip)>1?'s':'')"></span></template>
+              <template x-if="isNew(s)"><span class="badge new">new</span></template>
+              <span class="ptr" x-text="s.ptr || ''"></span>
+            </td>
+            <td class="mono" x-text="(s.ports||[]).join(', ')"></td>
+            <td class="num" x-text="s.flows"></td>
+            <td class="num" x-text="s.peak_uniq_dsts + (s.capped ? '+' : '')"></td>
+            <td class="num" x-text="s.max_uniq_dsts_ever"></td>
+            <td><svg :width="sparkW" height="22" style="display:block"><polyline fill="none" stroke="var(--accent)" stroke-width="1.2" :points="sparkPoints(s.spark)"></polyline></svg></td>
+            <td class="mono" x-text="fmtDate(s.first_seen)"></td>
+            <td class="mono" x-text="fmtTime(s.last_seen)"></td>
+          </tr>
+        </template>
+      </tbody>
+    </table></div>
+    <div class="legend"><span>Activity = flows per bucket over the window. The current bucket is still filling and is not shown.</span><span><b>+</b> past <span class="mono">max_dsts</span>: the count is a lower bound.</span></div>
+  </div>
+
+  <!-- One sender -->
+  <template x-if="det">
+    <div class="card section">
+      <div class="section-title">Sender <span class="mono" x-text="det.ip"></span> <span class="muted" x-text="det.ptr ? '('+det.ptr+')' : ''"></span> <span class="muted" x-text="windowLabel()"></span></div>
+      <div class="muted" x-show="!det.known">This IP has never sent outbound mail (within the senders retention).</div>
+      <div class="stat-row" x-show="det.known">
+        <div class="stat"><div class="k">First seen</div><div class="v mono" x-text="fmtDate(det.first_seen)"></div></div>
+        <div class="stat"><div class="k">Last seen</div><div class="v mono" x-text="fmtTime(det.last_seen)"></div></div>
+        <div class="stat"><div class="k">Flows (all time)</div><div class="v" x-text="det.total_flows"></div></div>
+        <div class="stat"><div class="k">Busiest bucket ever</div><div class="v" x-text="det.max_uniq_dsts_ever + ' dsts'"></div></div>
+        <div class="stat"><div class="k">Flows in window</div><div class="v" x-text="windowFlows()"></div></div>
+      </div>
+
+      <div class="chartwrap" x-show="series.length">
+        <svg :width="Math.max(320, series.length*barStep)" height="130">
+          <template x-for="(p,i) in series" :key="i">
+            <g>
+              <rect :x="i*barStep" :y="118-barH(p.dsts)" :width="barW" :height="barH(p.dsts)" fill="var(--red)"><title x-text="fmtTime(p.ts)+' · '+p.dsts+' distinct dsts · '+p.flows+' flows'"></title></rect>
+              <rect :x="i*barStep+barW+1" :y="118-barH(p.flows)" :width="barW" :height="barH(p.flows)" fill="var(--accent)"><title x-text="fmtTime(p.ts)+' · '+p.flows+' flows'"></title></rect>
+            </g>
+          </template>
+          <line x1="0" y1="118" :x2="Math.max(320, series.length*barStep)" y2="118" stroke="var(--border)"></line>
+        </svg>
+      </div>
+      <div class="legend" x-show="series.length"><span><b style="background:var(--red)"></b>distinct destinations</span><span><b style="background:var(--accent)"></b>flows</span><span>active 5-min buckets only · peak <span x-text="seriesMax"></span></span></div>
+      <div class="muted" x-show="det.known && !series.length" style="margin-top:10px">No mail from this sender in the window.</div>
+
+      <div class="cols section">
+        <div>
+          <div class="section-title">Top destinations</div>
+          <table>
+            <thead><tr><th>Destination</th><th class="num">Flows</th></tr></thead>
+            <tbody>
+              <template x-if="!(det.top_dsts||[]).length"><tr class="empty-row"><td colspan="2">none</td></tr></template>
+              <template x-for="d in (det.top_dsts||[])" :key="d.ip">
+                <tr><td><a class="iplink mono" :href="'/ip/'+encodeURIComponent(d.ip)" x-text="d.ip"></a></td><td class="num" x-text="d.flows"></td></tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+        <div>
+          <div class="section-title">Top destination ASNs</div>
+          <table>
+            <thead><tr><th>ASN</th><th class="num">Flows</th></tr></thead>
+            <tbody>
+              <template x-if="!(det.top_asns||[]).length"><tr class="empty-row"><td colspan="2">none</td></tr></template>
+              <template x-for="a in (det.top_asns||[])" :key="a.asn">
+                <tr><td><a class="iplink mono" :href="'/asn/'+a.asn" x-text="'AS'+a.asn"></a> <span class="muted" x-text="a.name||''"></span></td><td class="num" x-text="a.flows"></td></tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="legend">Top lists are merged from each bucket's own top-10, so they are approximate over long windows. <a class="iplink" :href="'/hosts?ip='+encodeURIComponent(det.ip)">All traffic of this host →</a></div>
+    </div>
+  </template>
+</div>
+
+<script>
+function mailPage(){ return {
+  ip: '',
+  hours: 24,
+  loading: false,
+  error: '',
+  senders: [],
+  alerts: [],
+  det: null,
+  series: [],
+  seriesMax: 0,
+  barW: 5,
+  sparkW: 140,
+  get barStep(){ return this.barW*2 + 3 },
+
+  init(){
+    const u = new URLSearchParams(window.location.search)
+    if (u.get('ip')) this.ip = u.get('ip')
+    if (u.get('hours')) this.hours = parseInt(u.get('hours')) || 24
+    this.reload()
+  },
+
+  reload(){ this.loadAlerts(); if (this.ip.trim()) this.loadIP(); else this.loadSenders() },
+
+  windowLabel(){
+    const map = {6:'last 6h',24:'last 24h',72:'last 3d',168:'last 7d',720:'last 30d'}
+    return '· ' + (map[this.hours] || ('last '+this.hours+'h'))
+  },
+
+  async getJSON(url){
+    const r = await fetch(url)
+    const j = await r.json().catch(() => ({}))
+    if (!r.ok) throw new Error(j.error || ('HTTP '+r.status))
+    return j
+  },
+
+  async loadAlerts(){
+    try { this.alerts = (await this.getJSON('/mailwatch/alerts?hours='+this.hours)).alerts || [] }
+    catch(e){ this.error = e.message; this.alerts = [] }
+  },
+
+  async loadSenders(){
+    this.loading = true; this.error = ''
+    try { this.senders = (await this.getJSON('/mailwatch/senders?hours='+this.hours)).senders || [] }
+    catch(e){ this.error = e.message; this.senders = [] }
+    finally { this.loading = false }
+  },
+
+  async loadIP(){
+    this.ip = (this.ip||'').trim()
+    if (!this.ip){ this.clearIP(); return }
+    this.loading = true; this.error = ''
+    try {
+      const j = await this.getJSON('/mailwatch/ip?ip='+encodeURIComponent(this.ip)+'&hours='+this.hours)
+      // Buckets come per (ts, port); the chart sums ports per bucket.
+      const by = new Map()
+      for (const b of (j.buckets||[])) {
+        const p = by.get(b.ts) || {ts:b.ts, dsts:0, flows:0}
+        p.dsts += b.uniq_dsts; p.flows += b.flows; by.set(b.ts, p)
+      }
+      this.series = [...by.values()].sort((a,b) => a.ts-b.ts)
+      this.seriesMax = 0
+      for (const p of this.series) this.seriesMax = Math.max(this.seriesMax, p.dsts, p.flows)
+      this.det = j
+      const u = new URL(window.location); u.searchParams.set('ip', this.ip); u.searchParams.set('hours', this.hours)
+      window.history.replaceState({}, '', u)
+    } catch(e){ this.error = e.message; this.det = null }
+    finally { this.loading = false }
+  },
+
+  clearIP(){
+    this.det = null; this.ip = ''; this.series = []
+    const u = new URL(window.location); u.searchParams.delete('ip'); window.history.replaceState({}, '', u)
+    this.loadSenders()
+  },
+
+  shownAlerts(){ return this.det ? this.alerts.filter(a => a.ip === this.det.ip) : this.alerts },
+  alertCount(ip){ return this.alerts.filter(a => a.ip === ip).length },
+  isNew(s){ return s.first_seen && (Date.now()/1000 - s.first_seen) < 86400 && this.historyOld() },
+  // "new" is only meaningful once mailwatch has been running for a while.
+  historyOld(){
+    let min = Infinity
+    for (const s of this.senders) if (s.first_seen) min = Math.min(min, s.first_seen)
+    return min !== Infinity && (Date.now()/1000 - min) > 7*86400
+  },
+  windowFlows(){ return this.series.reduce((n,p) => n+p.flows, 0) },
+  topASN(list){ const a = (list||[])[0]; return a ? ('AS'+a.asn+' '+(a.name||'')) : '—' },
+
+  sparkPoints(spark){
+    const v = (spark||[]).slice(0, -1)  // drop the bucket still filling
+    if (!v.length) return ''
+    const max = Math.max(1, ...v), step = this.sparkW / Math.max(1, v.length-1)
+    return v.map((y,i) => (i*step).toFixed(1)+','+(20 - y/max*18).toFixed(1)).join(' ')
+  },
+  barH(v){ return this.seriesMax ? Math.max(0, Math.round((v||0)/this.seriesMax*112)) : 0 },
+
+  fmtTime(ts){
+    if (!ts) return '—'
+    const d = new Date(ts*1000), p = n => String(n).padStart(2,'0')
+    return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes())
+  },
+  fmtDate(ts){ return ts ? this.fmtTime(ts).slice(0,10) : '—' },
+}}
+
+// nav-search.js is deferred: mount after DOMContentLoaded (see hosts.html).
+document.addEventListener('DOMContentLoaded', function () {
+  if (window.mountArgusNavSearch) {
+    window.mountArgusNavSearch(document.getElementById('nav-search'))
+  }
+})
+</script>
+</body>
+</html>

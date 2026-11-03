@@ -60,6 +60,12 @@ func TestStorageDefaults(t *testing.T) {
 		mw.MaxSenders != 5000 || mw.MaxDsts != 2000 || mw.TopN != 10 {
 		t.Fatalf("mailwatch defaults wrong: %+v", mw)
 	}
+	ma := mw.Alerts
+	if !cfg.MailWatchAlertsEnabled() || ma.LearningPeriod != 7*24*time.Hour || ma.NewSenderMinDsts != 10 ||
+		ma.SpikeMinDsts != 50 || ma.SpikeFactor != 5 || ma.BaselineWindow != 7*24*time.Hour ||
+		ma.Cooldown != time.Hour || r.MailEgressAlerts != 90*24*time.Hour {
+		t.Fatalf("mailwatch alert defaults wrong: %+v (retention %s)", ma, r.MailEgressAlerts)
+	}
 
 	fl := cfg.FlowLog
 	if fl.Enabled {

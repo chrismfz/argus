@@ -142,3 +142,42 @@ func TestPrune(t *testing.T) {
 		t.Fatalf("senders left = %d; want 1", n)
 	}
 }
+
+func TestFailedBucketIsRetriedNextFlush(t *testing.T) {
+	db := openTestDB(t)
+	tr := New(Config{Ports: []uint16{25}, Bucket: 5 * time.Minute})
+	tr.retryWait = time.Millisecond
+	now := time.Now().Truncate(5 * time.Minute)
+
+	// Table gone (stands in for a long SQLITE_BUSY): the bucket is kept.
+	if _, err := db.Exec(`ALTER TABLE mail_egress_buckets RENAME TO hidden`); err != nil {
+		t.Fatal(err)
+	}
+	tr.Observe(Flow{Src: "84.54.49.205", Dst: "198.51.100.1", DstPort: 25})
+	tr.flush(db, now)
+	if len(tr.pending) != 1 {
+		t.Fatalf("pending = %d; want 1", len(tr.pending))
+	}
+
+	// DB back: next flush writes the old bucket and the new one.
+	if _, err := db.Exec(`ALTER TABLE hidden RENAME TO mail_egress_buckets`); err != nil {
+		t.Fatal(err)
+	}
+	tr.Observe(Flow{Src: "84.54.49.205", Dst: "198.51.100.2", DstPort: 25})
+	tr.flush(db, now.Add(5*time.Minute))
+	var n int
+	db.QueryRow(`SELECT sum(flows) FROM mail_egress_buckets`).Scan(&n)
+	if len(tr.pending) != 0 || n != 2 {
+		t.Fatalf("pending=%d flows=%d; want 0, 2 (nothing lost)", len(tr.pending), n)
+	}
+
+	// The pending list is bounded.
+	db.Exec(`ALTER TABLE mail_egress_buckets RENAME TO hidden`)
+	for i := 0; i < maxPending+3; i++ {
+		tr.Observe(Flow{Src: "84.54.49.205", Dst: "198.51.100.3", DstPort: 25})
+		tr.flush(db, now.Add(time.Duration(10+5*i)*time.Minute))
+	}
+	if len(tr.pending) != maxPending {
+		t.Fatalf("pending = %d; want cap %d", len(tr.pending), maxPending)
+	}
+}

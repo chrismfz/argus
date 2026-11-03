@@ -96,8 +96,22 @@ your addresses to a remote mail port (25/465/587) is counted per sender into
 5-minute buckets: flows, bytes, distinct destination IPs and ASNs, top
 destinations. A long-lived row per sender remembers when it first and last sent
 mail. Rules only see the last 60s; this history is what tells a sender that has
-always mailed from one that started yesterday. Query it at `/mailwatch/senders`
-and `/mailwatch/ip?ip=x`.
+always mailed from one that started yesterday. The **Mail** page (`/mail`) lists
+senders with their activity, alerts, and a per-IP drill-down (timeline, top MXs
+and ASNs).
+
+After each bucket, two **baseline alerts** are evaluated per sender. Each one is
+logged, stored in `mail_egress_alerts`, and sent to the alerter contacts as
+source `detection`:
+- `new_sender`: an IP that never sent mail reaches `new_sender_min_dsts`
+  distinct destinations (default 10). This alert is off until the history is
+  `learning_period` old (7d).
+- `spike`: distinct destinations in a bucket ≥ `spike_factor` × the sender's own
+  p95 over `baseline_window` (default 5× over 7d), and never below
+  `spike_min_dsts` (50). It is `critical` at 4× that floor.
+
+Both are rate-limited per (sender, port, kind) by `cooldown` (1h). They are
+alert-only and nothing is blackholed.
 
 ### ML anomaly detection
 Unsupervised scoring pipeline running alongside rules, catching unknown threat patterns:
@@ -523,6 +537,8 @@ All endpoints require `Authorization: Bearer <token>` header and source IP in `a
 | `/blackhole-search?ip=x` | GET | Check if a specific IP is blackholed |
 | `/mailwatch/senders?hours=24` | GET | Our IPs that sent to remote mail ports, busiest first, with first/last seen and a per-bucket sparkline |
 | `/mailwatch/ip?ip=x&hours=168` | GET | One sender's mail buckets, memory row and top destinations/ASNs |
+| `/mailwatch/alerts?hours=168&ip=x` | GET | Stored mail egress baseline alerts (new sender / spike), newest first |
+| `/mail` | GET | Mail egress page |
 | `/snmp/interfaces` | GET | Live interface traffic via SNMP |
 | `/flush` | POST | Withdraw all BGP announcements + clear DB |
 | `/dashboard` | GET | Embedded telemetry dashboard |
@@ -586,6 +602,7 @@ traffic is steady is your leak.
 - `mail_egress_buckets` / `mail_egress_senders` — outbound mail per sender
   (5-min buckets, `retention.mail_egress` default 30d) and the per-sender memory
   (pruned when idle for `retention.mail_egress_senders`, default 365d)
+- `mail_egress_alerts` — mail egress baseline alerts (`retention.mail_egress_alerts`, default 90d)
 
 **Raw flow log** (`flows.sqlite`, optional — off by default) — the forensic
 store. When `flowlog.enabled: true`, every enriched flow (5-tuple + bytes,

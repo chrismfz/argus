@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -280,6 +281,9 @@ func main() {
 				if cfg.MailWatchEnabled() {
 					if err := mailwatch.Prune(db, cfg.Retention.MailEgress, cfg.Retention.MailEgressSenders); err != nil {
 						log.Printf("[WARN] Periodic mail egress prune error: %v", err)
+					}
+					if err := mailwatch.PruneAlerts(db, cfg.Retention.MailEgressAlerts); err != nil {
+						log.Printf("[WARN] Periodic mail egress alerts prune error: %v", err)
 					}
 				}
 
@@ -595,6 +599,44 @@ func main() {
 				MaxDsts:    cfg.MailWatch.MaxDsts,
 				TopN:       cfg.MailWatch.TopN,
 			})
+			if cfg.MailWatchAlertsEnabled() {
+				ma := cfg.MailWatch.Alerts
+				mw.SetAlerts(mailwatch.AlertConfig{
+					Enabled:          true,
+					LearningPeriod:   ma.LearningPeriod,
+					NewSenderMinDsts: ma.NewSenderMinDsts,
+					SpikeMinDsts:     ma.SpikeMinDsts,
+					SpikeFactor:      ma.SpikeFactor,
+					BaselineWindow:   ma.BaselineWindow,
+					Cooldown:         ma.Cooldown,
+				}, func(a mailwatch.Alert) {
+					if alerter.Global == nil {
+						return
+					}
+					ptr := ""
+					if resolver != nil {
+						ptr = resolver.LookupPTR(a.IP)
+					}
+					tags := map[string]string{
+						"ip": a.IP, "port": strconv.Itoa(a.Port), "kind": a.Kind,
+						"uniq_dsts": strconv.Itoa(a.UniqDsts), "flows": strconv.FormatUint(a.Flows, 10),
+					}
+					if ptr != "" {
+						tags["ptr"] = ptr
+					}
+					if len(a.TopASNs) > 0 {
+						tags["top_asn"] = fmt.Sprintf("AS%d %s", a.TopASNs[0].ASN, a.TopASNs[0].Name)
+					}
+					alerter.Global.SendAsync(alerter.Event{
+						Title:    "Mail egress " + a.Kind + ": " + a.IP,
+						Body:     a.Summary(),
+						Severity: alerter.Severity(a.Severity),
+						Source:   alerter.SourceDetection,
+						Tags:     tags,
+						Time:     time.Unix(a.Ts, 0),
+					})
+				})
+			}
 			mwDone := make(chan struct{})
 			go func() { mw.Run(ctx, db); close(mwDone) }()
 			// Let the final bucket flush before db.Close (deferred earlier).

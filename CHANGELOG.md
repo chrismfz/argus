@@ -136,6 +136,37 @@ Every behavior-changing PR must add an entry under **Unreleased**.
   is reclaimed with a one-time `VACUUM` (see README → Storage / disk).
 
 ### Fixed
+- **Main SQLite file no longer write-locked for ~40s after a restart, or for
+  ~10s every 30 minutes.** In those stalls every other writer (flowstore
+  `flush5m`, bgpmon, `risk_events`, cleanup prunes, mailwatch) failed with
+  `SQLITE_BUSY` and dropped its write. Causes and fixes:
+  - **Telemetry ring persist after a restart.** The first flush, 5 minutes after
+    a restart, rewrote the whole 24h ring (~1.3M ASN rows) in one transaction,
+    although the ring had just been loaded from those same rows. It now writes
+    only minutes from start-up on.
+  - **30-min flowstore detail flush** (~50k top-IP rows plus breakdowns) now
+    commits every `storage.write_batch_rows` rows instead of once.
+  - **Daily rollup** no longer holds one write transaction for the whole day
+    (~1 min). It streams the detail through a read snapshot and writes in
+    batches; the done-marker is still written last, so a partial day is rolled
+    again. It now runs in its own goroutine, so it no longer delays start-up or
+    the flush tickers.
+  - **Prunes** of the flowstore detail/daily tables and the telemetry minute
+    buckets delete in batches instead of one `DELETE` of millions of rows.
+  - **WAL checkpoint** runs PASSIVE first, so TRUNCATE has little left to copy
+    while it holds the writer lock. It waits at most 250ms for readers instead
+    of the 5s `busy_timeout`, and logs checkpoints slower than 1s.
+  - **New knob** `storage.write_batch_rows` (default 5000; negative = old
+    single-transaction behaviour).
+- **Daily rollup failed every day since 2026-10-26** with
+  `UNIQUE constraint failed: flowstore_daily_ips…`. The query grouped by
+  `country`, which is not part of the table key, so an IP pair seen with two
+  countries in one day (GeoIP update) produced two rows. Because the rollup
+  failed, the detail prune was skipped too, and `flowstore_top_ips` grew past
+  its 7-day retention. Rows are now grouped by the key and the country is
+  `MAX(country)`. The first run after upgrading rolls the backlog and then
+  prunes the extra detail in batches; on a large file this can take tens of
+  minutes in the background.
 - **Egress rules with `unique_dst_ips` could never match.** A check meant for
   ingress rules dropped every flow whose destination was not ours, which is
   every egress flow. `data_exfil_multi_dst` was silently dead because of it,

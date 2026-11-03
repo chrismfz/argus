@@ -16,11 +16,45 @@ import (
 //
 // It returns busy=true when SQLite could not finish (a reader was still pinned);
 // that is not an error, the next tick retries.
+//
+// TRUNCATE holds the writer lock while it copies frames into the main file, so
+// copying a large WAL that way locks every writer out. A PASSIVE checkpoint runs
+// first: it copies everything it can without taking the writer lock, leaving
+// TRUNCATE only the frames appended since, so its lock window stays short.
+//
+// TRUNCATE also waits for readers through the busy handler, still holding the
+// writer lock. With the pool's 5s busy_timeout, one long reader (a streamed
+// daily rollup, a heavy API query) would lock writers out for 5s and make them
+// fail with SQLITE_BUSY themselves. The checkpoint therefore runs on its own
+// connection with checkpointBusyTimeout and simply reports busy instead.
 func CheckpointWAL(ctx context.Context, db *sql.DB) (busy bool, walPages, moved int, err error) {
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return false, 0, 0, err
+	}
+	defer conn.Close()
+	var prevTimeout int
+	if err = conn.QueryRowContext(ctx, `PRAGMA busy_timeout`).Scan(&prevTimeout); err != nil {
+		return false, 0, 0, err
+	}
+	if _, err = conn.ExecContext(ctx, fmt.Sprintf(`PRAGMA busy_timeout=%d`, checkpointBusyTimeout.Milliseconds())); err != nil {
+		return false, 0, 0, err
+	}
+	// Restore the pool default before the connection goes back to the pool.
+	defer conn.ExecContext(context.Background(), fmt.Sprintf(`PRAGMA busy_timeout=%d`, prevTimeout)) //nolint:errcheck
+
 	var b int
-	err = db.QueryRowContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`).Scan(&b, &walPages, &moved)
+	if err = conn.QueryRowContext(ctx, `PRAGMA wal_checkpoint(PASSIVE)`).Scan(&b, &walPages, &moved); err != nil {
+		return false, walPages, moved, err
+	}
+	err = conn.QueryRowContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`).Scan(&b, &walPages, &moved)
 	return b != 0, walPages, moved, err
 }
+
+// checkpointBusyTimeout bounds how long the TRUNCATE checkpoint may hold the
+// writer lock while waiting for readers. Well under the 5s busy_timeout that
+// every other writer uses, so a checkpoint can never make them fail.
+const checkpointBusyTimeout = 250 * time.Millisecond
 
 // IncrementalVacuum returns up to pages free pages to the OS. It is a no-op
 // unless the file has auto_vacuum=INCREMENTAL (2); it reports the mode so the
@@ -61,7 +95,11 @@ func StartMaintenance(ctx context.Context, db *sql.DB, interval time.Duration, v
 				return
 			case <-t.C:
 			}
+			start := time.Now()
 			busy, walPages, _, err := CheckpointWAL(ctx, db)
+			if d := time.Since(start); d > time.Second {
+				log.Printf("[SQLite] wal_checkpoint took %s (wal=%d pages)", d.Round(time.Millisecond), walPages)
+			}
 			switch {
 			case err != nil:
 				log.Printf("[SQLite] wal_checkpoint failed: %v", err)

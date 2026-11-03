@@ -13,7 +13,7 @@ import (
 func openRollupDB(t *testing.T) *sql.DB {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "rollup_test.db")
-	db, err := sql.Open("sqlite", "file:"+dbPath+"?mode=rwc")
+	db, err := sql.Open("sqlite", "file:"+dbPath+"?mode=rwc&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)")
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -234,5 +234,78 @@ func TestPruneDaily(t *testing.T) {
 	db.QueryRow(`SELECT COUNT(*) FROM flowstore_daily_ip_totals`).Scan(&cnt)
 	if cnt != 2 {
 		t.Fatalf("negative retention must keep all, got %d rows", cnt)
+	}
+}
+
+// TestRollupCountryChangeSameKey is the regression for the production failure
+// "UNIQUE constraint failed: flowstore_daily_ips…": the same IP pair seen with
+// two countries in one day (GeoIP update) must roll into ONE row, not abort the
+// day — which also blocked every detail prune behind it.
+func TestRollupCountryChangeSameKey(t *testing.T) {
+	db := openRollupDB(t)
+	s := &Store{db: db, limits: DefaultSettings()}
+	day := dayStart(time.Now().UTC().Unix()) - 2*daySeconds
+	for i, cc := range []string{"", "GR", "DE"} {
+		if _, err := db.Exec(`INSERT INTO flowstore_top_ips
+			(ts, asn, dir, peer_ip, local_ip, proto, dst_port, country, bytes, packets, flows)
+			VALUES (?, 100, 'in', '203.0.113.9', '10.0.0.1', 6, 443, ?, 100, 1, 1)`,
+			day+int64(i)*1800, cc); err != nil {
+			t.Fatalf("insert: %v", err)
+		}
+	}
+	if err := s.rollupDaily(); err != nil {
+		t.Fatalf("rollupDaily: %v", err)
+	}
+	var n int
+	var bytes int64
+	var cc string
+	if err := db.QueryRow(`SELECT COUNT(*), SUM(bytes), MAX(country) FROM flowstore_daily_ips WHERE day=?`, day).
+		Scan(&n, &bytes, &cc); err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if n != 1 || bytes != 300 || cc != "GR" {
+		t.Fatalf("got rows=%d bytes=%d country=%q, want 1 row, 300 bytes, GR (MAX)", n, bytes, cc)
+	}
+	if done, _ := s.dayRolled(day); !done {
+		t.Fatal("day must be marked rolled")
+	}
+}
+
+// TestRollupSmallBatchesMatchesUnbatched rolls the same data with tiny write
+// batches and unbatched, and checks the daily tables come out identical.
+func TestRollupSmallBatchesMatchesUnbatched(t *testing.T) {
+	day := dayStart(time.Now().UTC().Unix()) - 2*daySeconds
+	snapshot := func(batch int) map[string]int64 {
+		db := openRollupDB(t)
+		s := &Store{db: db, limits: Settings{TopIPs: 5, TopPrefixes: 3, WriteBatchRows: batch}.withDefaults()}
+		for i := 0; i < 40; i++ {
+			insTopIP(t, db, day+int64(i%4)*1800, uint32(100+i%3), "in", fmt.Sprintf("198.51.100.%d", i), 443, int64(10*i+1))
+			if _, err := db.Exec(`INSERT INTO flowstore_top_prefixes (ts, asn, dir, prefix, bytes, packets, flows)
+				VALUES (?, ?, 'in', ?, ?, 1, 1)`, day+int64(i%4)*1800, 100+i%3, fmt.Sprintf("10.%d.0.0/16", i), 5*i+1); err != nil {
+				t.Fatalf("insert prefix: %v", err)
+			}
+		}
+		// Leftover partial rollup from an interrupted run: must be cleared.
+		if _, err := db.Exec(`INSERT INTO flowstore_daily_ip_totals (day, peer_ip, dir, bytes) VALUES (?, 'stale', 'in', 1)`, day); err != nil {
+			t.Fatalf("insert stale: %v", err)
+		}
+		if err := s.rollupDaily(); err != nil {
+			t.Fatalf("batch=%d rollupDaily: %v", batch, err)
+		}
+		out := map[string]int64{}
+		for _, tbl := range dailyTables {
+			var n, b int64
+			db.QueryRow(`SELECT COUNT(*), COALESCE(SUM(bytes),0) FROM `+tbl+` WHERE day=?`, day).Scan(&n, &b)
+			out[tbl+".rows"], out[tbl+".bytes"] = n, b
+		}
+		return out
+	}
+	small, unbatched := snapshot(3), snapshot(-1)
+	if fmt.Sprint(small) != fmt.Sprint(unbatched) {
+		t.Fatalf("batched rollup differs:\n batch=3:  %v\n unbatched: %v", small, unbatched)
+	}
+	if small["flowstore_daily_ip_totals.rows"] != 40 || small["flowstore_daily_ips.rows"] != 15 ||
+		small["flowstore_daily_prefixes.rows"] != 9 {
+		t.Fatalf("unexpected rollup shape: %v", small)
 	}
 }

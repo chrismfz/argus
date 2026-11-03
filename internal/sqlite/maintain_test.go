@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -83,5 +84,63 @@ func TestIncrementalVacuumShrinksFile(t *testing.T) {
 	}
 	if after := pageCount(); after >= before {
 		t.Fatalf("page_count %d → %d; want it to shrink", before, after)
+	}
+}
+
+// TestCheckpointDoesNotStallOnPinnedReader: a long reader pins the WAL. The
+// TRUNCATE checkpoint must give up quickly (busy) instead of holding the writer
+// lock for the pool's full busy_timeout, and must leave that timeout restored.
+func TestCheckpointDoesNotStallOnPinnedReader(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "p.db")
+	db, err := sql.Open("sqlite", "file:"+path+"?mode=rwc&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	if _, err := db.Exec(`PRAGMA wal_autocheckpoint=0; CREATE TABLE t (v INTEGER)`); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	for i := 0; i < 50; i++ {
+		db.Exec(`INSERT INTO t VALUES (?)`, i)
+	}
+
+	// Pin a read snapshot on its own connection, then write past it.
+	reader, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatalf("conn: %v", err)
+	}
+	defer reader.Close()
+	tx, err := reader.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer tx.Rollback()
+	var n int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM t`).Scan(&n); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO t VALUES (999)`); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	start := time.Now()
+	busy, _, _, err := CheckpointWAL(ctx, db)
+	if err != nil {
+		t.Fatalf("CheckpointWAL: %v", err)
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Fatalf("checkpoint waited %s on a pinned reader; want well under busy_timeout", d)
+	}
+	if !busy {
+		t.Fatal("expected busy=true while a reader pins the WAL")
+	}
+
+	// Every pooled connection must still carry the 5s busy_timeout.
+	for i := 0; i < 3; i++ {
+		var bt int
+		if err := db.QueryRow(`PRAGMA busy_timeout`).Scan(&bt); err != nil || bt != 5000 {
+			t.Fatalf("busy_timeout after checkpoint = %d (err=%v), want 5000", bt, err)
+		}
 	}
 }

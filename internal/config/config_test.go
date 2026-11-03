@@ -38,6 +38,9 @@ func TestStorageDefaults(t *testing.T) {
 	if cfg.Telemetry.BucketRetentionDays != 30 {
 		t.Fatalf("telemetry default wrong: %+v", cfg.Telemetry)
 	}
+	if cfg.Storage.WriteBatchRows != 5000 {
+		t.Fatalf("storage.write_batch_rows default wrong: %d", cfg.Storage.WriteBatchRows)
+	}
 	r := cfg.Retention
 	if r.Detections != 90*24*time.Hour || r.AlertEvents != 90*24*time.Hour {
 		t.Fatalf("retention defaults wrong: %+v", r)
@@ -110,6 +113,8 @@ retention:
   detections: 720h
   snapshots_daily: -1h
   risk_events_max_rows: -1
+storage:
+  write_batch_rows: -1
 `)
 
 	if cfg.Flowstore.RetentionDays != 30 || cfg.Flowstore.TimelineRetentionDays != 90 {
@@ -135,5 +140,8 @@ retention:
 	}
 	if cfg.Retention.RiskEventsMaxRow != -1 {
 		t.Fatalf("risk_events_max_rows=-1 (no cap) must pass through, got %d", cfg.Retention.RiskEventsMaxRow)
+	}
+	if cfg.Storage.WriteBatchRows != -1 {
+		t.Fatalf("write_batch_rows=-1 (unbatched) must pass through, got %d", cfg.Storage.WriteBatchRows)
 	}
 }

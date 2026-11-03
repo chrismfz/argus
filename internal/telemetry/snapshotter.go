@@ -247,7 +247,9 @@ func periodLabel(period string, ts int64) string {
 //
 // bucketRetentionDays controls how long the telemetry_*_buckets minute tables
 // are kept (wired from the `telemetry:` config section; negative = keep forever).
-func StartScheduler(ctx context.Context, db *sql.DB, bucketRetentionDays int) {
+// writeBatchRows is storage.write_batch_rows, the rows per DELETE batch of that
+// prune.
+func StartScheduler(ctx context.Context, db *sql.DB, bucketRetentionDays, writeBatchRows int) {
 	if db == nil {
 		log.Print("[telemetry] scheduler: no DB, snapshots disabled")
 		return
@@ -277,8 +279,16 @@ func StartScheduler(ctx context.Context, db *sql.DB, bucketRetentionDays int) {
 	// the ones after it can change. Rewriting the whole 24h ring every tick
 	// meant ~1.5M INSERT OR REPLACE per flush for the ASN table alone — the
 	// write amplification behind a multi-GB WAL and a file that kept growing.
+	//
+	// The rings were just warmed up from these same tables, so everything
+	// older than the current minute is already on disk. Starting the watermark
+	// at "now" (minus one minute for a boundary crossed since warm-up) avoids
+	// rewriting the whole 24h ring (~1.3M ASN rows) in one transaction on the
+	// first flush, which held the write lock for ~40s five minutes after every
+	// restart. StartScheduler must run after warm-up and before ingest starts.
+	initialSince := minEpoch(time.Now()) - 60
 	go func() {
-		var since int64 // 0 → the first flush writes the whole ring
+		since := initialSince
 		flush := func() {
 			start := minEpoch(time.Now())
 			ok := true
@@ -320,7 +330,7 @@ func StartScheduler(ctx context.Context, db *sql.DB, bucketRetentionDays int) {
 			case <-ctx.Done():
 				return
 			case <-t.C:
-				if err := PruneOldBuckets(db, bucketRetentionDays); err != nil {
+				if err := PruneOldBuckets(db, bucketRetentionDays, writeBatchRows); err != nil {
 					log.Printf("[telemetry] prune failed: %v", err)
 				}
 			}

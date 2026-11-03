@@ -52,7 +52,7 @@ func tsSet(t *testing.T, db *sql.DB, table string) map[int64]bool {
 
 // TestPersistSinceWritesOnlyNewMinutes covers the incremental flush: with a
 // watermark only the minutes at/after it are (re)written, and since=0 still
-// writes the whole ring (first flush after startup).
+// writes the whole ring (the scheduler now starts at the warm-up minute instead).
 func TestPersistSinceWritesOnlyNewMinutes(t *testing.T) {
 	prev := Global
 	t.Cleanup(func() { Global = prev })

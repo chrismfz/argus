@@ -74,6 +74,10 @@ engine) → SQLite + dashboard + BGP blackhole actions.
    in `cmd/argus/main.go` with retentions from the `retention:` config section
    (`config.RetentionConfig`). Convention: unset/0 = default, negative = keep
    forever / unlimited — new knobs must honour the same semantics.
+   Bulk writes/deletes (anything that can touch more than a few thousand rows)
+   go through `sqlite.BatchWriter` / `sqlite.DeleteBatched` with
+   `storage.write_batch_rows`: SQLite has one write lock, and a long transaction
+   makes every other writer fail with `SQLITE_BUSY` after the 5s busy_timeout.
 6. **UI pages are self-contained HTML** in `internal/api/static/`, embedded via
    `embed.go`. No frameworks, no build step. Shared bits go in small plain JS/CSS files
    (like `nav-search.js`). Match the existing dark dashboard style.

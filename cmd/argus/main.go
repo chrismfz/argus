@@ -400,7 +400,7 @@ func main() {
 		}
 	}
 
-	telemetry.StartScheduler(ctx, db, cfg.Telemetry.BucketRetentionDays)
+	telemetry.StartScheduler(ctx, db, cfg.Telemetry.BucketRetentionDays, cfg.Storage.WriteBatchRows)
 	log.Printf("[telemetry] aggregator ready (myASN=%d nets=%d)", cfg.MyASN, len(myNets))
 
 	// ── FlowStore ─────────────────────────────────────────────────────────────
@@ -414,6 +414,7 @@ func main() {
 		MaxTrackedIPs:         cfg.Flowstore.MaxTrackedIPs,
 		MaxTrackedPrefixes:    cfg.Flowstore.MaxTrackedPrefixes,
 		MaxTrackedPorts:       cfg.Flowstore.MaxTrackedPorts,
+		WriteBatchRows:        cfg.Storage.WriteBatchRows,
 	}
 	var flowRanger cidranger.Ranger
 	if listener != nil {

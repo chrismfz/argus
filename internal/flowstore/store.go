@@ -27,6 +27,7 @@ import (
 
 	"argus/internal/enrich"
 	"argus/internal/flowdir"
+	"argus/internal/sqlite"
 	"github.com/yl2chen/cidranger"
 )
 
@@ -72,6 +73,9 @@ type Settings struct {
 	MaxTrackedIPs         int // unique IP pairs tracked in RAM per bucket
 	MaxTrackedPrefixes    int
 	MaxTrackedPorts       int
+	// Rows per write transaction for the detail flush, the daily rollup and
+	// the prunes (storage.write_batch_rows). Negative = unbatched.
+	WriteBatchRows int
 }
 
 // DefaultSettings are the pre-Phase-1 hardcoded values (plus the Phase-2 daily
@@ -87,6 +91,7 @@ func DefaultSettings() Settings {
 		MaxTrackedIPs:         10000,
 		MaxTrackedPrefixes:    1000,
 		MaxTrackedPorts:       500,
+		WriteBatchRows:        sqlite.DefaultWriteBatchRows,
 	}
 }
 
@@ -108,6 +113,7 @@ func (st Settings) withDefaults() Settings {
 	def(&st.MaxTrackedIPs, d.MaxTrackedIPs)
 	def(&st.MaxTrackedPrefixes, d.MaxTrackedPrefixes)
 	def(&st.MaxTrackedPorts, d.MaxTrackedPorts)
+	def(&st.WriteBatchRows, d.WriteBatchRows)
 	return st
 }
 
@@ -272,25 +278,49 @@ func Init(
 		log.Printf("[flowstore] meta warmup failed: %v", err)
 	}
 
-	// Catch up any complete days that ended while argus was down, before the
-	// first scheduled rollup 24h from now.
-	if err := s.rollupDaily(); err != nil {
-		log.Printf("[flowstore] startup rollup: %v", err)
-	}
-
 	Global = s
 	go s.loop()
+	go s.maintainLoop()
 	return nil
 }
 
-// loop runs the three periodic tickers.
+// maintainLoop rolls complete days into the Tier-2 tables and prunes, at
+// startup (to catch up after downtime) and then every 24h. It runs apart from
+// loop() so a long catch-up — several days of backlog, millions of rows in
+// batches — never delays the 5-min / 30-min flushes, and it no longer blocks
+// startup the way the synchronous startup rollup did.
+func (s *Store) maintainLoop() {
+	s.rollupAndPrune()
+	t := time.NewTicker(24 * time.Hour)
+	defer t.Stop()
+	for range t.C {
+		s.rollupAndPrune()
+	}
+}
+
+// rollupAndPrune rolls completed days into the Tier-2 daily tables BEFORE the
+// detail prune deletes them. If the rollup errored on any day, it SKIPS the
+// detail prune — otherwise prune() could delete detail for a day that was
+// never rolled (silent, permanent data loss). Detail retention has days of
+// margin, so retrying next run is safe.
+func (s *Store) rollupAndPrune() {
+	start := time.Now()
+	if err := s.rollupDaily(); err != nil {
+		log.Printf("[flowstore] rollup failed, skipping detail prune this run: %v", err)
+	} else if err := s.prune(); err != nil {
+		log.Printf("[flowstore] prune: %v", err)
+	}
+	// Daily-table prune is independent of the detail/rollup state.
+	s.pruneDaily()
+	log.Printf("[flowstore] rollup+prune done in %s", time.Since(start).Round(time.Second))
+}
+
+// loop runs the 5-min and 30-min flush tickers.
 func (s *Store) loop() {
 	tick5m := time.NewTicker(5 * time.Minute)
 	tickDetail := time.NewTicker(30 * time.Minute)
-	tick24h := time.NewTicker(24 * time.Hour)
 	defer tick5m.Stop()
 	defer tickDetail.Stop()
-	defer tick24h.Stop()
 
 	for {
 		select {
@@ -302,19 +332,6 @@ func (s *Store) loop() {
 			if err := s.flushDetail(); err != nil {
 				log.Printf("[flowstore] flushDetail: %v", err)
 			}
-		case <-tick24h.C:
-			// Roll completed days into the Tier-2 daily tables BEFORE the detail
-			// prune deletes them. If the rollup errored on any day, SKIP the
-			// detail prune this tick — otherwise prune() could delete detail for a
-			// day that was never rolled (silent, permanent data loss). Detail
-			// retention has days of margin, so retrying next tick is safe.
-			if err := s.rollupDaily(); err != nil {
-				log.Printf("[flowstore] rollup failed, skipping detail prune this tick: %v", err)
-			} else if err := s.prune(); err != nil {
-				log.Printf("[flowstore] prune: %v", err)
-			}
-			// Daily-table prune is independent of the detail/rollup state.
-			s.pruneDaily()
 		}
 	}
 }

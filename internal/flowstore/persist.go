@@ -5,6 +5,8 @@ import (
 	"log"
 	"sort"
 	"time"
+
+	"argus/internal/sqlite"
 )
 
 // ── Schema ────────────────────────────────────────────────────────────────────
@@ -266,13 +268,36 @@ func (s *Store) flushDetail() error {
 		return nil
 	}
 
-	tx, err := s.db.Begin()
-	if err != nil {
+	// Commit every ~WriteBatchRows rows rather than once for the whole flush:
+	// one 30-min flush is ~50k top-IP rows plus the other breakdowns, all into
+	// tables with several indexes, and a single transaction held the write
+	// lock for ~10s (the SQLITE_BUSY bursts every :28/:58). A failed batch
+	// only loses its own keys, not the whole flush.
+	batch := s.limits.WriteBatchRows
+	var tx *sql.Tx
+	pending := 0
+	commit := func() error {
+		if tx == nil {
+			return nil
+		}
+		err := tx.Commit()
+		tx, pending = nil, 0
 		return err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer func() {
+		if tx != nil {
+			tx.Rollback() //nolint:errcheck
+		}
+	}()
+	var firstErr error
 
 	for hk, ha := range details {
+		if tx == nil {
+			var err error
+			if tx, err = s.db.Begin(); err != nil {
+				return err
+			}
+		}
 		if err := writeTopIPs(tx, hk, ha, s.limits.TopIPs); err != nil {
 			log.Printf("[flowstore] flushDetail ips asn=%d: %v", hk.asn, err)
 		}
@@ -291,9 +316,30 @@ func (s *Store) flushDetail() error {
 		if err := writeTCPFlags(tx, hk, ha); err != nil {
 			log.Printf("[flowstore] flushDetail flags asn=%d: %v", hk.asn, err)
 		}
+		pending += ha.estimatedRows(s.limits)
+		if batch > 0 && pending >= batch {
+			if err := commit(); err != nil && firstErr == nil {
+				firstErr = err
+			}
+		}
 	}
 
-	return tx.Commit()
+	if err := commit(); err != nil && firstErr == nil {
+		firstErr = err
+	}
+	return firstErr
+}
+
+// estimatedRows is how many detail rows flushDetail writes for one key.
+func (ha *detailAccum) estimatedRows(l Settings) int {
+	capped := func(n, limit int) int {
+		if limit >= 0 && n > limit {
+			return limit
+		}
+		return n
+	}
+	return capped(len(ha.ips), l.TopIPs) + capped(len(ha.pfx), l.TopPrefixes) +
+		capped(len(ha.ports), l.TopPorts) + len(ha.proto) + len(ha.country) + 1
 }
 
 // ── Per-table writers ─────────────────────────────────────────────────────────
@@ -510,7 +556,9 @@ func (s *Store) pruneTables(retentionDays int, tables []string) {
 	}
 	cutoff := time.Now().Unix() - int64(retentionDays)*86400
 	for _, t := range tables {
-		if _, err := s.db.Exec(`DELETE FROM `+t+` WHERE ts < ?`, cutoff); err != nil {
+		// Batched: a day of flowstore_top_ips is ~2.5M rows, and one DELETE
+		// over several days held the write lock for minutes.
+		if _, err := sqlite.DeleteBatched(s.db, t, "ts < ?", s.limits.WriteBatchRows, cutoff); err != nil {
 			log.Printf("[flowstore] prune %s: %v", t, err)
 		}
 	}

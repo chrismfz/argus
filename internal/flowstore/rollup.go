@@ -7,17 +7,20 @@ package flowstore
 // talkers/prefixes/ports/countries/proto per ASN — plus a per-IP daily total
 // that survives even for IPs that never made an ASN top-N bucket.
 //
-// The rollup is idempotent: each day is rolled inside one transaction that first
-// clears that day's rollup rows, so re-running (after a restart or downtime gap)
-// re-derives identical output. A day is rolled only once — a cheap existence
-// check on flowstore_daily_ips marks it done — but the whole detail-retention
-// window is scanned each run so gaps are filled.
+// The rollup is idempotent: rolling a day first clears that day's rollup rows,
+// so re-running (after a restart, downtime gap or a failure part-way) re-derives
+// identical output. The writes are batched (storage.write_batch_rows) so the
+// write lock is never held for long; the done-marker in flowstore_rollup_done is
+// written last, so a day is only skipped once it was rolled completely. The
+// whole scan window is checked each run so gaps are filled.
 
 import (
 	"database/sql"
 	"fmt"
 	"log"
 	"time"
+
+	"argus/internal/sqlite"
 )
 
 const (
@@ -186,81 +189,110 @@ func (s *Store) dayRolled(day int64) (bool, error) {
 	}
 }
 
+// dailyTables are the Tier-2 rollup tables, all keyed by day first.
+var dailyTables = []string{
+	"flowstore_daily_ips", "flowstore_daily_prefixes", "flowstore_daily_ports",
+	"flowstore_daily_country", "flowstore_daily_proto", "flowstore_daily_ip_totals",
+}
+
+// rollupOneDay rolls one day. A day is millions of rows (≈2.6M daily_ips +
+// ip_totals on a busy AS), so it is NOT one transaction any more: the source
+// detail is streamed through a plain read (a WAL snapshot, which does not
+// block writers) and the rollup rows are written in WriteBatchRows-sized
+// transactions. A single transaction held the write lock for ~1 minute and
+// made every other writer fail with SQLITE_BUSY.
+//
+// Atomicity now comes from ordering instead: the day's rows are cleared first
+// and the done-marker is written last, only after every batch committed. A
+// crash or error part-way leaves no marker, so the next run clears the partial
+// rows and rolls the day again. Requires WAL (reads and writes overlap on
+// different pool connections).
 func (s *Store) rollupOneDay(day int64) error {
 	start, end := day, day+daySeconds
-
-	tx, err := s.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback() //nolint:errcheck
+	batch := s.limits.WriteBatchRows
 
 	// Idempotency: clear any partial/previous rollup for this day first.
-	for _, t := range []string{
-		"flowstore_daily_ips", "flowstore_daily_prefixes", "flowstore_daily_ports",
-		"flowstore_daily_country", "flowstore_daily_proto", "flowstore_daily_ip_totals",
-	} {
-		if _, err := tx.Exec(`DELETE FROM `+t+` WHERE day = ?`, day); err != nil {
-			return err
+	for _, t := range dailyTables {
+		if _, err := sqlite.DeleteBatched(s.db, t, "day = ?", batch, day); err != nil {
+			return fmt.Errorf("clear %s: %w", t, err)
 		}
 	}
 
-	if err := rollIPs(tx, day, start, end, s.limits.TopIPs); err != nil {
-		return err
+	if err := rollIPs(s.db, batch, day, start, end, s.limits.TopIPs); err != nil {
+		return fmt.Errorf("ips: %w", err)
 	}
-	if err := rollPrefixes(tx, day, start, end, s.limits.TopPrefixes); err != nil {
-		return err
+	if err := rollTopN(s.db, batch, day, start, end, s.limits.TopPrefixes,
+		"flowstore_top_prefixes", "prefix", "flowstore_daily_prefixes"); err != nil {
+		return fmt.Errorf("prefixes: %w", err)
 	}
-	if err := rollPorts(tx, day, start, end, s.limits.TopPorts); err != nil {
-		return err
+	if err := rollTopN(s.db, batch, day, start, end, s.limits.TopPorts,
+		"flowstore_ports", "dst_port", "flowstore_daily_ports"); err != nil {
+		return fmt.Errorf("ports: %w", err)
 	}
-	if err := rollGroupAll(tx, day, start, end,
+	if err := rollTopN(s.db, batch, day, start, end, -1,
 		"flowstore_country", "country", "flowstore_daily_country"); err != nil {
-		return err
+		return fmt.Errorf("country: %w", err)
 	}
-	if err := rollGroupAll(tx, day, start, end,
+	if err := rollTopN(s.db, batch, day, start, end, -1,
 		"flowstore_proto", "proto", "flowstore_daily_proto"); err != nil {
-		return err
+		return fmt.Errorf("proto: %w", err)
 	}
-	if err := rollIPTotals(tx, day, start, end); err != nil {
-		return err
+	if err := rollIPTotals(s.db, batch, day, start, end); err != nil {
+		return fmt.Errorf("ip totals: %w", err)
 	}
-	// Mark the day done in the same transaction, so the whole rollup is
-	// atomically absent-or-complete and the day is never re-scanned.
-	if _, err := tx.Exec(`INSERT OR REPLACE INTO flowstore_rollup_done (day) VALUES (?)`, day); err != nil {
-		return err
+	// Mark the day done last: absent marker ⇒ the day is (re-)rolled.
+	_, err := s.db.Exec(`INSERT OR REPLACE INTO flowstore_rollup_done (day) VALUES (?)`, day)
+	return err
+}
+
+// topN tracks the per-(asn, dir) rank while streaming rows ordered by
+// asn, dir, SUM(bytes) DESC. limit < 0 keeps all.
+type topN struct {
+	limit  int
+	asn    uint32
+	dir    string
+	n      int
+	primed bool
+}
+
+// keep reports whether the next row of (asn, dir) is still inside the top-N.
+func (t *topN) keep(asn uint32, dir string) bool {
+	if !t.primed || asn != t.asn || dir != t.dir {
+		t.asn, t.dir, t.n, t.primed = asn, dir, 0, true
 	}
-	return tx.Commit()
+	if t.limit >= 0 && t.n >= t.limit {
+		return false
+	}
+	t.n++
+	return true
 }
 
 // rollIPs aggregates the 30-min top-IP rows for a day and keeps the top `limit`
 // per (asn, dir) by bytes. limit < 0 keeps all.
-func rollIPs(tx *sql.Tx, day, start, end int64, limit int) error {
-	rows, err := tx.Query(`
-		SELECT asn, dir, peer_ip, local_ip, proto, dst_port, country,
+//
+// It groups by exactly the daily_ips primary key. country is not part of that
+// key, and the same IP pair can carry two countries within a day (GeoIP update,
+// or a flow seen before enrichment), so grouping by country too produced two
+// rows per key and a UNIQUE failure that blocked the day — and the detail
+// prune behind it — forever. MAX(country) picks one deterministically.
+func rollIPs(db *sql.DB, batch int, day, start, end int64, limit int) error {
+	rows, err := db.Query(`
+		SELECT asn, dir, peer_ip, local_ip, proto, dst_port, MAX(country),
 		       SUM(bytes), SUM(packets), SUM(flows)
 		FROM flowstore_top_ips
 		WHERE ts >= ? AND ts < ?
-		GROUP BY asn, dir, peer_ip, local_ip, proto, dst_port, country
+		GROUP BY asn, dir, peer_ip, local_ip, proto, dst_port
 		ORDER BY asn, dir, SUM(bytes) DESC`, start, end)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 
-	ins, err := tx.Prepare(`
+	w := sqlite.NewBatchWriter(db, `
 		INSERT INTO flowstore_daily_ips
 			(day, asn, dir, peer_ip, local_ip, proto, dst_port, country, bytes, packets, flows)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-	if err != nil {
-		return err
-	}
-	defer ins.Close()
-
-	var curASN uint32
-	var curDir string
-	var n int
-	first := true
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, batch)
+	rank := topN{limit: limit}
 	for rows.Next() {
 		var asn uint32
 		var dir, peerIP, localIP, country string
@@ -270,133 +302,39 @@ func rollIPs(tx *sql.Tx, day, start, end int64, limit int) error {
 			&bytes, &packets, &flows); err != nil {
 			return err
 		}
-		if first || asn != curASN || dir != curDir {
-			curASN, curDir, n, first = asn, dir, 0, false
-		}
-		if limit >= 0 && n >= limit {
+		if !rank.keep(asn, dir) {
 			continue // past the per-group top-N
 		}
-		if _, err := ins.Exec(day, asn, dir, peerIP, localIP, proto, dstPort, country,
+		if err := w.Add(day, asn, dir, peerIP, localIP, proto, dstPort, country,
 			bytes, packets, flows); err != nil {
 			return err
 		}
-		n++
 	}
-	return rows.Err()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	return w.Flush()
 }
 
-func rollPrefixes(tx *sql.Tx, day, start, end int64, limit int) error {
-	rows, err := tx.Query(`
-		SELECT asn, dir, prefix, SUM(bytes), SUM(packets), SUM(flows)
-		FROM flowstore_top_prefixes
-		WHERE ts >= ? AND ts < ?
-		GROUP BY asn, dir, prefix
-		ORDER BY asn, dir, SUM(bytes) DESC`, start, end)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-
-	ins, err := tx.Prepare(`
-		INSERT INTO flowstore_daily_prefixes (day, asn, dir, prefix, bytes, packets, flows)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`)
-	if err != nil {
-		return err
-	}
-	defer ins.Close()
-
-	var curASN uint32
-	var curDir string
-	var n int
-	first := true
-	for rows.Next() {
-		var asn uint32
-		var dir, prefix string
-		var bytes, packets, flows int64
-		if err := rows.Scan(&asn, &dir, &prefix, &bytes, &packets, &flows); err != nil {
-			return err
-		}
-		if first || asn != curASN || dir != curDir {
-			curASN, curDir, n, first = asn, dir, 0, false
-		}
-		if limit >= 0 && n >= limit {
-			continue
-		}
-		if _, err := ins.Exec(day, asn, dir, prefix, bytes, packets, flows); err != nil {
-			return err
-		}
-		n++
-	}
-	return rows.Err()
-}
-
-func rollPorts(tx *sql.Tx, day, start, end int64, limit int) error {
-	rows, err := tx.Query(`
-		SELECT asn, dir, dst_port, SUM(bytes), SUM(packets), SUM(flows)
-		FROM flowstore_ports
-		WHERE ts >= ? AND ts < ?
-		GROUP BY asn, dir, dst_port
-		ORDER BY asn, dir, SUM(bytes) DESC`, start, end)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-
-	ins, err := tx.Prepare(`
-		INSERT INTO flowstore_daily_ports (day, asn, dir, dst_port, bytes, packets, flows)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`)
-	if err != nil {
-		return err
-	}
-	defer ins.Close()
-
-	var curASN uint32
-	var curDir string
-	var n int
-	first := true
-	for rows.Next() {
-		var asn uint32
-		var dir string
-		var dstPort int
-		var bytes, packets, flows int64
-		if err := rows.Scan(&asn, &dir, &dstPort, &bytes, &packets, &flows); err != nil {
-			return err
-		}
-		if first || asn != curASN || dir != curDir {
-			curASN, curDir, n, first = asn, dir, 0, false
-		}
-		if limit >= 0 && n >= limit {
-			continue
-		}
-		if _, err := ins.Exec(day, asn, dir, dstPort, bytes, packets, flows); err != nil {
-			return err
-		}
-		n++
-	}
-	return rows.Err()
-}
-
-// rollGroupAll rolls a single-key breakdown table (country/proto) keeping ALL
-// groups — they are naturally small.
-func rollGroupAll(tx *sql.Tx, day, start, end int64, srcTable, keyCol, dstTable string) error {
-	rows, err := tx.Query(`
+// rollTopN rolls a single-key breakdown table (prefix/port/country/proto),
+// keeping the top `limit` keys per (asn, dir) by bytes; limit < 0 keeps all
+// (country/proto are naturally small).
+func rollTopN(db *sql.DB, batch int, day, start, end int64, limit int, srcTable, keyCol, dstTable string) error {
+	rows, err := db.Query(`
 		SELECT asn, dir, `+keyCol+`, SUM(bytes), SUM(packets), SUM(flows)
 		FROM `+srcTable+`
 		WHERE ts >= ? AND ts < ?
-		GROUP BY asn, dir, `+keyCol, start, end)
+		GROUP BY asn, dir, `+keyCol+`
+		ORDER BY asn, dir, SUM(bytes) DESC`, start, end)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 
-	ins, err := tx.Prepare(`
-		INSERT INTO ` + dstTable + ` (day, asn, dir, ` + keyCol + `, bytes, packets, flows)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`)
-	if err != nil {
-		return err
-	}
-	defer ins.Close()
-
+	w := sqlite.NewBatchWriter(db, `
+		INSERT INTO `+dstTable+` (day, asn, dir, `+keyCol+`, bytes, packets, flows)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`, batch)
+	rank := topN{limit: limit}
 	for rows.Next() {
 		var asn uint32
 		var dir string
@@ -405,17 +343,23 @@ func rollGroupAll(tx *sql.Tx, day, start, end int64, srcTable, keyCol, dstTable 
 		if err := rows.Scan(&asn, &dir, &key, &bytes, &packets, &flows); err != nil {
 			return err
 		}
-		if _, err := ins.Exec(day, asn, dir, key, bytes, packets, flows); err != nil {
+		if !rank.keep(asn, dir) {
+			continue
+		}
+		if err := w.Add(day, asn, dir, key, bytes, packets, flows); err != nil {
 			return err
 		}
 	}
-	return rows.Err()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	return w.Flush()
 }
 
 // rollIPTotals rolls per-IP daily totals across ALL ASNs (no top-N), so a quiet
 // peer IP keeps a daily history row even if it never dominated an ASN bucket.
-func rollIPTotals(tx *sql.Tx, day, start, end int64) error {
-	rows, err := tx.Query(`
+func rollIPTotals(db *sql.DB, batch int, day, start, end int64) error {
+	rows, err := db.Query(`
 		SELECT peer_ip, dir, SUM(bytes), SUM(packets), SUM(flows)
 		FROM flowstore_top_ips
 		WHERE ts >= ? AND ts < ?
@@ -425,25 +369,23 @@ func rollIPTotals(tx *sql.Tx, day, start, end int64) error {
 	}
 	defer rows.Close()
 
-	ins, err := tx.Prepare(`
+	w := sqlite.NewBatchWriter(db, `
 		INSERT INTO flowstore_daily_ip_totals (day, peer_ip, dir, bytes, packets, flows)
-		VALUES (?, ?, ?, ?, ?, ?)`)
-	if err != nil {
-		return err
-	}
-	defer ins.Close()
-
+		VALUES (?, ?, ?, ?, ?, ?)`, batch)
 	for rows.Next() {
 		var peerIP, dir string
 		var bytes, packets, flows int64
 		if err := rows.Scan(&peerIP, &dir, &bytes, &packets, &flows); err != nil {
 			return err
 		}
-		if _, err := ins.Exec(day, peerIP, dir, bytes, packets, flows); err != nil {
+		if err := w.Add(day, peerIP, dir, bytes, packets, flows); err != nil {
 			return err
 		}
 	}
-	return rows.Err()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	return w.Flush()
 }
 
 // pruneDaily deletes daily rollup rows older than DailyRetentionDays. Negative
@@ -465,11 +407,8 @@ func (s *Store) pruneDaily() {
 		return // keep the rollup data forever
 	}
 	cutoff := today - int64(retentionDays)*daySeconds
-	for _, t := range []string{
-		"flowstore_daily_ips", "flowstore_daily_prefixes", "flowstore_daily_ports",
-		"flowstore_daily_country", "flowstore_daily_proto", "flowstore_daily_ip_totals",
-	} {
-		if _, err := s.db.Exec(`DELETE FROM `+t+` WHERE day < ?`, cutoff); err != nil {
+	for _, t := range dailyTables {
+		if _, err := sqlite.DeleteBatched(s.db, t, "day < ?", s.limits.WriteBatchRows, cutoff); err != nil {
 			log.Printf("[flowstore] prune %s: %v", t, err)
 		}
 	}

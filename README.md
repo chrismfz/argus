@@ -633,9 +633,10 @@ retention against your disk.
 OS — a file that once ballooned stays big, full of reusable free pages. argus
 keeps both halves in check through the `storage:` config section:
 
-- **WAL.** Every `wal_checkpoint_interval` (default 5m) argus runs
-  `PRAGMA wal_checkpoint(TRUNCATE)`, which waits for readers and shrinks the
-  `-wal` to zero. The PASSIVE autocheckpoint alone cannot reset the WAL while
+- **WAL.** Every `wal_checkpoint_interval` (default 5m) argus runs a PASSIVE
+  checkpoint and then `PRAGMA wal_checkpoint(TRUNCATE)`, which shrinks the
+  `-wal` to zero. TRUNCATE waits at most 250ms for readers, so it never locks
+  writers out for long; if a reader is still active it retries on the next tick. The PASSIVE autocheckpoint alone cannot reset the WAL while
   the API keeps a constant read load on the pool. `journal_size_limit` (64 MiB)
   is also set on every pooled connection.
 - **Main file.** On the same tick argus runs
@@ -643,6 +644,12 @@ keeps both halves in check through the `storage:` config section:
   about 8 MiB). This only works once the file has been converted to
   `auto_vacuum=INCREMENTAL`, which is a one-off offline step. argus logs a
   reminder once until the conversion is done.
+- **Write batching.** Bulk background writes (the 30-min flowstore detail
+  flush, daily rollups, and the flowstore/telemetry prunes) commit every
+  `write_batch_rows` rows (default 5000). One huge transaction would hold the
+  database's single write lock for tens of seconds, and every other writer
+  would fail with `SQLITE_BUSY`. Set it negative for the old
+  one-transaction behaviour.
 
 To convert (and compact) an existing file, stop argus briefly. First dump the
 tiny live-state tables as insurance. Then run the conversion:

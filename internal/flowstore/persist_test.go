@@ -12,7 +12,7 @@ import (
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "flowstore_test.db")
-	db, err := sql.Open("sqlite", "file:"+dbPath+"?mode=rwc")
+	db, err := sql.Open("sqlite", "file:"+dbPath+"?mode=rwc&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)")
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -114,5 +114,33 @@ func TestSettingsWithDefaults(t *testing.T) {
 	}
 	if neg.TopPorts != 10 || neg.TimelineRetentionDays != 30 {
 		t.Fatalf("unset fields must still default, got %+v", neg)
+	}
+}
+
+// TestFlushDetailBatchedCommits flushes many keys with a tiny write batch (so
+// flushDetail commits many times) and checks every row still lands.
+func TestFlushDetailBatchedCommits(t *testing.T) {
+	db := openTestDB(t)
+	s := &Store{db: db, limits: Settings{WriteBatchRows: 4}.withDefaults(),
+		details: make(map[detailKey]*detailAccum)}
+	ts := (time.Now().Unix() / 1800) * 1800
+	for asn := uint32(1); asn <= 30; asn++ {
+		ha := &detailAccum{
+			ips:     map[ipKey]*ipCounter{{peerIP: "192.0.2.1", localIP: "10.0.0.1", proto: 6, dstPort: 443}: {country: "GR", counter: counter{bytes: 10, packets: 1, flows: 1}}},
+			pfx:     map[string]*counter{"192.0.2.0/24": {bytes: 10}},
+			proto:   map[uint8]*counter{6: {bytes: 10}},
+			country: map[string]*counter{"GR": {bytes: 10}},
+			ports:   map[uint16]*counter{443: {bytes: 10}},
+		}
+		s.details[detailKey{ts: ts, asn: asn, dir: "in"}] = ha
+	}
+	if err := s.flushDetail(); err != nil {
+		t.Fatalf("flushDetail: %v", err)
+	}
+	for _, tbl := range []string{"flowstore_top_ips", "flowstore_top_prefixes", "flowstore_proto",
+		"flowstore_country", "flowstore_ports"} {
+		if n := countRows(t, db, tbl); n != 30 {
+			t.Fatalf("%s: %d rows, want 30", tbl, n)
+		}
 	}
 }

@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"log"
 	"time"
+
+	"argus/internal/sqlite"
 )
 
 // ── Schema ────────────────────────────────────────────────────────────────────
@@ -382,7 +384,7 @@ func WarmupIfaceRingFromDB(db *sql.DB) (int, error) {
 
 // PruneOldBuckets deletes rows older than retentionDays from all three tables.
 // Negative retention disables pruning (keep forever).
-func PruneOldBuckets(db *sql.DB, retentionDays int) error {
+func PruneOldBuckets(db *sql.DB, retentionDays, batch int) error {
 	if retentionDays < 0 {
 		return nil
 	}
@@ -392,7 +394,8 @@ func PruneOldBuckets(db *sql.DB, retentionDays int) error {
 		"telemetry_asn_buckets",
 		"telemetry_iface_buckets",
 	} {
-		if _, err := db.Exec(`DELETE FROM `+table+` WHERE ts < ?`, cutoff); err != nil {
+		// Batched: a day of telemetry_asn_buckets is ~1.3M rows.
+		if _, err := sqlite.DeleteBatched(db, table, "ts < ?", batch, cutoff); err != nil {
 			log.Printf("[telemetry] prune %s failed: %v", table, err)
 		}
 	}

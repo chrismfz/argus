@@ -10,6 +10,7 @@ import (
 	"argus/internal/flowdir"
 	"argus/internal/flowlog"
 	"argus/internal/flowstore"
+	"argus/internal/mailwatch"
 	"argus/internal/telemetry"
 	"github.com/yl2chen/cidranger"
 )
@@ -25,6 +26,7 @@ type FlowEnricher struct {
 	ifNames     *enrich.IFNameCache
 	dir         *flowdir.Classifier // for the flow-log direction column (may be nil)
 	storeASPath bool
+	mail        *mailwatch.Tracker // outbound mail memory (may be nil)
 
 	mu       sync.Mutex
 	buffer   []*FlowRecord
@@ -59,6 +61,9 @@ func NewInsertFlowBatcher(
 	go b.loop()
 	return b
 }
+
+// SetMailWatch attaches the outbound mail tracker. Call before flows arrive.
+func (b *FlowEnricher) SetMailWatch(t *mailwatch.Tracker) { b.mail = t }
 
 func (b *FlowEnricher) Add(rec *FlowRecord) {
 	b.mu.Lock()
@@ -169,6 +174,30 @@ func (b *FlowEnricher) enrichAndFeed(batch []*FlowRecord) {
 				DstPort:             rec.DstPort,
 				Bytes:               rec.Bytes,
 				Packets:             rec.Packets,
+			})
+		}
+	}
+
+	// ── Mail egress tap ────────────────────────────────────────────────────
+	// TCP from one of our addresses to a remote mail port. Port check first:
+	// it rejects almost every flow before the classifier runs.
+	if b.mail != nil && b.dir != nil {
+		for _, rec := range batch {
+			if rec.Proto != 6 || !b.mail.WantsPort(rec.DstPort) {
+				continue
+			}
+			if !b.dir.IsMyIP(rec.SrcHost) || b.dir.IsMyIP(rec.DstHost) ||
+				b.dir.Classify(rec.Exporter, rec.InputInterface, rec.OutputInterface, rec.SrcHost, rec.DstHost, rec.FlowDirection).Inbound {
+				continue
+			}
+			b.mail.Observe(mailwatch.Flow{
+				Src:       rec.SrcHost,
+				Dst:       rec.DstHost,
+				DstPort:   rec.DstPort,
+				DstAS:     rec.PeerDstAS,
+				DstASName: rec.PeerDstASName,
+				Bytes:     rec.Bytes,
+				Packets:   rec.Packets,
 			})
 		}
 	}

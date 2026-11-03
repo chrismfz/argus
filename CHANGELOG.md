@@ -8,6 +8,22 @@ Every behavior-changing PR must add an entry under **Unreleased**.
 ## [Unreleased]
 
 ### Added
+- **Mail egress memory (`internal/mailwatch`).** argus now remembers outbound
+  mail per sender. Every TCP flow from one of our addresses to a remote mail
+  port (`mailwatch.ports`, default 25/465/587) is counted into 5-minute buckets
+  (`mail_egress_buckets`): flows, bytes, distinct destination IPs and ASNs, and
+  the top-N destinations. A per-sender row (`mail_egress_senders`) keeps first
+  seen, last seen, totals and the busiest bucket ever.
+  - Rules only see the last 60s (`flow_cache_max_window`). This history is
+    what will power the mail egress page and the baseline alerts ("new sender",
+    "far above its usual").
+  - New API endpoints: `GET /mailwatch/senders?hours=` and
+    `GET /mailwatch/ip?ip=&hours=`.
+  - New config: the `mailwatch:` section (on by default) and two retentions,
+    `retention.mail_egress` (30d) and `retention.mail_egress_senders` (365d,
+    by last_seen). Both are pruned on the cleanup ticker.
+  - Caps never fail silently. Past `max_dsts`, the bucket is marked `capped`.
+    Past `max_senders`, the dropped flows are logged.
 - **`smtp_egress_fanout` detection rule** (alert-only). It fires when one of our
   hosts sends to ≥30 distinct remote MXs on TCP/25 (≥40 flows) within 60s,
   which points to a compromised box or a customer VPS sending bulk mail. For

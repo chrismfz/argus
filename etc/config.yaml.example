@@ -312,6 +312,19 @@ retention:
   risk_events_max_rows: 1000000  # hard row cap on top of the age window; backstop against bursts; -1 = no cap
   blackhole_events: 2160h      # blackhole audit log (90 days)
   blackhole_events_max_rows: 10000  # hard row cap on top of the age window; -1 = no cap
+  mail_egress: 720h            # mail_egress_buckets (30 days)
+  mail_egress_senders: 8760h   # per-sender mail memory, pruned when idle this long (365 days)
+
+# Outbound mail memory per sender (internal/mailwatch). Counts TCP flows from
+# our addresses to remote mail ports into buckets: flows, bytes, distinct
+# destinations/ASNs, top destinations. Unset/0 = default, negative caps = unlimited.
+mailwatch:
+  enabled: true
+  ports: [25, 465, 587]
+  bucket: 5m
+  max_senders: 5000   # distinct (sender, port) per bucket; extra flows are dropped and logged
+  max_dsts: 2000      # distinct destinations tracked per sender per bucket; past it uniq_dsts is a lower bound (capped=1)
+  top_n: 10           # destinations / ASNs stored per bucket row
 
 # Housekeeping of detections.sqlite (unset/0 = default, negative = disabled).
 storage:

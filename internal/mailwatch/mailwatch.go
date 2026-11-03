@@ -76,6 +76,8 @@ type Tracker struct {
 	alerts    AlertConfig
 	notify    func(Alert)
 	lastAlert map[string]time.Time
+	pending   []pendingBucket // flush goroutine only
+	retryWait time.Duration   // first persist backoff, doubled per attempt
 }
 
 // New builds a tracker. Bucket defaults to 5m, TopN to 10.
@@ -91,10 +93,11 @@ func New(cfg Config) *Tracker {
 		ports[p] = true
 	}
 	return &Tracker{
-		cfg:      cfg,
-		ports:    ports,
-		cur:      make(map[key]*agg),
-		curStart: time.Now().Truncate(cfg.Bucket),
+		cfg:       cfg,
+		ports:     ports,
+		cur:       make(map[key]*agg),
+		curStart:  time.Now().Truncate(cfg.Bucket),
+		retryWait: time.Second,
 	}
 }
 
@@ -167,29 +170,54 @@ func (t *Tracker) flush(db *sql.DB, now time.Time) {
 		log.Printf("[mailwatch] bucket %s: %d flows not counted (mailwatch.max_senders=%d reached)",
 			start.Format(time.RFC3339), dropped, t.cfg.MaxSenders)
 	}
-	if len(cur) == 0 {
-		return
+	if len(cur) > 0 {
+		// Read what we knew before this bucket lands (new-sender check).
+		t.pending = append(t.pending, pendingBucket{start, cur, t.alertContext(db, cur)})
 	}
-	// The write lock is contended at bucket boundaries and on shutdown (every
-	// subsystem flushes at once), so SQLITE_BUSY past busy_timeout is retried.
-	// Read what we knew before this bucket lands (new-sender check).
-	pre := t.alertContext(db, cur)
-	var err error
-	for attempt, wait := 1, time.Second; attempt <= persistAttempts; attempt, wait = attempt+1, wait*2 {
-		if err = t.persist(db, start, cur); err == nil {
-			t.evaluate(db, start, cur, pre)
+	if n := len(t.pending) - maxPending; n > 0 {
+		log.Printf("[mailwatch] dropping %d unpersisted bucket(s) from %s: more than %d pending",
+			n, t.pending[0].start.Format(time.RFC3339), maxPending)
+		t.pending = t.pending[n:]
+	}
+	// Oldest first; on failure keep the rest for the next flush. The write
+	// lock is contended at bucket boundaries, on shutdown (every subsystem
+	// flushes at once) and for tens of seconds after startup.
+	for len(t.pending) > 0 {
+		b := t.pending[0]
+		if err := t.persistRetry(db, b.start, b.cur); err != nil {
+			log.Printf("[mailwatch] persist bucket %s (%d senders) failed, %d bucket(s) kept for the next flush: %v",
+				b.start.Format(time.RFC3339), len(b.cur), len(t.pending), err)
 			return
+		}
+		t.evaluate(db, b.start, b.cur, b.pre)
+		t.pending = t.pending[1:]
+	}
+}
+
+func (t *Tracker) persistRetry(db *sql.DB, start time.Time, cur map[key]*agg) error {
+	var err error
+	for attempt, wait := 1, t.retryWait; attempt <= persistAttempts; attempt, wait = attempt+1, wait*2 {
+		if err = t.persist(db, start, cur); err == nil {
+			return nil
 		}
 		if attempt < persistAttempts {
 			time.Sleep(wait)
 		}
 	}
-	log.Printf("[mailwatch] persist bucket %s (%d senders) failed after %d attempts: %v",
-		start.Format(time.RFC3339), len(cur), persistAttempts, err)
+	return err
 }
 
-// persistAttempts bounds flush retries (1s, 2s, 4s between them).
-const persistAttempts = 4
+// pendingBucket is a finished bucket not yet written to SQLite.
+type pendingBucket struct {
+	start time.Time
+	cur   map[key]*agg
+	pre   preContext
+}
+
+const (
+	persistAttempts = 4  // per flush, 1s/2s/4s apart (each also waits busy_timeout)
+	maxPending      = 12 // unpersisted buckets kept for retry (1h at 5m buckets)
+)
 
 // TopDst / TopASN are the JSON elements of a bucket row's top lists.
 type TopDst struct {

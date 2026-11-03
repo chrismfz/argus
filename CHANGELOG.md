@@ -26,6 +26,10 @@ Every behavior-changing PR must add an entry under **Unreleased**.
     receive it. Alert-only: nothing is blackholed.
   - **API:** `GET /mailwatch/alerts`.
   - **Config:** the `mailwatch.alerts:` section.
+  - **No lost buckets under lock contention.** A bucket that cannot be
+    written, for example because of `SQLITE_BUSY` during the ~40s stall after
+    a restart, is kept and retried on the next flush. Up to 12 are kept
+    (1h); older ones are dropped and logged.
 - **Mail egress memory (`internal/mailwatch`).** argus now remembers outbound
   mail per sender. Every TCP flow from one of our addresses to a remote mail
   port (`mailwatch.ports`, default 25/465/587) is counted into 5-minute buckets

@@ -83,7 +83,9 @@ func (t *Tracker) alertContext(db *sql.DB, cur map[key]*agg) preContext {
 		}
 		seen[k.src] = true
 		var one int
-		if err := db.QueryRow(`SELECT 1 FROM mail_egress_senders WHERE src_ip = ?`, k.src).Scan(&one); err == nil {
+		// Only a definite "no row" makes a sender new; a failed lookup
+		// (e.g. SQLITE_BUSY) must not raise a false new_sender alert.
+		if err := db.QueryRow(`SELECT 1 FROM mail_egress_senders WHERE src_ip = ?`, k.src).Scan(&one); err != sql.ErrNoRows {
 			pc.known[k.src] = true
 		}
 	}

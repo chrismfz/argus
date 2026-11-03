@@ -83,3 +83,33 @@ func handleMailWatchIP(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, h)
 }
+
+// handleMailWatchAlerts lists stored baseline alerts, newest first.
+//
+//	GET /mailwatch/alerts?hours=168&ip=&limit=200
+func handleMailWatchAlerts(w http.ResponseWriter, r *http.Request) {
+	if DB == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "DB not initialized"})
+		return
+	}
+	q := r.URL.Query()
+	hours := atoiDefault(q.Get("hours"), 168)
+	if hours <= 0 || hours > 24*90 {
+		hours = 168
+	}
+	limit := atoiDefault(q.Get("limit"), 200)
+	if limit <= 0 || limit > 5000 {
+		limit = 200
+	}
+	ip := strings.TrimSpace(q.Get("ip"))
+	if ip != "" && net.ParseIP(ip) == nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid ip"})
+		return
+	}
+	alerts, err := mailwatch.Alerts(DB, time.Now().Add(-time.Duration(hours)*time.Hour), ip, limit)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"hours": hours, "alerts": alerts})
+}

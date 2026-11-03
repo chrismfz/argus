@@ -71,6 +71,11 @@ type Tracker struct {
 	cur         map[key]*agg
 	curStart    time.Time
 	droppedKeys uint64 // flows not counted because MaxSenders was reached
+
+	// Baseline alerts; only touched from the flush goroutine (see alerts.go).
+	alerts    AlertConfig
+	notify    func(Alert)
+	lastAlert map[string]time.Time
 }
 
 // New builds a tracker. Bucket defaults to 5m, TopN to 10.
@@ -167,9 +172,12 @@ func (t *Tracker) flush(db *sql.DB, now time.Time) {
 	}
 	// The write lock is contended at bucket boundaries and on shutdown (every
 	// subsystem flushes at once), so SQLITE_BUSY past busy_timeout is retried.
+	// Read what we knew before this bucket lands (new-sender check).
+	pre := t.alertContext(db, cur)
 	var err error
 	for attempt, wait := 1, time.Second; attempt <= persistAttempts; attempt, wait = attempt+1, wait*2 {
 		if err = t.persist(db, start, cur); err == nil {
+			t.evaluate(db, start, cur, pre)
 			return
 		}
 		if attempt < persistAttempts {
@@ -257,7 +265,25 @@ func InitSchema(db *sql.DB) error {
 		total_flows   INTEGER NOT NULL DEFAULT 0,
 		total_bytes   INTEGER NOT NULL DEFAULT 0,
 		max_uniq_dsts INTEGER NOT NULL DEFAULT 0  -- busiest bucket ever, distinct destinations
-	);`)
+	);
+
+	-- Baseline alerts (new sender / spike over the sender's own p95).
+	CREATE TABLE IF NOT EXISTS mail_egress_alerts (
+		id        INTEGER PRIMARY KEY AUTOINCREMENT,
+		ts        INTEGER NOT NULL,           -- bucket start
+		src_ip    TEXT    NOT NULL,
+		port      INTEGER NOT NULL,
+		kind      TEXT    NOT NULL,           -- new_sender | spike
+		severity  TEXT    NOT NULL,
+		uniq_dsts INTEGER NOT NULL,
+		flows     INTEGER NOT NULL,
+		baseline  REAL    NOT NULL DEFAULT 0,
+		threshold INTEGER NOT NULL DEFAULT 0,
+		top_dsts  TEXT    NOT NULL DEFAULT '[]',
+		top_asns  TEXT    NOT NULL DEFAULT '[]'
+	);
+	CREATE INDEX IF NOT EXISTS idx_mailalerts_ts ON mail_egress_alerts(ts);
+	CREATE INDEX IF NOT EXISTS idx_mailalerts_ip ON mail_egress_alerts(src_ip, ts);`)
 	return err
 }
 

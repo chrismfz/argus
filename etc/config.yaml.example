@@ -314,6 +314,7 @@ retention:
   blackhole_events_max_rows: 10000  # hard row cap on top of the age window; -1 = no cap
   mail_egress: 720h            # mail_egress_buckets (30 days)
   mail_egress_senders: 8760h   # per-sender mail memory, pruned when idle this long (365 days)
+  mail_egress_alerts: 2160h    # mail egress baseline alerts (90 days)
 
 # Outbound mail memory per sender (internal/mailwatch). Counts TCP flows from
 # our addresses to remote mail ports into buckets: flows, bytes, distinct
@@ -325,6 +326,15 @@ mailwatch:
   max_senders: 5000   # distinct (sender, port) per bucket; extra flows are dropped and logged
   max_dsts: 2000      # distinct destinations tracked per sender per bucket; past it uniq_dsts is a lower bound (capped=1)
   top_n: 10           # destinations / ASNs stored per bucket row
+  # Baseline alerts after each bucket (log + mail_egress_alerts + alerter contacts). Alert-only.
+  alerts:
+    enabled: true
+    learning_period: 168h    # no new_sender alerts until mailwatch history is this old
+    new_sender_min_dsts: 10  # a never-seen sender alerts at this many distinct destinations in one bucket
+    spike_min_dsts: 50       # spike floor; critical at 4x this
+    spike_factor: 5          # spike = distinct destinations >= factor x the sender's own p95
+    baseline_window: 168h    # how far back the p95 looks
+    cooldown: 1h             # per (sender, port, kind)
 
 # Housekeeping of detections.sqlite (unset/0 = default, negative = disabled).
 storage:

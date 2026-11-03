@@ -212,6 +212,11 @@ func Start() {
 	mainMux.HandleFunc("/blackhole-history/prune", WithAuth(handleBlackholeHistoryPrune))
 	mainMux.HandleFunc("/mailwatch/senders", WithAuth(handleMailWatchSenders))
 	mainMux.HandleFunc("/mailwatch/ip", WithAuth(handleMailWatchIP))
+	mainMux.HandleFunc("/mailwatch/alerts", WithAuth(handleMailWatchAlerts))
+	mainMux.HandleFunc("/mail", WithMainIPOnly(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(mailHTML)
+	}))
 	mainMux.HandleFunc("/flush", WithAuth(handleFlush))
 	mainMux.HandleFunc("/snmp/interfaces", WithAuth(handleSNMPInterfaces))
 

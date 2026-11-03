@@ -8,6 +8,24 @@ Every behavior-changing PR must add an entry under **Unreleased**.
 ## [Unreleased]
 
 ### Added
+- **Mail egress page and baseline alerts.**
+  - **New `/mail` page** (in the nav of every page). It shows:
+    - senders with sparkline, ports, peak distinct destinations, first/last seen;
+    - recent alerts;
+    - a per-IP drill-down: distinct destinations and flows per bucket, top MXs
+      and ASNs.
+  - **Two baseline alerts per sender after every bucket:**
+    - `new_sender`: a never-seen IP reaches `new_sender_min_dsts` distinct
+      destinations. Off until the history is `learning_period` (7d) old.
+    - `spike`: distinct destinations ≥ `spike_factor` × the sender's own p95
+      over `baseline_window`, and never below `spike_min_dsts` (50).
+      Critical at 4× the floor.
+  - **Delivery:** each alert is logged, stored in the new `mail_egress_alerts`
+    table (`retention.mail_egress_alerts`, 90d), and sent through the alerter
+    dispatcher, so the configured contacts (Slack/Mattermost webhook, SMTP)
+    receive it. Alert-only: nothing is blackholed.
+  - **API:** `GET /mailwatch/alerts`.
+  - **Config:** the `mailwatch.alerts:` section.
 - **Mail egress memory (`internal/mailwatch`).** argus now remembers outbound
   mail per sender. Every TCP flow from one of our addresses to a remote mail
   port (`mailwatch.ports`, default 25/465/587) is counted into 5-minute buckets

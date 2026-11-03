@@ -321,6 +321,8 @@ func (s *Store) flushDetail() error {
 			if err := commit(); err != nil && firstErr == nil {
 				firstErr = err
 			}
+			// Leave the lock free long enough for a waiting writer to get it.
+			time.Sleep(sqlite.BatchPause)
 		}
 	}
 

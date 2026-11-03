@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -59,5 +60,25 @@ func TestBatchWriterAndDeleteBatched(t *testing.T) {
 		if n != 50 || count(t, db, "ts < 50") != 0 || count(t, db, "ts >= 50") != 50 {
 			t.Fatalf("batch=%d: deleted=%d, left=%d", batch, n, count(t, db, "1"))
 		}
+	}
+}
+
+func TestRetryBusy(t *testing.T) {
+	busy := errors.New("database is locked (5) (SQLITE_BUSY)")
+	calls := 0
+	err := retryBusy("test", func() error {
+		calls++
+		if calls < 2 {
+			return busy
+		}
+		return nil
+	})
+	if err != nil || calls != 2 {
+		t.Fatalf("busy then ok: err=%v calls=%d, want nil after 2", err, calls)
+	}
+	calls = 0
+	other := errors.New("constraint failed")
+	if err := retryBusy("test", func() error { calls++; return other }); err != other || calls != 1 {
+		t.Fatalf("non-busy error must not be retried: err=%v calls=%d", err, calls)
 	}
 }

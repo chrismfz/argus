@@ -167,9 +167,12 @@ func (s *Store) rollupDaily() error {
 		if done {
 			continue
 		}
+		start := time.Now()
 		if err := s.rollupOneDay(day); err != nil {
 			return fmt.Errorf("rollup day %d: %w", day, err)
 		}
+		log.Printf("[flowstore] rolled day %s in %s",
+			time.Unix(day, 0).UTC().Format("2006-01-02"), time.Since(start).Round(time.Second))
 	}
 	return nil
 }

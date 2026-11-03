@@ -3,6 +3,8 @@ package sqlite
 import (
 	"database/sql"
 	"fmt"
+	"log"
+	"strings"
 	"time"
 )
 
@@ -11,10 +13,49 @@ import (
 // letting other writers take the lock.
 const DefaultWriteBatchRows = 5000
 
-// BatchPause is the gap between two batches. Go's pool gives no fairness and
-// SQLite's busy handler polls with sleeps, so a tight loop of back-to-back
-// write transactions would starve every other writer just like one long one.
-const BatchPause = 20 * time.Millisecond
+// BatchPause is the gap between two batches. SQLite's lock is not fair: a
+// writer blocked on it sleeps in the busy handler and retries, and those sleeps
+// grow to 100ms. A gap shorter than that (it was 20ms) is usually missed, so a
+// loop of back-to-back batches starved other writers into SQLITE_BUSY just like
+// one long transaction did (seen in production on the first deploy). The gap
+// must exceed the longest busy-handler sleep.
+const BatchPause = 150 * time.Millisecond
+
+// busyAttempts / busyBackoff: a background batch that still loses the lock
+// after the full busy_timeout is retried instead of aborting the whole job
+// (a daily rollup takes many minutes; one lost race would postpone it 24h).
+const (
+	busyAttempts = 4
+	busyBackoff  = 2 * time.Second
+)
+
+// slowBatch is when a single batch transaction gets logged: anything that
+// holds the write lock this long is close to failing other writers.
+const slowBatch = 2 * time.Second
+
+// IsBusy reports whether err is SQLite's "database is locked" (SQLITE_BUSY).
+func IsBusy(err error) bool {
+	return err != nil && (strings.Contains(err.Error(), "SQLITE_BUSY") ||
+		strings.Contains(err.Error(), "database is locked"))
+}
+
+// retryBusy runs fn, retrying it with a backoff while it fails with SQLITE_BUSY.
+// fn must be one whole transaction, so a retry never repeats committed work.
+func retryBusy(what string, fn func() error) error {
+	var err error
+	for attempt := 1; attempt <= busyAttempts; attempt++ {
+		start := time.Now()
+		err = fn()
+		if d := time.Since(start); d > slowBatch {
+			log.Printf("[SQLite] slow batch %s: %s (err=%v)", what, d.Round(time.Millisecond), err)
+		}
+		if !IsBusy(err) || attempt == busyAttempts {
+			return err
+		}
+		time.Sleep(busyBackoff * time.Duration(attempt))
+	}
+	return err
+}
 
 // DeleteBatched runs `DELETE FROM table WHERE <where>` in chunks of batch rows,
 // committing each chunk separately so the write lock is never held for longer
@@ -38,11 +79,15 @@ func DeleteBatched(db *sql.DB, table, where string, batch int, args ...any) (int
 		table, table, where, batch)
 	var total int64
 	for {
-		res, err := db.Exec(q, args...)
-		if err != nil {
-			return total, err
-		}
-		n, err := res.RowsAffected()
+		var n int64
+		err := retryBusy("delete "+table, func() error {
+			res, err := db.Exec(q, args...)
+			if err != nil {
+				return err
+			}
+			n, err = res.RowsAffected()
+			return err
+		})
 		if err != nil {
 			return total, err
 		}
@@ -86,11 +131,23 @@ func (w *BatchWriter) Add(args ...any) error {
 	return nil
 }
 
-// Flush writes the buffered rows in one transaction.
+// Flush writes the buffered rows in one transaction, retrying it on SQLITE_BUSY.
 func (w *BatchWriter) Flush() error {
 	if len(w.buf) == 0 {
 		return nil
 	}
+	if err := retryBusy("insert", w.write); err != nil {
+		return err
+	}
+	w.n += int64(len(w.buf))
+	w.buf = w.buf[:0]
+	if w.batch > 0 {
+		time.Sleep(BatchPause)
+	}
+	return nil
+}
+
+func (w *BatchWriter) write() error {
 	tx, err := w.db.Begin()
 	if err != nil {
 		return err
@@ -106,15 +163,7 @@ func (w *BatchWriter) Flush() error {
 			return err
 		}
 	}
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-	w.n += int64(len(w.buf))
-	w.buf = w.buf[:0]
-	if w.batch > 0 {
-		time.Sleep(BatchPause)
-	}
-	return nil
+	return tx.Commit()
 }
 
 // Written reports how many rows have been committed so far.

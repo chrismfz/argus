@@ -289,30 +289,42 @@ func Init(
 // loop() so a long catch-up — several days of backlog, millions of rows in
 // batches — never delays the 5-min / 30-min flushes, and it no longer blocks
 // startup the way the synchronous startup rollup did.
+//
+// A failed run (e.g. a batch that still lost the lock after its retries) is
+// retried after rollupRetryDelay rather than 24h later, so a backlog doesn't
+// sit un-rolled — and its detail un-pruned — for a whole day.
 func (s *Store) maintainLoop() {
-	s.rollupAndPrune()
-	t := time.NewTicker(24 * time.Hour)
-	defer t.Stop()
-	for range t.C {
-		s.rollupAndPrune()
+	for {
+		next := 24 * time.Hour
+		if !s.rollupAndPrune() {
+			next = rollupRetryDelay
+		}
+		time.Sleep(next)
 	}
 }
+
+// rollupRetryDelay is the wait before re-running a failed rollup+prune.
+const rollupRetryDelay = 15 * time.Minute
 
 // rollupAndPrune rolls completed days into the Tier-2 daily tables BEFORE the
 // detail prune deletes them. If the rollup errored on any day, it SKIPS the
 // detail prune — otherwise prune() could delete detail for a day that was
 // never rolled (silent, permanent data loss). Detail retention has days of
 // margin, so retrying next run is safe.
-func (s *Store) rollupAndPrune() {
+// It reports whether the rollup succeeded.
+func (s *Store) rollupAndPrune() bool {
 	start := time.Now()
+	ok := true
 	if err := s.rollupDaily(); err != nil {
-		log.Printf("[flowstore] rollup failed, skipping detail prune this run: %v", err)
+		ok = false
+		log.Printf("[flowstore] rollup failed, skipping detail prune this run (retry in %s): %v", rollupRetryDelay, err)
 	} else if err := s.prune(); err != nil {
 		log.Printf("[flowstore] prune: %v", err)
 	}
 	// Daily-table prune is independent of the detail/rollup state.
 	s.pruneDaily()
 	log.Printf("[flowstore] rollup+prune done in %s", time.Since(start).Round(time.Second))
+	return ok
 }
 
 // loop runs the 5-min and 30-min flush tickers.

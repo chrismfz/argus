@@ -190,11 +190,16 @@ func (b *FlowEnricher) enrichAndFeed(batch []*FlowRecord) {
 				b.dir.Classify(rec.Exporter, rec.InputInterface, rec.OutputInterface, rec.SrcHost, rec.DstHost, rec.FlowDirection).Inbound {
 				continue
 			}
+			dstAS := rec.PeerDstAS
+			if dstAS == 0 && b.geo != nil {
+				// No NetFlow/RIB origin AS: use GeoIP's, which already named it.
+				dstAS = b.geo.GetASNNumber(rec.DstHost)
+			}
 			b.mail.Observe(mailwatch.Flow{
 				Src:       rec.SrcHost,
 				Dst:       rec.DstHost,
 				DstPort:   rec.DstPort,
-				DstAS:     rec.PeerDstAS,
+				DstAS:     dstAS,
 				DstASName: rec.PeerDstASName,
 				Bytes:     rec.Bytes,
 				Packets:   rec.Packets,

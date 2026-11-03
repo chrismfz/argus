@@ -29,6 +29,7 @@ import (
 	"argus/internal/flow"
 	"argus/internal/flowdir"
 	"argus/internal/flowlog"
+	"argus/internal/mailwatch"
 	"argus/internal/sqlite"
 	"argus/internal/telemetry"
 
@@ -275,6 +276,11 @@ func main() {
 				// Only 'daily' snapshots are pruned; weekly/monthly/yearly/manual are kept.
 				if err := telemetry.PruneSnapshots(db, cfg.Retention.SnapshotsDaily); err != nil {
 					log.Printf("[WARN] Periodic snapshots prune error: %v", err)
+				}
+				if cfg.MailWatchEnabled() {
+					if err := mailwatch.Prune(db, cfg.Retention.MailEgress, cfg.Retention.MailEgressSenders); err != nil {
+						log.Printf("[WARN] Periodic mail egress prune error: %v", err)
+					}
 				}
 
 			}
@@ -576,6 +582,32 @@ func main() {
 		flowDir,
 	)
 	defer batcher.Close()
+
+	// ── Mail egress memory ────────────────────────────────────────────────────
+	if cfg.MailWatchEnabled() {
+		if err := mailwatch.InitSchema(db); err != nil {
+			log.Printf("[mailwatch] schema init failed: %v", err)
+		} else {
+			mw := mailwatch.New(mailwatch.Config{
+				Ports:      cfg.MailWatch.Ports,
+				Bucket:     cfg.MailWatch.Bucket,
+				MaxSenders: cfg.MailWatch.MaxSenders,
+				MaxDsts:    cfg.MailWatch.MaxDsts,
+				TopN:       cfg.MailWatch.TopN,
+			})
+			mwDone := make(chan struct{})
+			go func() { mw.Run(ctx, db); close(mwDone) }()
+			// Let the final bucket flush before db.Close (deferred earlier).
+			defer func() {
+				select {
+				case <-mwDone:
+				case <-time.After(20 * time.Second): // covers the flush retries
+				}
+			}()
+			batcher.SetMailWatch(mw)
+			log.Printf("[mailwatch] enabled: ports=%v bucket=%s", cfg.MailWatch.Ports, cfg.MailWatch.Bucket)
+		}
+	}
 
 	log.Print("[INFO] Starting NetFlow collectors...")
 	flowCollectors := cfg.GetCollectors()

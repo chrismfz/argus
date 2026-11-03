@@ -91,6 +91,14 @@ blackhole_time: [14400, 28800, 57600, 86400, 0]
 
 **SQLite persistence** — detection counts, active blackholes, and blackhole history survive restarts; active blackholes are re-announced on startup
 
+**Mail egress memory** (`mailwatch:`, on by default) — every TCP flow from one of
+your addresses to a remote mail port (25/465/587) is counted per sender into
+5-minute buckets: flows, bytes, distinct destination IPs and ASNs, top
+destinations. A long-lived row per sender remembers when it first and last sent
+mail. Rules only see the last 60s; this history is what tells a sender that has
+always mailed from one that started yesterday. Query it at `/mailwatch/senders`
+and `/mailwatch/ip?ip=x`.
+
 ### ML anomaly detection
 Unsupervised scoring pipeline running alongside rules, catching unknown threat patterns:
 
@@ -513,6 +521,8 @@ All endpoints require `Authorization: Bearer <token>` header and source IP in `a
 | `/announcements` | GET | Currently announced prefixes |
 | `/blackhole-list` | GET | Active blackholes with enrichment metadata |
 | `/blackhole-search?ip=x` | GET | Check if a specific IP is blackholed |
+| `/mailwatch/senders?hours=24` | GET | Our IPs that sent to remote mail ports, busiest first, with first/last seen and a per-bucket sparkline |
+| `/mailwatch/ip?ip=x&hours=168` | GET | One sender's mail buckets, memory row and top destinations/ASNs |
 | `/snmp/interfaces` | GET | Live interface traffic via SNMP |
 | `/flush` | POST | Withdraw all BGP announcements + clear DB |
 | `/dashboard` | GET | Embedded telemetry dashboard |
@@ -573,6 +583,9 @@ traffic is steady is your leak.
   gracefully instead of vanishing at the 7-day detail cliff. Inspect via
   `GET /debug/rollup?ip=<ip>` or `?asn=<n>&days=<n>`
 - `telemetry_*_buckets` — per-minute global/ASN/interface time series
+- `mail_egress_buckets` / `mail_egress_senders` — outbound mail per sender
+  (5-min buckets, `retention.mail_egress` default 30d) and the per-sender memory
+  (pruned when idle for `retention.mail_egress_senders`, default 365d)
 
 **Raw flow log** (`flows.sqlite`, optional — off by default) — the forensic
 store. When `flowlog.enabled: true`, every enriched flow (5-tuple + bytes,

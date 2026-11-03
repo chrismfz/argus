@@ -52,6 +52,15 @@ func TestStorageDefaults(t *testing.T) {
 		t.Fatalf("blackhole_events defaults wrong: %+v", r)
 	}
 
+	if r.MailEgress != 30*24*time.Hour || r.MailEgressSenders != 365*24*time.Hour {
+		t.Fatalf("mail_egress retention defaults wrong: %+v", r)
+	}
+	mw := cfg.MailWatch
+	if !cfg.MailWatchEnabled() || len(mw.Ports) != 3 || mw.Bucket != 5*time.Minute ||
+		mw.MaxSenders != 5000 || mw.MaxDsts != 2000 || mw.TopN != 10 {
+		t.Fatalf("mailwatch defaults wrong: %+v", mw)
+	}
+
 	fl := cfg.FlowLog
 	if fl.Enabled {
 		t.Fatalf("flow log must be disabled by default")

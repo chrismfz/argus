@@ -213,6 +213,25 @@ type Config struct {
 	Retention RetentionConfig `yaml:"retention"`
 	FlowLog   FlowLogConfig   `yaml:"flowlog"`
 	Storage   StorageConfig   `yaml:"storage"`
+	MailWatch MailWatchConfig `yaml:"mailwatch"`
+}
+
+// MailWatchConfig controls the per-IP outbound mail memory (internal/mailwatch):
+// flows from our addresses to remote mail ports, bucketed and kept in
+// mail_egress_buckets / mail_egress_senders. Zero values mean "use the
+// default"; negative caps mean unlimited.
+type MailWatchConfig struct {
+	Enabled    *bool         `yaml:"enabled"`     // default true (cheap: only egress flows to Ports are counted)
+	Ports      []uint16      `yaml:"ports"`       // remote destination ports, default [25, 465, 587]
+	Bucket     time.Duration `yaml:"bucket"`      // bucket width, default 5m
+	MaxSenders int           `yaml:"max_senders"` // distinct (sender, port) per bucket, default 5000; -1 = unlimited
+	MaxDsts    int           `yaml:"max_dsts"`    // distinct destinations tracked per sender per bucket, default 2000; -1 = unlimited
+	TopN       int           `yaml:"top_n"`       // destinations / ASNs stored per bucket row, default 10
+}
+
+// MailWatchEnabled reports whether the mail egress tracker should run.
+func (c *Config) MailWatchEnabled() bool {
+	return c.MailWatch.Enabled == nil || *c.MailWatch.Enabled
 }
 
 // StorageConfig controls housekeeping of the main detections.sqlite file.
@@ -272,6 +291,8 @@ type RetentionConfig struct {
 	RiskEventsMaxRow      int           `yaml:"risk_events_max_rows"`      // hard row cap on top of the age window, default 1_000_000; -1 = no cap
 	BlackholeEvents       time.Duration `yaml:"blackhole_events"`          // blackhole_events audit log, default 90d
 	BlackholeEventsMaxRow int           `yaml:"blackhole_events_max_rows"` // hard row cap, default 10000
+	MailEgress            time.Duration `yaml:"mail_egress"`               // mail_egress_buckets, default 30d
+	MailEgressSenders     time.Duration `yaml:"mail_egress_senders"`       // mail_egress_senders by last_seen, default 365d
 }
 
 type SNMPConfig struct {
@@ -426,6 +447,17 @@ func applyStorageDefaults(cfg *Config) {
 	defInt(&r.RiskEventsMaxRow, 1_000_000)
 	defDur(&r.BlackholeEvents, 90*24*time.Hour)
 	defInt(&r.BlackholeEventsMaxRow, 10000)
+	defDur(&r.MailEgress, 30*24*time.Hour)
+	defDur(&r.MailEgressSenders, 365*24*time.Hour)
+
+	mw := &cfg.MailWatch
+	if len(mw.Ports) == 0 {
+		mw.Ports = []uint16{25, 465, 587}
+	}
+	defDur(&mw.Bucket, 5*time.Minute)
+	defInt(&mw.MaxSenders, 5000)
+	defInt(&mw.MaxDsts, 2000)
+	defInt(&mw.TopN, 10)
 
 	// FlowLog — only normalise the operational knobs; Enabled stays as set
 	// (default false) and MaxGB<=0 is a valid "no cap" so it is left alone.
@@ -495,8 +527,8 @@ func LogStartup(cfg *Config) {
 		tel.BucketRetentionDays)
 	log.Printf("[CFG] sqlite: wal_checkpoint_interval=%s incremental_vacuum_pages=%d",
 		cfg.Storage.WALCheckpointInterval, cfg.Storage.IncrementalVacuumPages)
-	log.Printf("[CFG] retention: detections=%s alert_events=%s snapshots_daily=%s risk_events=%s (max_rows=%d) blackhole_events=%s (max_rows=%d)",
-		r.Detections, r.AlertEvents, r.SnapshotsDaily, r.RiskEvents, r.RiskEventsMaxRow, r.BlackholeEvents, r.BlackholeEventsMaxRow)
+	log.Printf("[CFG] retention: detections=%s alert_events=%s snapshots_daily=%s risk_events=%s (max_rows=%d) blackhole_events=%s (max_rows=%d) mail_egress=%s mail_egress_senders=%s",
+		r.Detections, r.AlertEvents, r.SnapshotsDaily, r.RiskEvents, r.RiskEventsMaxRow, r.BlackholeEvents, r.BlackholeEventsMaxRow, r.MailEgress, r.MailEgressSenders)
 
 	ac := cfg.Detection.Anomaly
 	pf := ac.Prefilter

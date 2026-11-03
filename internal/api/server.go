@@ -210,6 +210,8 @@ func Start() {
 	mainMux.HandleFunc("/blackhole-search", WithAuth(handleBlackholeSearch))
 	mainMux.HandleFunc("/blackhole-history", WithAuth(handleBlackholeHistory))
 	mainMux.HandleFunc("/blackhole-history/prune", WithAuth(handleBlackholeHistoryPrune))
+	mainMux.HandleFunc("/mailwatch/senders", WithAuth(handleMailWatchSenders))
+	mainMux.HandleFunc("/mailwatch/ip", WithAuth(handleMailWatchIP))
 	mainMux.HandleFunc("/flush", WithAuth(handleFlush))
 	mainMux.HandleFunc("/snmp/interfaces", WithAuth(handleSNMPInterfaces))
 

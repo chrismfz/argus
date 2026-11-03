@@ -601,7 +601,7 @@ func main() {
 			defer func() {
 				select {
 				case <-mwDone:
-				case <-time.After(5 * time.Second):
+				case <-time.After(20 * time.Second): // covers the flush retries
 				}
 			}()
 			batcher.SetMailWatch(mw)

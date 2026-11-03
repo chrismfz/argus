@@ -165,10 +165,23 @@ func (t *Tracker) flush(db *sql.DB, now time.Time) {
 	if len(cur) == 0 {
 		return
 	}
-	if err := t.persist(db, start, cur); err != nil {
-		log.Printf("[mailwatch] persist bucket %s (%d senders): %v", start.Format(time.RFC3339), len(cur), err)
+	// The write lock is contended at bucket boundaries and on shutdown (every
+	// subsystem flushes at once), so SQLITE_BUSY past busy_timeout is retried.
+	var err error
+	for attempt, wait := 1, time.Second; attempt <= persistAttempts; attempt, wait = attempt+1, wait*2 {
+		if err = t.persist(db, start, cur); err == nil {
+			return
+		}
+		if attempt < persistAttempts {
+			time.Sleep(wait)
+		}
 	}
+	log.Printf("[mailwatch] persist bucket %s (%d senders) failed after %d attempts: %v",
+		start.Format(time.RFC3339), len(cur), persistAttempts, err)
 }
+
+// persistAttempts bounds flush retries (1s, 2s, 4s between them).
+const persistAttempts = 4
 
 // TopDst / TopASN are the JSON elements of a bucket row's top lists.
 type TopDst struct {

@@ -18,6 +18,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/pprof"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -103,18 +104,29 @@ func realIPAllowed(r *http.Request, cidrs []string) bool {
 // realIP returns the true client IP.
 // When the direct connection is from loopback (nginx proxying), it reads
 // X-Forwarded-For to get the actual client address.
-// XFF is only trusted from loopback — external clients cannot spoof it.
+//
+// Only the LAST entry is read: that is the one nginx appended, the address it
+// saw. Everything to its left is whatever the client sent. The first entry
+// used to be taken, and the shipped nginx config appends
+// ($proxy_add_x_forwarded_for), so "X-Forwarded-For: 127.0.0.1" from anywhere
+// made the request loopback, which realIPAllowed trusts without a token or a
+// session.
 func realIP(r *http.Request) net.IP {
 	host, _, _ := net.SplitHostPort(r.RemoteAddr)
 	directIP := net.ParseIP(host)
 
 	if directIP != nil && directIP.IsLoopback() {
-		if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-			first := strings.TrimSpace(strings.Split(fwd, ",")[0])
-			if ip := net.ParseIP(first); ip != nil {
+		if values := r.Header.Values("X-Forwarded-For"); len(values) > 0 {
+			parts := strings.Split(values[len(values)-1], ",")
+			last := strings.TrimSpace(parts[len(parts)-1])
+			if ip := net.ParseIP(last); ip != nil {
 				log.Printf("[AUTH] realIP: loopback→XFF=%s", ip)
 				return ip
 			}
+			// A proxy sent the header and its own entry is unreadable: the
+			// request did not come from this machine, so it is not loopback.
+			log.Printf("[AUTH] realIP: loopback, unreadable XFF %q", last)
+			return nil
 		}
 		log.Printf("[AUTH] realIP: loopback, no XFF")
 		return directIP
@@ -169,7 +181,7 @@ func WithMainIPOnly(h http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		if strings.Contains(r.Header.Get("Accept"), "text/html") {
-			http.Redirect(w, r, "/login?next="+r.URL.RequestURI(), http.StatusSeeOther)
+			http.Redirect(w, r, "/login?next="+url.QueryEscape(r.URL.RequestURI()), http.StatusSeeOther)
 			return
 		}
 		http.Error(w, "Forbidden", http.StatusForbidden)

@@ -184,7 +184,11 @@ var loginHTML = []byte(`<!DOCTYPE html>
     const form     = document.getElementById('loginForm');
     const errBox   = document.getElementById('err');
     const submitBtn = document.getElementById('submitBtn');
-    const next     = new URLSearchParams(location.search).get('next') || '/dashboard';
+    // Only a path on this site: "next" comes from the URL, and assigning a
+    // "javascript:" or "//other.host" value to location would run script here
+    // or send a just-logged-in user elsewhere.
+    const rawNext  = new URLSearchParams(location.search).get('next') || '';
+    const next     = /^\/(?![\/\\])/.test(rawNext) ? rawNext : '/dashboard';
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();

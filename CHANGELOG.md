@@ -7,6 +7,22 @@ Every behavior-changing PR must add an entry under **Unreleased**.
 
 ## [Unreleased]
 
+### Security
+- **A remote client could pass as loopback and skip authentication.** Behind
+  nginx every request arrives from 127.0.0.1, and argus then took the client
+  address from the FIRST `X-Forwarded-For` entry. The shipped nginx config
+  appends to that header, so the first entry was whatever the client sent:
+  `X-Forwarded-For: 127.0.0.1` (or any `allow_ips` address) made the request
+  trusted with no token and no session, on every route including `/announce`
+  and `/withdraw`. argus now reads only the last entry, the one nginx wrote.
+  `etc/argus.nginx.conf` also overwrites the header with `$remote_addr`
+  instead of appending. **Apply that nginx change on a deployed host too**: it
+  closes the hole before the new binary is installed.
+- **The login page followed any `next` value.** `/login?next=javascript:...`
+  ran script on the argus origin after a successful login, and
+  `next=//other.host` sent the user away. Only a path on the same site is
+  followed now; anything else goes to `/dashboard`.
+
 ### Added
 - **Mail egress page and baseline alerts.**
   - **New `/mail` page** (in the nav of every page). It shows:

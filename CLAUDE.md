@@ -27,7 +27,7 @@ go test ./...       # keep green (coverage is thin — add tests as you touch co
 go build ./...      # quick compile check
 ```
 
-- Go ≥ 1.25, single module `argus`. No CI yet (planned — see ROADMAP Phase 0).
+- Go ≥ 1.26, single module `argus`. No CI yet (planned — see ROADMAP Phase 0).
 - Never commit build artifacts. `bin/`, the root `argus` binary, `*.log`, `*.db`,
   `*.sqlite*`, `blackholes.txt` are gitignored — keep it that way.
 - Runtime deployment target is `/opt/argus` with systemd (`etc/systemd/system/argus.service`).

@@ -7,6 +7,22 @@ Every behavior-changing PR must add an entry under **Unreleased**.
 
 ## [Unreleased]
 
+### Changed
+- **goauth updated to the audited release; Go 1.26 is now required.** The
+  build host needs Go 1.26 or newer (the embedded SQLite driver moved from
+  1.48 to 1.62 with it, for every argus database). What changes for users of
+  the dashboard login:
+  - `argus auth user passwd`, `deactivate` and `delete` end that user's open
+    sessions within a few seconds. Before, a session stayed valid until it
+    expired.
+  - Login no longer reveals by response time whether a username exists, the
+    per-username attempt limit ignores letter case, and oversized login
+    requests are refused.
+  - Session tokens are stored hashed in the auth database. Existing sessions
+    survive the upgrade; going back to an older binary logs everyone out, and
+    so does running `argus auth ...` from the new binary before the daemon is
+    restarted on it.
+
 ### Security
 - **A remote client could pass as loopback and skip authentication.** Behind
   nginx every request arrives from 127.0.0.1, and argus then took the client

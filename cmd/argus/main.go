@@ -442,16 +442,29 @@ func main() {
 	if cfg.ProtectionFeedsEnabled() {
 		pfc := cfg.ProtectionFeeds
 		detection.SetFeedSkipInterval(max(pfc.SkipEventInterval, 0))
+		detection.SetFeedSuppressAlerts(cfg.ProtectionFeedsSuppressAlerts())
 		var feeds []protectfeed.Feed
+		seen := map[string]bool{}
 		for _, f := range pfc.Feeds {
 			pf := protectfeed.Feed{Name: f.Name, URL: f.URL, Format: f.Format, MinPrefixes: f.MinPrefixes, MaxPrefixes: f.MaxPrefixes}
 			if err := pf.Validate(); err != nil {
 				log.Printf("[protectfeed] skipping feed: %v", err)
 				continue
 			}
+			// Status, cache file and protection set are keyed by name.
+			if seen[pf.Name] {
+				log.Printf("[protectfeed] skipping feed %q: duplicate name", pf.Name)
+				continue
+			}
+			seen[pf.Name] = true
 			feeds = append(feeds, pf)
 		}
-		pm := protectfeed.New(feeds, pfc.CacheDir, pfc.Refresh, detection.SetFeedProtected)
+		limits := protectfeed.Limits{
+			MinIPv4PrefixLen: pfc.MinIPv4PrefixLen, MinIPv6PrefixLen: pfc.MinIPv6PrefixLen,
+			MaxSpaceGrowth: pfc.MaxSpaceGrowth, MinShrink: pfc.MinShrink,
+			FetchTimeout: pfc.FetchTimeout, MaxBodyBytes: pfc.MaxBodyBytes, RetryMin: pfc.RetryMin,
+		}
+		pm := protectfeed.New(feeds, pfc.CacheDir, pfc.Refresh, limits, detection.SetFeedProtected)
 		pm.LoadCache()
 		go pm.Run(ctx)
 		api.ProtectionFeeds = pm

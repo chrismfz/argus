@@ -76,6 +76,11 @@ func TestStorageDefaults(t *testing.T) {
 		pf.Feeds[0].Format != "cloudflare" || pf.Feeds[0].MinPrefixes != 8 || pf.Feeds[0].MaxPrefixes != 200 {
 		t.Fatalf("protection_feeds defaults wrong: %+v", pf)
 	}
+	if !cfg.ProtectionFeedsSuppressAlerts() || pf.MinIPv4PrefixLen != 12 || pf.MinIPv6PrefixLen != 28 ||
+		pf.MaxSpaceGrowth != 2 || pf.MinShrink != 0.5 || pf.FetchTimeout != 30*time.Second ||
+		pf.MaxBodyBytes != 1<<20 || pf.RetryMin != 5*time.Minute {
+		t.Fatalf("protection_feeds guard defaults wrong: %+v", pf)
+	}
 
 	fl := cfg.FlowLog
 	if fl.Enabled {

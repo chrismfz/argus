@@ -75,7 +75,7 @@ func (e *Engine) HandleBlackhole(rule DetectionRule, flows []Flow, count int) {
 
 	// Safeguard 1: file-based protection list
 	if ok, why := ShouldExecuteBlackhole(rule.Name, targetIP); !ok {
-		if strings.HasPrefix(why, "protected (feed ") && !recordFeedSkip(targetIP, time.Now()) {
+		if ProtectingFeed(targetIP) != "" && !recordFeedSkip(targetIP, time.Now()) {
 			return
 		}
 		log.Printf("[SAFEGUARD] skipping blackhole for %s (rule=%s reason=%s); logging only", targetIP, rule.Name, why)

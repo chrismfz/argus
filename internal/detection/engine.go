@@ -217,6 +217,10 @@ func (e *Engine) runDetection() {
 		for _, act := range parseActions(rule.Action) {
 			switch act {
 			case "alert":
+				// A CDN edge (protection feed) is known-good: no alert either.
+				if alertSuppressedByFeed(srcIP) {
+					continue
+				}
 				if ok, suppressed := e.alerts.observe(rule.Name, srcIP, now); ok {
 					LogDetection(rule, flows, e.Geo, e.DNS, count, suppressed)
 				}

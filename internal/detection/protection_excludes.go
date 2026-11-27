@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -149,14 +150,29 @@ func ShouldExecuteBlackhole(ruleName, ip string) (ok bool, reason string) {
 	return true, ""
 }
 
-// Feed-covered addresses (CDN edges) keep matching scan rules all day; without
-// a throttle their "skipped" audit rows would crowd real history out of the
-// row-capped blackhole_events. Exclusions are rare and stay logged every time.
+// Feed-covered addresses (CDN edges) keep matching scan rules all day. The
+// audit log's own per-IP cooldown (allowSkipEvent, 60s) still lets each edge
+// write up to 1440 "skipped" rows a day, which would crowd real history out of
+// the row-capped blackhole_events; this throttle makes it one per interval.
+// Exclusions keep only the 60s cooldown.
 var (
 	feedSkipMu       sync.Mutex
 	feedSkipLast     = map[string]time.Time{}
 	feedSkipInterval = 24 * time.Hour
+	feedSkipPruned   time.Time
+
+	feedSuppressAlerts atomic.Bool
 )
+
+// SetFeedSuppressAlerts makes feed-covered IPs skip a rule's alert action as
+// well as its blackhole (protection_feeds.suppress_alerts).
+func SetFeedSuppressAlerts(on bool) { feedSuppressAlerts.Store(on) }
+
+// alertSuppressedByFeed reports whether an alert for ip is dropped because a
+// protection feed covers it.
+func alertSuppressedByFeed(ip string) bool {
+	return feedSuppressAlerts.Load() && ProtectingFeed(ip) != ""
+}
 
 // SetFeedSkipInterval sets how often a skipped blackhole of a feed-covered IP
 // is recorded (<= 0 = every time).
@@ -178,12 +194,15 @@ func recordFeedSkip(ip string, now time.Time) bool {
 		return false
 	}
 	feedSkipLast[ip] = now
-	if len(feedSkipLast) > 100000 { // bound: forget expired entries
+	// Forget expired entries once per interval, so the map holds at most one
+	// interval's worth of IPs.
+	if now.Sub(feedSkipPruned) >= feedSkipInterval {
 		for k, t := range feedSkipLast {
 			if now.Sub(t) >= feedSkipInterval {
 				delete(feedSkipLast, k)
 			}
 		}
+		feedSkipPruned = now
 	}
 	return true
 }

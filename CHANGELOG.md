@@ -24,6 +24,12 @@ Every behavior-changing PR must add an entry under **Unreleased**.
     good list when an answer is out of bounds.
   - Skipped-blackhole audit rows for feed-covered IPs are throttled to one per
     IP per `skip_event_interval` (24h).
+  - Feed-covered IPs also skip a rule's `alert` action (`suppress_alerts`,
+    default on).
+  - A failed or refused refresh is retried after `retry_min` (5m), doubling
+    up to `refresh`, so a first deploy whose fetch fails is not left
+    unprotected for a day.
+  - The answer bounds are config knobs. Duplicate feed names are rejected.
   - Status: `GET /detection/protection-feeds`.
 
 ### Changed

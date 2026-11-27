@@ -42,18 +42,52 @@ const (
 	FormatText       = "text"       // one CIDR per line, '#' comments
 )
 
-// Bounds on a single prefix (same as the cfm edge's trusted_proxies list).
-const (
-	MinIPv4PrefixLen = 12
-	MinIPv6PrefixLen = 28
-)
+// Limits bound what a feed answer may contain and how it is fetched. Zero
+// fields take DefaultLimits' values (the cfm edge's trusted_proxies bounds).
+type Limits struct {
+	MinIPv4PrefixLen int           // no prefix broader than this, default 12
+	MinIPv6PrefixLen int           // default 28
+	MaxSpaceGrowth   float64       // refuse if a family's covered space grows by more than this factor, default 2
+	MinShrink        float64       // refuse if a family's count or space falls below this fraction, default 0.5
+	FetchTimeout     time.Duration // default 30s
+	MaxBodyBytes     int64         // default 1 MiB
+	RetryMin         time.Duration // first retry after a failed refresh, doubling up to the refresh interval, default 5m
+}
 
-// Guard factors against the last accepted list.
-const (
-	maxSpaceGrowth = 2.0
-	minShrink      = 0.5
-	maxBodyBytes   = 1 << 20
-)
+// DefaultLimits are the bounds used when a field is unset.
+func DefaultLimits() Limits {
+	return Limits{MinIPv4PrefixLen: 12, MinIPv6PrefixLen: 28, MaxSpaceGrowth: 2, MinShrink: 0.5,
+		FetchTimeout: 30 * time.Second, MaxBodyBytes: 1 << 20, RetryMin: 5 * time.Minute}
+}
+
+func (l Limits) withDefaults() Limits {
+	d := DefaultLimits()
+	if l.MinIPv4PrefixLen <= 0 {
+		l.MinIPv4PrefixLen = d.MinIPv4PrefixLen
+	}
+	if l.MinIPv6PrefixLen <= 0 {
+		l.MinIPv6PrefixLen = d.MinIPv6PrefixLen
+	}
+	// Space() sums 2^(32-len) / 2^(64-len) in a uint64: keep it from overflowing.
+	l.MinIPv4PrefixLen = min(max(l.MinIPv4PrefixLen, 8), 32)
+	l.MinIPv6PrefixLen = min(max(l.MinIPv6PrefixLen, 16), 128)
+	if l.MaxSpaceGrowth <= 0 {
+		l.MaxSpaceGrowth = d.MaxSpaceGrowth
+	}
+	if l.MinShrink <= 0 {
+		l.MinShrink = d.MinShrink
+	}
+	if l.FetchTimeout <= 0 {
+		l.FetchTimeout = d.FetchTimeout
+	}
+	if l.MaxBodyBytes <= 0 {
+		l.MaxBodyBytes = d.MaxBodyBytes
+	}
+	if l.RetryMin <= 0 {
+		l.RetryMin = d.RetryMin
+	}
+	return l
+}
 
 // Feed is one configured source.
 type Feed struct {
@@ -98,6 +132,7 @@ type Manager struct {
 	feeds    []Feed
 	cacheDir string
 	refresh  time.Duration
+	limits   Limits
 	client   *http.Client
 	apply    func(name string, nets []*net.IPNet)
 
@@ -108,15 +143,17 @@ type Manager struct {
 
 // New builds a manager. apply is called with every accepted list (from cache
 // or fetch) and must replace that feed's previous list.
-func New(feeds []Feed, cacheDir string, refresh time.Duration, apply func(name string, nets []*net.IPNet)) *Manager {
+func New(feeds []Feed, cacheDir string, refresh time.Duration, limits Limits, apply func(name string, nets []*net.IPNet)) *Manager {
 	if refresh <= 0 {
 		refresh = 24 * time.Hour
 	}
+	limits = limits.withDefaults()
 	m := &Manager{
 		feeds:    feeds,
 		cacheDir: cacheDir,
 		refresh:  refresh,
-		client:   &http.Client{Timeout: 30 * time.Second},
+		limits:   limits,
+		client:   &http.Client{Timeout: limits.FetchTimeout},
 		apply:    apply,
 		active:   map[string][]netip.Prefix{},
 		status:   map[string]*Status{},
@@ -131,7 +168,7 @@ func New(feeds []Feed, cacheDir string, refresh time.Duration, apply func(name s
 // restored, so a protected range is never re-announced at startup.
 func (m *Manager) LoadCache() {
 	for _, f := range m.feeds {
-		p, mod, err := readCache(m.cachePath(f))
+		p, mod, err := readCache(m.cachePath(f), m.limits)
 		if err != nil {
 			if !errors.Is(err, os.ErrNotExist) {
 				log.Printf("[protectfeed] %s: cache unreadable: %v", f.Name, err)
@@ -147,25 +184,64 @@ func (m *Manager) LoadCache() {
 }
 
 // Run refreshes each feed now if its cache is missing or older than the
-// refresh interval, then every interval, until ctx ends.
+// refresh interval, then every interval, until ctx ends. A failed or refused
+// refresh is retried after Limits.RetryMin, doubling up to the interval, so a
+// first deploy whose fetch fails is not left unprotected for a whole day.
 func (m *Manager) Run(ctx context.Context) {
+	next := make(map[string]time.Time, len(m.feeds))
+	backoff := make(map[string]time.Duration, len(m.feeds))
+	now := time.Now()
 	for _, f := range m.feeds {
-		if m.stale(f) {
-			m.Refresh(ctx, f)
+		next[f.Name] = now
+		if !m.stale(f) {
+			m.mu.Lock()
+			next[f.Name] = m.status[f.Name].UpdatedAt.Add(m.refresh)
+			m.mu.Unlock()
 		}
 	}
-	t := time.NewTicker(m.refresh)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			for _, f := range m.feeds {
-				m.Refresh(ctx, f)
+	for len(m.feeds) > 0 {
+		due := next[m.feeds[0].Name]
+		for _, f := range m.feeds[1:] {
+			if next[f.Name].Before(due) {
+				due = next[f.Name]
 			}
 		}
+		timer := time.NewTimer(time.Until(due))
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+		now := time.Now()
+		for _, f := range m.feeds {
+			if next[f.Name].After(now) {
+				continue
+			}
+			if err := m.Refresh(ctx, f); err != nil {
+				if ctx.Err() != nil {
+					return
+				}
+				backoff[f.Name] = retryAfter(backoff[f.Name], m.limits.RetryMin, m.refresh)
+				next[f.Name] = now.Add(backoff[f.Name])
+				continue
+			}
+			backoff[f.Name] = 0
+			next[f.Name] = now.Add(m.refresh)
+		}
 	}
+}
+
+// retryAfter is the next backoff: first `first`, then doubling, capped at max.
+func retryAfter(prev, first, max time.Duration) time.Duration {
+	d := first
+	if prev > 0 {
+		d = prev * 2
+	}
+	if d > max {
+		d = max
+	}
+	return d
 }
 
 func (m *Manager) stale(f Feed) bool {
@@ -175,24 +251,29 @@ func (m *Manager) stale(f Feed) bool {
 	return st.Prefixes == 0 || time.Since(st.UpdatedAt) >= m.refresh
 }
 
-// Refresh fetches one feed and applies it if it passes every guard.
-func (m *Manager) Refresh(ctx context.Context, f Feed) {
+// Refresh fetches one feed and applies it if it passes every guard. It
+// returns why it did not (nil on success).
+func (m *Manager) Refresh(ctx context.Context, f Feed) error {
 	now := time.Now()
 	prefixes, err := m.fetch(ctx, f)
+	if err != nil && ctx.Err() != nil {
+		return ctx.Err() // shutting down: not a feed failure
+	}
 	if err == nil {
 		m.mu.Lock()
 		prev := m.active[f.Name]
 		m.mu.Unlock()
-		err = Check(f, prefixes, prev)
+		err = Check(f, prefixes, prev, m.limits)
 	}
 	m.mu.Lock()
 	st := m.status[f.Name]
 	st.LastAttempt = now
 	if err != nil {
 		st.LastError = err.Error()
+		n := st.Prefixes
 		m.mu.Unlock()
-		log.Printf("[protectfeed] %s: refresh refused, keeping %d prefixes: %v", f.Name, st.Prefixes, err)
-		return
+		log.Printf("[protectfeed] %s: refresh failed, keeping %d prefixes: %v", f.Name, n, err)
+		return err
 	}
 	st.LastError = ""
 	m.mu.Unlock()
@@ -204,6 +285,7 @@ func (m *Manager) Refresh(ctx context.Context, f Feed) {
 	if changed {
 		log.Printf("[protectfeed] %s: %d prefixes active", f.Name, len(prefixes))
 	}
+	return nil
 }
 
 // accept makes p the active list; reports whether it differs from the last.
@@ -264,19 +346,21 @@ func (m *Manager) fetch(ctx context.Context, f Feed) ([]netip.Prefix, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("fetch: HTTP %d", resp.StatusCode)
 	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes+1))
+	maxBody := m.limits.MaxBodyBytes
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBody+1))
 	if err != nil {
 		return nil, fmt.Errorf("fetch: %w", err)
 	}
-	if len(body) > maxBodyBytes {
-		return nil, fmt.Errorf("fetch: answer larger than %d bytes", maxBodyBytes)
+	if int64(len(body)) > maxBody {
+		return nil, fmt.Errorf("fetch: answer larger than %d bytes", maxBody)
 	}
-	return Parse(f.Format, body)
+	return Parse(f.Format, body, m.limits)
 }
 
 // Parse decodes a feed answer. One unusable entry refuses the whole answer:
 // a partial list is worse than the last good one.
-func Parse(format string, body []byte) ([]netip.Prefix, error) {
+func Parse(format string, body []byte, l Limits) ([]netip.Prefix, error) {
+	l = l.withDefaults()
 	var raw []string
 	switch format {
 	case FormatCloudflare:
@@ -311,7 +395,7 @@ func Parse(format string, body []byte) ([]netip.Prefix, error) {
 	out := make([]netip.Prefix, 0, len(raw))
 	seen := map[netip.Prefix]bool{}
 	for _, s := range raw {
-		p, err := NormalizePrefix(s)
+		p, err := NormalizePrefix(s, l)
 		if err != nil {
 			return nil, err
 		}
@@ -325,7 +409,8 @@ func Parse(format string, body []byte) ([]netip.Prefix, error) {
 }
 
 // NormalizePrefix accepts a canonical, public, bounded CIDR.
-func NormalizePrefix(s string) (netip.Prefix, error) {
+func NormalizePrefix(s string, l Limits) (netip.Prefix, error) {
+	l = l.withDefaults()
 	p, err := netip.ParsePrefix(s)
 	if err != nil || !strings.Contains(s, "/") {
 		return netip.Prefix{}, fmt.Errorf("unusable entry %q: not a CIDR", s)
@@ -334,12 +419,12 @@ func NormalizePrefix(s string) (netip.Prefix, error) {
 		return netip.Prefix{}, fmt.Errorf("unusable entry %q: host bits set", s)
 	}
 	a := p.Addr()
-	if a.Is4In6() || !a.IsGlobalUnicast() || a.IsPrivate() || isSpecial(a) {
+	if a.Is4In6() || !a.IsGlobalUnicast() || a.IsPrivate() || overlapsSpecial(p) {
 		return netip.Prefix{}, fmt.Errorf("unusable entry %q: not public unicast", s)
 	}
-	min := MinIPv4PrefixLen
+	min := l.MinIPv4PrefixLen
 	if a.Is6() {
-		min = MinIPv6PrefixLen
+		min = l.MinIPv6PrefixLen
 	}
 	if p.Bits() < min {
 		return netip.Prefix{}, fmt.Errorf("unusable entry %q: broader than /%d", s, min)
@@ -361,9 +446,11 @@ var specialPrefixes = []netip.Prefix{
 	netip.MustParsePrefix("64:ff9b::/96"),    // NAT64
 }
 
-func isSpecial(a netip.Addr) bool {
-	for _, p := range specialPrefixes {
-		if p.Contains(a) {
+// overlapsSpecial: the prefix touches a special range anywhere, not just at
+// its first address (a /12 can hold a TEST-NET or benchmarking block).
+func overlapsSpecial(p netip.Prefix) bool {
+	for _, sp := range specialPrefixes {
+		if sp.Overlaps(p) {
 			return true
 		}
 	}
@@ -372,7 +459,8 @@ func isSpecial(a netip.Addr) bool {
 
 // Check applies the count window and the shrink/growth guards against the
 // previously accepted list (none = nothing to compare).
-func Check(f Feed, p, prev []netip.Prefix) error {
+func Check(f Feed, p, prev []netip.Prefix, l Limits) error {
+	l = l.withDefaults()
 	if f.MinPrefixes > 0 && len(p) < f.MinPrefixes {
 		return fmt.Errorf("%d prefixes, want at least %d", len(p), f.MinPrefixes)
 	}
@@ -388,7 +476,7 @@ func Check(f Feed, p, prev []netip.Prefix) error {
 		fam    int
 		n, old int
 	}{{4, n4, o4}, {6, n6, o6}} {
-		if c.old > 0 && float64(c.n) < float64(c.old)*minShrink {
+		if c.old > 0 && float64(c.n) < float64(c.old)*l.MinShrink {
 			return fmt.Errorf("IPv%d prefixes fell from %d to %d (partial answer?)", c.fam, c.old, c.n)
 		}
 	}
@@ -402,10 +490,10 @@ func Check(f Feed, p, prev []netip.Prefix) error {
 		if c.old == 0 {
 			continue
 		}
-		if float64(c.n) > float64(c.old)*maxSpaceGrowth {
+		if float64(c.n) > float64(c.old)*l.MaxSpaceGrowth {
 			return fmt.Errorf("IPv%d space grew from %d to %d %s (poisoned answer?)", c.fam, c.old, c.n, c.unit)
 		}
-		if float64(c.n) < float64(c.old)*minShrink {
+		if float64(c.n) < float64(c.old)*l.MinShrink {
 			return fmt.Errorf("IPv%d space shrank from %d to %d %s (partial answer?)", c.fam, c.old, c.n, c.unit)
 		}
 	}
@@ -424,7 +512,7 @@ func countFamilies(p []netip.Prefix) (v4, v6 int) {
 }
 
 // Space returns (IPv4 addresses, IPv6 /64s) covered, ignoring prefixes that
-// sit inside another listed prefix. Prefix lengths are bounded by
+// sit inside another listed prefix. Prefix lengths are clamped by
 // NormalizePrefix, so neither sum can overflow.
 func Space(p []netip.Prefix) (v4, v6 uint64) {
 	for i, x := range p {
@@ -470,7 +558,7 @@ func equal(a, b []netip.Prefix) bool {
 	return true
 }
 
-func readCache(path string) ([]netip.Prefix, time.Time, error) {
+func readCache(path string, l Limits) ([]netip.Prefix, time.Time, error) {
 	fi, err := os.Stat(path)
 	if err != nil {
 		return nil, time.Time{}, err
@@ -479,7 +567,7 @@ func readCache(path string) ([]netip.Prefix, time.Time, error) {
 	if err != nil {
 		return nil, time.Time{}, err
 	}
-	p, err := Parse(FormatText, b)
+	p, err := Parse(FormatText, b, l)
 	return p, fi.ModTime(), err
 }
 

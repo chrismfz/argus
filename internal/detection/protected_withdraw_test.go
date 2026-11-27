@@ -191,3 +191,60 @@ func TestFeedSkipThrottle(t *testing.T) {
 		t.Fatal("interval <= 0 must record every time")
 	}
 }
+
+// HandleBlackhole: a feed-covered IP's repeated skips are recorded once per
+// interval; an excluded IP's skips are recorded every time.
+func TestHandleBlackholeThrottlesFeedSkips(t *testing.T) {
+	t.Chdir(t.TempDir()) // blackholes.txt / detections.log land here
+	db := openBlackholeTestDB(t)
+	setProtected(t, []string{"79.129.12.159"}, nil)
+	_, cf, _ := net.ParseCIDR("104.16.0.0/13")
+	SetFeedProtected("cloudflare", []*net.IPNet{cf})
+	t.Cleanup(func() { SetFeedProtected("cloudflare", nil) })
+	SetFeedSkipInterval(24 * time.Hour)
+	feedSkipMu.Lock()
+	feedSkipLast = map[string]time.Time{}
+	feedSkipMu.Unlock()
+
+	e := &Engine{store: NewSQLiteStore(db)}
+	rule := DetectionRule{Name: "web_slow_scan"}
+	for i := 0; i < 3; i++ {
+		// Clear the audit log's own 60s per-IP skip cooldown (allowSkipEvent)
+		// so each round stands for a match more than a minute after the last.
+		bhSkipMu.Lock()
+		bhSkipSeen = map[string]time.Time{}
+		bhSkipMu.Unlock()
+		e.HandleBlackhole(rule, []Flow{{SrcIP: "104.16.9.9", DstIP: "84.54.49.10"}}, 31)
+		e.HandleBlackhole(rule, []Flow{{SrcIP: "79.129.12.159", DstIP: "84.54.49.10"}}, 31)
+		time.Sleep(50 * time.Millisecond)
+	}
+	waitForEvents(t, db, BHEventSkipped, 4)
+	time.Sleep(100 * time.Millisecond) // let any extra async write land
+	count := func(ip string) int {
+		var n int
+		db.QueryRow(`SELECT count(*) FROM blackhole_events WHERE event = ? AND ip = ?`, BHEventSkipped, ip).Scan(&n)
+		return n
+	}
+	if f, x := count("104.16.9.9"), count("79.129.12.159"); f != 1 || x != 3 {
+		t.Fatalf("skipped events: feed IP %d (want 1), excluded IP %d (want 3)", f, x)
+	}
+	var reason string
+	db.QueryRow(`SELECT reason FROM blackhole_events WHERE ip = '104.16.9.9'`).Scan(&reason)
+	if reason != "protection: protected (feed cloudflare)" {
+		t.Fatalf("reason = %q", reason)
+	}
+}
+
+func TestAlertSuppressedByFeed(t *testing.T) {
+	_, cf, _ := net.ParseCIDR("104.16.0.0/13")
+	SetFeedProtected("cloudflare", []*net.IPNet{cf})
+	t.Cleanup(func() { SetFeedProtected("cloudflare", nil); SetFeedSuppressAlerts(false) })
+	SetFeedSuppressAlerts(true)
+	if !alertSuppressedByFeed("104.16.9.9") || alertSuppressedByFeed("198.51.100.1") {
+		t.Fatal("suppression wrong with suppress_alerts on")
+	}
+	SetFeedSuppressAlerts(false)
+	if alertSuppressedByFeed("104.16.9.9") {
+		t.Fatal("suppressed with suppress_alerts off")
+	}
+}

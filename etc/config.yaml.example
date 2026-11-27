@@ -345,6 +345,15 @@ protection_feeds:
   refresh: 24h
   cache_dir: data/protection-feeds
   skip_event_interval: 24h   # skipped-blackhole audit rows per feed-covered IP; negative = every time
+  suppress_alerts: true      # feed-covered IPs also skip a rule's alert action (not just blackhole)
+  retry_min: 5m              # failed/refused refresh: retry after this, doubling up to `refresh`
+  # Answer guards (defaults = cfm's trusted_proxies bounds):
+  min_ipv4_prefixlen: 12     # no prefix broader than /12
+  min_ipv6_prefixlen: 28
+  max_space_growth: 2        # refuse if a family's covered space more than doubles
+  min_shrink: 0.5            # refuse if a family's prefix count or space halves
+  fetch_timeout: 30s
+  max_body_bytes: 1048576
   feeds:                     # unset = Cloudflare only (as below)
     - name: cloudflare
       url: https://api.cloudflare.com/client/v4/ips

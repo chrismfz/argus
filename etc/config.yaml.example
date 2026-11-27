@@ -336,6 +336,22 @@ mailwatch:
     baseline_window: 168h    # how far back the p95 looks
     cooldown: 1h             # per (sender, port, kind)
 
+# Published CDN edge ranges kept on the detection protection list (never
+# blackholed). Fetched every `refresh`, cached in `cache_dir`; an answer outside
+# the guards (public CIDRs no broader than /12 v4 // /28 v6, min/max prefixes,
+# no halving of count/space, no doubling of space) keeps the last good list.
+protection_feeds:
+  enabled: true
+  refresh: 24h
+  cache_dir: data/protection-feeds
+  skip_event_interval: 24h   # skipped-blackhole audit rows per feed-covered IP; negative = every time
+  feeds:                     # unset = Cloudflare only (as below)
+    - name: cloudflare
+      url: https://api.cloudflare.com/client/v4/ips
+      format: cloudflare     # cloudflare | text (one CIDR per line)
+      min_prefixes: 8
+      max_prefixes: 200
+
 # Housekeeping of detections.sqlite (unset/0 = default, negative = disabled).
 storage:
   wal_checkpoint_interval: 5m    # PRAGMA wal_checkpoint(TRUNCATE): keeps the -wal file from growing into GBs

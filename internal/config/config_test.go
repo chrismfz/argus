@@ -70,6 +70,13 @@ func TestStorageDefaults(t *testing.T) {
 		t.Fatalf("mailwatch alert defaults wrong: %+v (retention %s)", ma, r.MailEgressAlerts)
 	}
 
+	pf := cfg.ProtectionFeeds
+	if !cfg.ProtectionFeedsEnabled() || pf.Refresh != 24*time.Hour || pf.SkipEventInterval != 24*time.Hour ||
+		pf.CacheDir != "data/protection-feeds" || len(pf.Feeds) != 1 || pf.Feeds[0].Name != "cloudflare" ||
+		pf.Feeds[0].Format != "cloudflare" || pf.Feeds[0].MinPrefixes != 8 || pf.Feeds[0].MaxPrefixes != 200 {
+		t.Fatalf("protection_feeds defaults wrong: %+v", pf)
+	}
+
 	fl := cfg.FlowLog
 	if fl.Enabled {
 		t.Fatalf("flow log must be disabled by default")

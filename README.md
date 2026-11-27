@@ -89,6 +89,19 @@ blackhole_time: [14400, 28800, 57600, 86400, 0]
 
 **Protection list** (`etc/exclude.detections.conf`) — IPs and CIDRs never blackholed, hot-reloaded via fsnotify
 
+**Protection feeds** (`protection_feeds:`, on by default): published CDN edge ranges are kept on the protection list automatically. The default feed is Cloudflare's.
+- **Why:** an edge talks to many of your IPs on 80/443 for its visitors, so horizontal-scan rules match it. Blackholing it stops no attacker and breaks every site behind it for that edge's visitors.
+- **Refresh:** argus fetches each feed every `refresh` (24h) and caches it in `cache_dir`, so a restart without network still protects.
+- **Guards:** an answer is accepted only within the bounds of cfm's `build_trusted_proxies.py`:
+  - public unicast CIDRs, none broader than /12 (v4) or /28 (v6);
+  - `min_prefixes`..`max_prefixes`;
+  - no halving of the prefix count or the covered space, and no doubling of the space.
+
+  A refused or failed fetch keeps the last good list. To accept a deliberate large change, delete the cache file.
+- **Effect:** stored blackholes a feed now covers are withdrawn on the next protection tick and reported unblocked to CFM.
+- **Audit:** skipped blackholes of feed-covered IPs are recorded at most once per `skip_event_interval` (24h) per IP, so they do not crowd the row-capped `blackhole_events`.
+- **Status:** `GET /detection/protection-feeds[?ip=x]`.
+
 **SQLite persistence** — detection counts, active blackholes, and blackhole history survive restarts; active blackholes are re-announced on startup
 
 **Mail egress memory** (`mailwatch:`, on by default) — every TCP flow from one of
@@ -537,6 +550,7 @@ All endpoints require `Authorization: Bearer <token>` header and source IP in `a
 | `/blackhole-search?ip=x` | GET | Check if a specific IP is blackholed |
 | `/mailwatch/senders?hours=24` | GET | Our IPs that sent to remote mail ports, busiest first, with first/last seen and a per-bucket sparkline |
 | `/mailwatch/ip?ip=x&hours=168` | GET | One sender's mail buckets, memory row and top destinations/ASNs |
+| `/detection/protection-feeds?ip=x` | GET | Protection feeds (CDN ranges): prefix counts, last refresh/error; with `ip`, which feed covers it |
 | `/mailwatch/alerts?hours=168&ip=x` | GET | Stored mail egress baseline alerts (new sender / spike), newest first |
 | `/mail` | GET | Mail egress page |
 | `/snmp/interfaces` | GET | Live interface traffic via SNMP |

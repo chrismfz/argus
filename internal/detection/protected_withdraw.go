@@ -63,6 +63,10 @@ func withdrawProtectedBlackholes(db *sql.DB, reporter Reporter, withdraw func(pr
 
 	n := 0
 	for _, r := range protected {
+		why := "detection exclusion"
+		if f := ProtectingFeed(prefixIP(r.prefix)); f != "" {
+			why = "protection feed " + f
+		}
 		if err := withdraw(r.prefix); err != nil {
 			// Keep the row so the next reload retries.
 			log.Printf("[SAFEGUARD] failed to withdraw protected blackhole %s: %v", r.prefix, err)
@@ -77,14 +81,14 @@ func withdrawProtectedBlackholes(db *sql.DB, reporter Reporter, withdraw func(pr
 			Event:  BHEventWithdrawn,
 			Source: BHSourceExclude,
 			Rule:   r.rule,
-			Reason: "covered by detection exclusion",
+			Reason: "covered by " + why,
 		})
 		if reporter != nil {
-			if err := reporter.ReportUnblock(prefixIP(r.prefix), "auto", "detection exclusion"); err != nil {
+			if err := reporter.ReportUnblock(prefixIP(r.prefix), "auto", why); err != nil {
 				log.Printf("[CFM] report unblock failed ip=%s err=%v", prefixIP(r.prefix), err)
 			}
 		}
-		log.Printf("[SAFEGUARD] withdrew blackhole %s (rule=%s): covered by a detection exclusion", r.prefix, r.rule)
+		log.Printf("[SAFEGUARD] withdrew blackhole %s (rule=%s): covered by %s", r.prefix, r.rule, why)
 		n++
 	}
 	return n, nil

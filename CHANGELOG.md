@@ -7,6 +7,31 @@ Every behavior-changing PR must add an entry under **Unreleased**.
 
 ## [Unreleased]
 
+### Fixed
+- **Cloudflare edges are no longer blackholed.** A Cloudflare edge talks to many
+  of our IPs on 80/443 on behalf of its visitors, so `web_slow_scan` matched
+  it.
+  - On 2026-11-27 there were 55 active blackholes on Cloudflare ranges (43 of
+    them permanent), and 322 announces since 2026-11-14. They were also
+    reported to CFM as blocks.
+  - New protection feeds (`internal/protectfeed`, `protection_feeds:` config,
+    on by default) fetch Cloudflare's published ranges every 24h, cache them
+    on disk, and keep them on the protection list next to the exclusions.
+    Blackholes those ranges now cover are withdrawn on the next protection
+    tick and reported unblocked to CFM, with reason "protection feed
+    cloudflare".
+  - Guards ported from cfm's `scripts/build_trusted_proxies.py` keep the last
+    good list when an answer is out of bounds.
+  - Skipped-blackhole audit rows for feed-covered IPs are throttled to one per
+    IP per `skip_event_interval` (24h).
+  - Feed-covered IPs also skip a rule's `alert` action (`suppress_alerts`,
+    default on).
+  - A failed or refused refresh is retried after `retry_min` (5m), doubling
+    up to `refresh`, so a first deploy whose fetch fails is not left
+    unprotected for a day.
+  - The answer bounds are config knobs. Duplicate feed names are rejected.
+  - Status: `GET /detection/protection-feeds`.
+
 ### Changed
 - **goauth updated to the audited release; Go 1.26 is now required.** The
   build host needs Go 1.26 or newer (the embedded SQLite driver moved from

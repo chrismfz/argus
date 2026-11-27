@@ -397,6 +397,7 @@ func Start() {
 		w.Write(detectionHTML)
 	}))
 	// List / add  (no trailing slash)
+	mainMux.HandleFunc("/detection/protection-feeds", WithAuth(handleProtectionFeeds))
 	mainMux.HandleFunc("/detection/excludes", WithAuth(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:

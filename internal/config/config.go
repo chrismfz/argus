@@ -214,6 +214,48 @@ type Config struct {
 	FlowLog   FlowLogConfig   `yaml:"flowlog"`
 	Storage   StorageConfig   `yaml:"storage"`
 	MailWatch MailWatchConfig `yaml:"mailwatch"`
+
+	ProtectionFeeds ProtectionFeedsConfig `yaml:"protection_feeds"`
+}
+
+// ProtectionFeedsConfig: published ranges (CDN edges) fetched on a timer and
+// kept on the detection protection list, so scan rules never blackhole them
+// (internal/protectfeed). Zero values mean "use the default".
+type ProtectionFeedsConfig struct {
+	Enabled           *bool                  `yaml:"enabled"`             // default true
+	Refresh           time.Duration          `yaml:"refresh"`             // default 24h
+	CacheDir          string                 `yaml:"cache_dir"`           // default "data/protection-feeds"
+	SkipEventInterval time.Duration          `yaml:"skip_event_interval"` // record a skipped blackhole of a feed-covered IP at most this often, default 24h; negative = every time
+	SuppressAlerts    *bool                  `yaml:"suppress_alerts"`     // feed-covered IPs also skip a rule's alert action, default true
+	Feeds             []ProtectionFeedConfig `yaml:"feeds"`               // default: Cloudflare
+
+	// Answer guards (defaults = the cfm edge's trusted_proxies bounds).
+	MinIPv4PrefixLen int           `yaml:"min_ipv4_prefixlen"` // no prefix broader than this, default 12
+	MinIPv6PrefixLen int           `yaml:"min_ipv6_prefixlen"` // default 28
+	MaxSpaceGrowth   float64       `yaml:"max_space_growth"`   // refuse if covered space grows past this factor, default 2
+	MinShrink        float64       `yaml:"min_shrink"`         // refuse if count or space falls below this fraction, default 0.5
+	FetchTimeout     time.Duration `yaml:"fetch_timeout"`      // default 30s
+	MaxBodyBytes     int64         `yaml:"max_body_bytes"`     // default 1048576
+	RetryMin         time.Duration `yaml:"retry_min"`          // first retry after a failed refresh (doubles up to refresh), default 5m
+}
+
+// ProtectionFeedConfig is one feed.
+type ProtectionFeedConfig struct {
+	Name        string `yaml:"name"`
+	URL         string `yaml:"url"`
+	Format      string `yaml:"format"`       // cloudflare | text
+	MinPrefixes int    `yaml:"min_prefixes"` // refuse an answer with fewer, default 1 (Cloudflare 8)
+	MaxPrefixes int    `yaml:"max_prefixes"` // refuse an answer with more, default 1000 (Cloudflare 200)
+}
+
+// ProtectionFeedsEnabled reports whether protection feeds run.
+func (c *Config) ProtectionFeedsEnabled() bool {
+	return c.ProtectionFeeds.Enabled == nil || *c.ProtectionFeeds.Enabled
+}
+
+// ProtectionFeedsSuppressAlerts reports whether feed-covered IPs skip alert actions.
+func (c *Config) ProtectionFeedsSuppressAlerts() bool {
+	return c.ProtectionFeedsEnabled() && (c.ProtectionFeeds.SuppressAlerts == nil || *c.ProtectionFeeds.SuppressAlerts)
 }
 
 // MailWatchConfig controls the per-IP outbound mail memory (internal/mailwatch):
@@ -475,6 +517,40 @@ func applyStorageDefaults(cfg *Config) {
 	defInt(&r.BlackholeEventsMaxRow, 10000)
 	defDur(&r.MailEgress, 30*24*time.Hour)
 	defDur(&r.MailEgressSenders, 365*24*time.Hour)
+
+	pf := &cfg.ProtectionFeeds
+	defDur(&pf.Refresh, 24*time.Hour)
+	defDur(&pf.SkipEventInterval, 24*time.Hour)
+	defInt(&pf.MinIPv4PrefixLen, 12)
+	defInt(&pf.MinIPv6PrefixLen, 28)
+	if pf.MaxSpaceGrowth <= 0 {
+		pf.MaxSpaceGrowth = 2
+	}
+	if pf.MinShrink <= 0 {
+		pf.MinShrink = 0.5
+	}
+	defDur(&pf.FetchTimeout, 30*time.Second)
+	if pf.MaxBodyBytes <= 0 {
+		pf.MaxBodyBytes = 1 << 20
+	}
+	defDur(&pf.RetryMin, 5*time.Minute)
+	if pf.CacheDir == "" {
+		pf.CacheDir = filepath.Join("data", "protection-feeds")
+	}
+	if len(pf.Feeds) == 0 {
+		pf.Feeds = []ProtectionFeedConfig{{
+			Name: "cloudflare", URL: "https://api.cloudflare.com/client/v4/ips", Format: "cloudflare",
+			MinPrefixes: 8, MaxPrefixes: 200,
+		}}
+	}
+	for i := range pf.Feeds {
+		f := &pf.Feeds[i]
+		if f.Format == "" {
+			f.Format = "text"
+		}
+		defInt(&f.MinPrefixes, 1)
+		defInt(&f.MaxPrefixes, 1000)
+	}
 
 	mw := &cfg.MailWatch
 	if len(mw.Ports) == 0 {

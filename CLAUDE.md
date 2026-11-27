@@ -45,6 +45,8 @@ internal/flowdir/     shared inbound/outbound direction classifier (used by ↓)
 internal/telemetry/   in-memory 1440-min ring buffers + snapshots → SQLite
 internal/flowstore/   per-ASN aggregates → SQLite (5-min timeline, 30-min detail tables)
 internal/flowlog/     optional raw 5-tuple flow log → dedicated flows.sqlite (size-capped)
+internal/mailwatch/   per-IP outbound mail memory + baseline alerts (/mail page)
+internal/protectfeed/ CDN edge ranges (Cloudflare) fetched → detection protection list
 internal/detection/   rules engine + anomaly ML (iForest/HBOS/eHBOS) + EWMA memory layer
 internal/alerter/     alert contacts/events + smtp/slack/log backends
 internal/api/         HTTP API (:9600) + embedded dashboard (internal/api/static/*.html)

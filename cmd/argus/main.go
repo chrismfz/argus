@@ -31,6 +31,7 @@ import (
 	"argus/internal/flowdir"
 	"argus/internal/flowlog"
 	"argus/internal/mailwatch"
+	"argus/internal/protectfeed"
 	"argus/internal/sqlite"
 	"argus/internal/telemetry"
 
@@ -434,6 +435,42 @@ func main() {
 	} else {
 		log.Printf("[SAFEGUARD] protection list loaded from %s", protPath)
 	}
+	// ── Protection feeds (CDN edge ranges) ───────────────────────────────────
+	// The cache is applied synchronously, before blackholes are restored, so a
+	// protected range is never re-announced; the 60s ticker below withdraws
+	// any stored blackhole a feed now covers.
+	if cfg.ProtectionFeedsEnabled() {
+		pfc := cfg.ProtectionFeeds
+		detection.SetFeedSkipInterval(max(pfc.SkipEventInterval, 0))
+		detection.SetFeedSuppressAlerts(cfg.ProtectionFeedsSuppressAlerts())
+		var feeds []protectfeed.Feed
+		seen := map[string]bool{}
+		for _, f := range pfc.Feeds {
+			pf := protectfeed.Feed{Name: f.Name, URL: f.URL, Format: f.Format, MinPrefixes: f.MinPrefixes, MaxPrefixes: f.MaxPrefixes}
+			if err := pf.Validate(); err != nil {
+				log.Printf("[protectfeed] skipping feed: %v", err)
+				continue
+			}
+			// Status, cache file and protection set are keyed by name.
+			if seen[pf.Name] {
+				log.Printf("[protectfeed] skipping feed %q: duplicate name", pf.Name)
+				continue
+			}
+			seen[pf.Name] = true
+			feeds = append(feeds, pf)
+		}
+		limits := protectfeed.Limits{
+			MinIPv4PrefixLen: pfc.MinIPv4PrefixLen, MinIPv6PrefixLen: pfc.MinIPv6PrefixLen,
+			MaxSpaceGrowth: pfc.MaxSpaceGrowth, MinShrink: pfc.MinShrink,
+			FetchTimeout: pfc.FetchTimeout, MaxBodyBytes: pfc.MaxBodyBytes, RetryMin: pfc.RetryMin,
+		}
+		pm := protectfeed.New(feeds, pfc.CacheDir, pfc.Refresh, limits, detection.SetFeedProtected)
+		pm.LoadCache()
+		go pm.Run(ctx)
+		api.ProtectionFeeds = pm
+		log.Printf("[protectfeed] enabled: %d feed(s), refresh=%s cache=%s", len(feeds), pfc.Refresh, pfc.CacheDir)
+	}
+
 	go func() {
 		w, err := fsnotify.NewWatcher()
 		if err != nil {
